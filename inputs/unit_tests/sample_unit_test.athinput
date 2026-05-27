@@ -1,0 +1,51 @@
+# AthenaK input file for the sample pgen-based unit test (unit_tests/sample_unit_test).
+#
+# This is a minimal harness driver: the test logic runs entirely in
+# ProblemGenerator::UserProblem and the program exits before any time integration
+# (nlim = tlim = 0).  A single physics block is required by MeshBlockPack::AddPhysics;
+# we use a tiny <z4c> setup (matching gauss_legendre_test) because it needs no matter
+# initial conditions, no EOS, and no external data tables.
+
+<comment>
+problem   = sample pgen-based unit test
+
+<job>
+basename  = sample_unit_test   # problem ID: basename of output filenames
+
+<mesh>
+nghost    = 2          # Number of ghost cells
+nx1       = 8          # Number of zones in X1-direction
+x1min     = -1.0       # minimum value of X1
+x1max     = 1.0        # maximum value of X1
+ix1_bc    = outflow    # inner-X1 boundary flag
+ox1_bc    = outflow    # outer-X1 boundary flag
+
+nx2       = 8          # Number of zones in X2-direction
+x2min     = -1.0       # minimum value of X2
+x2max     = 1.0        # maximum value of X2
+ix2_bc    = outflow    # inner-X2 boundary flag
+ox2_bc    = outflow    # outer-X2 boundary flag
+
+nx3       = 8          # Number of zones in X3-direction
+x3min     = -1.0       # minimum value of X3
+x3max     = 1.0        # maximum value of X3
+ix3_bc    = outflow    # inner-X3 boundary flag
+ox3_bc    = outflow    # outer-X3 boundary flag
+
+<meshblock>
+nx1       = 8          # Number of cells in each MeshBlock, X1-dir
+nx2       = 8          # Number of cells in each MeshBlock, X2-dir
+nx3       = 8          # Number of cells in each MeshBlock, X3-dir
+
+<time>
+evolution  = dynamic   # dynamic/kinematic/static
+integrator = rk3       # time integration algorithm
+cfl_number = 0.1       # The Courant, Friedrichs, & Lewy (CFL) Number
+nlim       = 0         # cycle limit (0: do no integration, just run UserProblem)
+tlim       = 0         # time limit
+ndiag      = 1         # cycles between diagnostic output
+
+<z4c>
+
+<problem>
+n          = 10000     # number of elements in the device parallel_reduce

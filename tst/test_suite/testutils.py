@@ -198,6 +198,75 @@ def clean_make(threads: int = os.cpu_count(), **kwargs) -> None:
     run_command(["ln", "-s", "../../inputs", "inputs"])
 
 
+def _repo_root() -> str:
+    """Absolute path to the repository root, robust to the current working directory.
+
+    Anchored to this file (<repo>/tst/test_suite/testutils.py) rather than the cwd,
+    because unit-test wrappers build/run from inside tst/build*/src.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))  # <repo>/tst/test_suite
+    return os.path.dirname(os.path.dirname(here))  # <repo>
+
+
+def run_unit_test(
+    name: str,
+    input_file: str = None,
+    args: List[str] = None,
+    flags: List[str] = None,
+    threads: int = os.cpu_count(),
+) -> bool:
+    """
+    Build and run a pgen-based unit test (built with -D PROBLEM=unit_tests/<name>).
+
+    A unit-test pgen *is* its own AthenaK binary: its ProblemGenerator::UserProblem runs
+    the checks and exits nonzero on failure (see src/pgen/unit_tests/unit_test.hpp). It is
+    therefore built into a dedicated, per-test build directory (tst/build_unit/<name>) so
+    it never clobbers the main test-suite binary in tst/build. A per-test directory (vs a
+    single shared one) keeps each test's PROBLEM fixed, so re-running an unchanged test is
+    an incremental no-op build rather than a full reconfigure+rebuild.
+
+    Args:
+        name: pgen basename under src/pgen/unit_tests/ (e.g. "sample_unit_test").
+        input_file: athinput path; defaults to inputs/unit_tests/<name>.athinput.
+        args: extra command-line overrides passed to the binary.
+        flags: extra cmake flags (e.g. ["-D", "Kokkos_ENABLE_CUDA=On"] for a _gpu test).
+        threads: parallelism for make.
+
+    Returns:
+        True if the unit test exited 0 (all checks passed), False otherwise.
+
+    Raises:
+        RuntimeError: if cmake configuration or the build itself fails (a build error,
+            as opposed to a failed assertion, is an error rather than a test failure).
+    """
+    args = args or []
+    flags = flags or []
+    repo_root = _repo_root()
+    build_dir = os.path.join(repo_root, "tst", "build_unit", name)
+    if input_file is None:
+        input_file = os.path.join(
+            repo_root, "inputs", "unit_tests", f"{name}.athinput"
+        )
+    input_file = os.path.abspath(input_file)
+
+    original_dir = os.getcwd()
+    try:
+        # Configure + build the unit-test binary in an isolated build directory.
+        os.chdir(repo_root)
+        config = (
+            ["cmake"] + flags + ["-D", f"PROBLEM=unit_tests/{name}", "-B", build_dir]
+        )
+        if not run_command(config):
+            raise RuntimeError(f"CMake configuration for unit test '{name}' failed")
+        os.chdir(os.path.join(build_dir, "src"))
+        if not run_command(["make", "-j", f"{threads}"]):
+            raise RuntimeError(f"Build of unit test '{name}' failed")
+        # Run the unit-test binary; exit code 0 == all checks passed.
+        return run_command(["./athena", "-i", input_file] + args)
+    finally:
+        os.chdir(original_dir)
+
+
 def read_dictionary_from_file(file_path):
     """
     Reads a dictionary from a file where each line is in the format "key: value".
