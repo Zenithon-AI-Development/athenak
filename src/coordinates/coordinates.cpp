@@ -24,6 +24,19 @@ Coordinates::Coordinates(ParameterInput *pin, MeshBlockPack *ppack) :
     pmy_pack(ppack),
     excision_floor("excision_floor",1,1,1,1),
     excision_flux("excision_flux",1,1,1,1) {
+  // Select the coordinate system (default Cartesian).  The geometry-agnostic kernels
+  // dispatch on coord_system through the inline accessors in coord_geometry.hpp.
+  std::string csys = pin->GetOrAddString("coord","system","cartesian");
+  if (csys.compare("cartesian") == 0) {
+    coord_system = CoordSystem::cartesian;
+  } else {
+    std::cout << "### FATAL ERROR in "<< __FILE__ <<" at line " << __LINE__ << std::endl
+              << "Unsupported <coord> system = '" << csys << "'. Only 'cartesian' is "
+              << "currently implemented (cylindrical/spherical added in later issues)."
+              << std::endl;
+    std::exit(EXIT_FAILURE);
+  }
+
   // Check for relativistic dynamics
   // WGC: idea for handling new EOS
   is_dynamical_relativistic = (pin->DoesBlockExist("adm") || pin->DoesBlockExist("z4c"))
