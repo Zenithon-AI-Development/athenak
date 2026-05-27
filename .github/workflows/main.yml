@@ -1,97 +1,217 @@
-name: AthenaK CI/CD
-run-name: ${{ github.actor }} ${{ github.ref_name }}
+name: AthenaK CI
+
+# On every pull request to main (and on pushes to main), build AthenaK and run the full
+# quality gate. Each job below is intended to be a *required status check* on the `main`
+# branch so that a red gate BLOCKS the merge -- requiring those checks is a one-time
+# repository/branch-protection setting an admin must enable (Settings -> Branches ->
+# Branch protection rules -> "Require status checks to pass": select style, build-warnings,
+# regression-cpu, regression-mpicpu). The workflow itself only produces the signals.
+#
+# CPU tiers run on GitHub-hosted runners (no infrastructure to provision). The GPU tier is
+# defined below but gated off until a GPU runner is provisioned -- see the regression-gpu
+# job (flagged needs-info).
+
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
-    branches:
-      - main
-jobs:        
-  lint-job:
-    runs-on: [self-hosted, ias-cluster]
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          submodules: true
-      - name: Lint python, cplusplus
-        shell: bash
-        run: |
-          source /usr/share/Modules/init/bash
-          module load gcc-toolset/10 anaconda3
-          python3 -m pip install --user flake8 numpy pytest testutils
-          cd ${{ github.workspace }}/tst
-          echo "Running test_suite..."
-          python run_test_suite.py --style
-      - name: Upload combinded lint log
-        uses: actions/upload-artifact@v6
-        with:
-          name:  lint_log.txt
-          path:  ${{ github.workspace }}/tst/test_log.txt
-  
-  regression_cpu-job:
-    needs: [lint-job]
-    runs-on: [self-hosted, ias-cluster]
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          submodules: true
-      - name: cpu regression test
-        shell: bash
-        run: |
-          source /usr/share/Modules/init/bash
-          module load gcc-toolset/10 anaconda3
-          python -m pip install --user flake8 numpy pytest testutils
-          cd ${{ github.workspace }}/tst
-          echo "Running regression script on CPU..."
-          python run_test_suite.py --cpu
-      - name: Archive log_file_cpu
-        uses: actions/upload-artifact@v6
-        with:
-          name: cpu_test_log.txt
-          path: ${{ github.workspace }}/tst/test_log.txt
+    branches: [main]
 
-  regression_mpi_cpu-job:
-    needs: [lint-job]
-    runs-on: [self-hosted, ias-cluster]
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          submodules: true
-      - name: mpi cpu regression test
-        shell: bash
-        run: |
-          source /usr/share/Modules/init/bash
-          module load gcc-toolset/10 openmpi/gcc/4.1.0 anaconda3
-          python3 -m pip install --user flake8 numpy pytest testutils
-          cd ${{ github.workspace }}/tst
-          echo "Running regression script on multiple CPUs..."
-          python run_test_suite.py --mpicpu
-      - name: Archive log_file_mpi_cpu
-        uses: actions/upload-artifact@v6
-        with:
-          name: log_file_mpi_cpu.txt
-          path: ${{ github.workspace }}/tst/test_log.txt
+# Cancel superseded runs on the same PR/branch to save runner minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
-  regression_gpu-job:
-    needs: [lint-job]
-    runs-on: [self-hosted, ias-apollo]
+jobs:
+  # ----------------------------------------------------------------------------------------
+  # Tier 0: style / format / lint. cpplint (per CPPLINT.cfg) + the custom AthenaK C++ checks
+  # + flake8 over the Python test scripts, all via run_test_suite.py --style.
+  # ----------------------------------------------------------------------------------------
+  style:
+    name: Style / lint (--style)
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
-          submodules: true
-      - name: gpu regression test
-        shell: bash
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install Python lint deps
+        run: python3 -m pip install --upgrade flake8 numpy pytest
+      - name: Run style gate
         run: |
-          source /usr/share/Modules/init/bash
-          module load gcc-toolset/10 cudatoolkit/11.7 anaconda3
-          python3 -m pip install --user flake8 numpy pytest testutils
-          cd ${{ github.workspace }}/tst
-          export CUDA_VISIBLE_DEVICES=1
-          echo "Running regressions script on GPU..."
-          python run_test_suite.py --gpu "-DKokkos_ARCH_AMPERE80=On -DCMAKE_CXX_COMPILER=${{ github.workspace }}/kokkos/bin/nvcc_wrapper"
-      - name: Archive log_file_gpu
-        uses: actions/upload-artifact@v6
+          cd tst
+          python3 run_test_suite.py --style
+      - name: Upload style log
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          name: log_file_gpu.txt
-          path: ${{ github.workspace }}/tst/test_log.txt
+          name: style-log
+          path: tst/test_log.txt
+          if-no-files-found: ignore
+
+  # ----------------------------------------------------------------------------------------
+  # Warning-clean build. AthenaK's own sources compile with -Wall -Wextra (target-scoped in
+  # src/CMakeLists.txt, never applied to Kokkos). The existing tree is not warning-clean, so
+  # instead of a blanket -Werror we fail only when a warning lands on a line THIS PR changed
+  # -- i.e. "new/changed code is warning-clean". See .github/scripts/check_new_warnings.py.
+  # ----------------------------------------------------------------------------------------
+  build-warnings:
+    name: Build (-Wall -Wextra) + new-warning gate
+    needs: [style]
+    runs-on: ubuntu-latest
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0          # full history so we can diff against the PR base
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install ccache
+        run: sudo apt-get update && sudo apt-get install -y ccache
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-build-${{ github.sha }}
+          restore-keys: ccache-build-
+      - name: Configure + build with -Wall -Wextra
+        run: |
+          export PATH="/usr/lib/ccache:$PATH"
+          cmake -B build -S .
+          set -o pipefail
+          cmake --build build --target athena -j"$(nproc)" 2>&1 | tee build.log
+      - name: Fail on warnings in changed code
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch --no-tags --prune origin \
+            "+refs/heads/${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
+          python3 .github/scripts/check_new_warnings.py \
+            --build-log build.log \
+            --base-ref "origin/${{ github.base_ref }}"
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          if-no-files-found: ignore
+
+  # ----------------------------------------------------------------------------------------
+  # Tier 1 + Tier 2 on CPU: run_test_suite.py --cpu runs every *_cpu test, which covers the
+  # formalized unit-test suite (tst/test_suite/unit_tests) AND the system tests + golden
+  # baseline regression (tst/test_suite/verification + the physics suites). ccache (on PATH)
+  # keeps the suite's clean rebuilds and per-unit-test builds fast across runs.
+  # ----------------------------------------------------------------------------------------
+  regression-cpu:
+    name: CPU regression (unit + system + baseline)
+    needs: [style]
+    runs-on: ubuntu-latest
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install deps
+        run: |
+          sudo apt-get update && sudo apt-get install -y ccache
+          python3 -m pip install --upgrade numpy pytest flake8 matplotlib
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-cpu-${{ github.sha }}
+          restore-keys: ccache-cpu-
+      - name: Run CPU test suite
+        run: |
+          export PATH="/usr/lib/ccache:$PATH"
+          cd tst
+          python3 run_test_suite.py --cpu
+      - name: Upload CPU test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpu-test-log
+          path: tst/test_log.txt
+          if-no-files-found: ignore
+
+  # ----------------------------------------------------------------------------------------
+  # Tier 2 with MPI: preserves the existing multi-rank CPU regression coverage on a
+  # GitHub-hosted runner. Oversubscribe is allowed because hosted runners have few cores.
+  # ----------------------------------------------------------------------------------------
+  regression-mpicpu:
+    name: MPI CPU regression
+    needs: [style]
+    runs-on: ubuntu-latest
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      OMPI_MCA_rmaps_base_oversubscribe: "true"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ccache libopenmpi-dev openmpi-bin
+          python3 -m pip install --upgrade numpy pytest flake8 matplotlib
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-mpi-${{ github.sha }}
+          restore-keys: ccache-mpi-
+      - name: Run MPI CPU test suite
+        run: |
+          export PATH="/usr/lib/ccache:$PATH"
+          cd tst
+          python3 run_test_suite.py --mpicpu
+      - name: Upload MPI CPU test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mpicpu-test-log
+          path: tst/test_log.txt
+          if-no-files-found: ignore
+
+  # ----------------------------------------------------------------------------------------
+  # GPU tier -- NEEDS-INFO. This job is defined so the GPU regression path is ready, but it
+  # cannot run on GitHub-hosted runners (no GPU). Provisioning a runner is a human decision:
+  #   * if reusing the old self-hosted IAS GPU box, change `runs-on` to its labels; OR
+  #   * provision a GPU runner and label it `gpu`.
+  # Until then it is gated behind the repo variable ENABLE_GPU_CI (set it to "true" once a
+  # runner exists) and marked continue-on-error so it never blocks a merge while unprovisioned.
+  # ----------------------------------------------------------------------------------------
+  regression-gpu:
+    name: GPU regression (needs-info — runner not provisioned)
+    needs: [style]
+    if: ${{ vars.ENABLE_GPU_CI == 'true' }}
+    continue-on-error: true
+    runs-on: [self-hosted, gpu]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Run GPU test suite
+        run: |
+          cd tst
+          python3 run_test_suite.py --gpu \
+            "-DKokkos_ARCH_AMPERE80=On -DCMAKE_CXX_COMPILER=${{ github.workspace }}/kokkos/bin/nvcc_wrapper"
+      - name: Upload GPU test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpu-test-log
+          path: tst/test_log.txt
+          if-no-files-found: ignore

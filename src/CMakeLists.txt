@@ -192,3 +192,21 @@ endif()
 
 # enable include of header files with /src/ as root of path
 target_include_directories(athena PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
+#------ compiler warning flags (AthenaK sources only, never Kokkos) ----------------------
+# Apply -Wall -Wextra to AthenaK's own translation units via target_compile_options, which
+# does NOT propagate to the Kokkos sources (built as a separate target). These are
+# warnings, not errors, so the existing tree still builds. CI builds with this default
+# (no -Werror) and feeds the warning log to .github/scripts/check_new_warnings.py, which
+# fails only when a warning lands on a line the PR changed -- so the existing tree stays
+# buildable while new/changed code is held warning-clean. Athena_ENABLE_WERROR is a hard
+# global knob kept for the day the whole tree is clean; do not enable it in CI yet.
+# Gate on a GNU/Clang host compiler so an nvcc/MSVC host pass is left untouched.
+if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  target_compile_options(athena PRIVATE
+      $<$<COMPILE_LANGUAGE:CXX>:-Wall>
+      $<$<COMPILE_LANGUAGE:CXX>:-Wextra>)
+  if (Athena_ENABLE_WERROR)
+    target_compile_options(athena PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-Werror>)
+  endif()
+endif()

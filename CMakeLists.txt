@@ -35,6 +35,10 @@ option(Athena_SINGLE_PRECISION "Compile for single precision" OFF)
 option(Athena_ENABLE_MPI "Compile with MPI parallelism enabled" OFF)
 option(Athena_ENABLE_OPENMP "Compile with OpenMP parallelism enabled" OFF)
 option(Athena_ENABLE_RNS "Compile with RNS support enabled" OFF)
+# Treat compiler warnings as errors. OFF by default so a plain build still succeeds even
+# if the existing tree emits warnings; CI turns this ON only after confirming the changed
+# code is warning-clean (see .github/workflows + .github/scripts/check_new_warnings.py).
+option(Athena_ENABLE_WERROR "Treat AthenaK (not Kokkos) compiler warnings as errors" OFF)
 set(PROBLEM built_in_pgens CACHE STRING "Name of problem generator function")
 
 #------ set macros exported to config.hpp ------------------------------------------------
