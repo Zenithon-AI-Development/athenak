@@ -22,6 +22,7 @@ class EquationOfState;
 class Coordinates;
 class Viscosity;
 class Conduction;
+class ConductionOperator;
 class SourceTerms;
 class OrbitalAdvectionCC;
 class ShearingBoxCC;
@@ -55,6 +56,7 @@ struct HydroTaskIDs {
   TaskID prol;
   TaskID c2p;
   TaskID newdt;
+  TaskID opsplit;
   TaskID csend;
   TaskID crecv;
 };
@@ -94,6 +96,13 @@ class Hydro {
   Conduction *pcond = nullptr;
   SourceTerms *psrc = nullptr;
 
+  // operator-split (RKL2 STS) thermal conduction (ADR-0001, issue #13).  Off by default:
+  // when <hydro> conduction_operator_split = true, conduction is advanced once per step
+  // by the parabolic integrator (pcond_op) instead of fused into the hyperbolic flux, so
+  // the timestep is not collapsed to the diffusive limit.
+  bool cond_operator_split = false;
+  ConductionOperator *pcond_op = nullptr;
+
   // following only used for time-evolving flow
   DvceArray5D<Real> u1;       // conserved variables at intermediate step
   DvceFaceFld5D<Real> uflx;   // fluxes of conserved quantities on cell faces
@@ -129,6 +138,8 @@ class Hydro {
   TaskStatus Prolongate(Driver* pdrive, int stage);
   TaskStatus ConToPrim(Driver *d, int stage);
   TaskStatus NewTimeStep(Driver *d, int stage);
+  // ...in "before_timeintegrator" list (operator-split parabolic conduction)
+  TaskStatus OperatorSplitConduction(Driver *d, int stage);
   // ...in "after_stagen_tl" list
   TaskStatus ClearSend(Driver *d, int stage);
   TaskStatus ClearRecv(Driver *d, int stage);  // also in Driver::Initialize

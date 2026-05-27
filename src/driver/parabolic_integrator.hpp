@@ -41,6 +41,7 @@
 
 #include "athena.hpp"            // Real, DvceArray1D, par_for, DevExeSpace, Kokkos
 #include "parameter_input.hpp"   // ParameterInput
+#include "driver/parabolic_operator.hpp"  // ParabolicOperator (operator-split task body)
 
 namespace parabolic {
 
@@ -228,9 +229,96 @@ class ParabolicIntegrator {
     SuperstepStages(u, dt_super, NumStages(dt_super, dt_exp), op);
   }
 
+  //--------------------------------------------------------------------------------------
+  //! \fn SuperstepStages (5D overload)
+  //! \brief Advance the conserved field `u` (DvceArray5D, indexed (m,var,k,j,i)) over the
+  //! superstep `dt_super` with exactly `s` RKL2 substages (clamped to >= 2).  This is the
+  //! production shape a ParabolicOperator (#13) drives: `op(in,out)` writes M(in) -> out
+  //! over the SAME 5D layout.  The recursion is identical to the 1D version; it runs over
+  //! every (m,var,k,j,i), so variables the operator does not evolve (M = 0 there) stay
+  //! frozen at Y_0 by construction (mu + nu + (1 - mu - nu) = 1), realizing the
+  //! operator-split "frozen background".  Ghost zones are refreshed by `op` itself (the
+  //! ParabolicOperator::ApplyBoundary contract), so any stale ghost values from the
+  //! recursion are overwritten before the next M(.) evaluation.
+  template <class OpFunc>
+  void SuperstepStages(DvceArray5D<Real> u, Real dt_super, int s, OpFunc op) const {
+    if (s < 2) { s = 2; }
+    const int nmb  = u.extent_int(0);
+    const int nvar = u.extent_int(1);
+    const int n3   = u.extent_int(2);
+    const int n2   = u.extent_int(3);
+    const int n1   = u.extent_int(4);
+    const Real dt = dt_super;
+
+    // RKL2 work registers (Y_0, M(Y_0), Y_{j-1}, Y_{j-2}, M(Y_{j-1}), Y_j).
+    DvceArray5D<Real> y0("rkl2_y0", nmb, nvar, n3, n2, n1);
+    DvceArray5D<Real> my0("rkl2_my0", nmb, nvar, n3, n2, n1);
+    DvceArray5D<Real> ym1("rkl2_ym1", nmb, nvar, n3, n2, n1);
+    DvceArray5D<Real> ym2("rkl2_ym2", nmb, nvar, n3, n2, n1);
+    DvceArray5D<Real> mym1("rkl2_mym1", nmb, nvar, n3, n2, n1);
+    DvceArray5D<Real> ynew("rkl2_ynew", nmb, nvar, n3, n2, n1);
+
+    Kokkos::deep_copy(y0, u);
+    op(y0, my0);                                   // M(Y_0), reused every stage
+
+    // Stage 1: Y_1 = Y_0 + mu_tilde_1 dt M(Y_0).
+    const Real mt1 = RKL2_MuTilde1(s);
+    par_for("rkl2_5d_stage1", DevExeSpace(),
+    0, nmb-1, 0, nvar-1, 0, n3-1, 0, n2-1, 0, n1-1,
+    KOKKOS_LAMBDA(const int m, const int n, const int k, const int j, const int i) {
+      ym1(m,n,k,j,i) = y0(m,n,k,j,i) + mt1*dt*my0(m,n,k,j,i);
+    });
+    Kokkos::deep_copy(ym2, y0);                    // Y_{j-2} for j=2 is Y_0
+
+    // Stages 2..s.
+    for (int jstg = 2; jstg <= s; ++jstg) {
+      op(ym1, mym1);                               // M(Y_{j-1})
+      const RKL2Stage c = RKL2Coeffs(jstg, s);
+      const Real mu = c.mu, nu = c.nu, mut = c.mu_tilde, gt = c.gamma_tilde;
+      const Real one_m = 1.0 - mu - nu;
+      par_for("rkl2_5d_stagej", DevExeSpace(),
+      0, nmb-1, 0, nvar-1, 0, n3-1, 0, n2-1, 0, n1-1,
+      KOKKOS_LAMBDA(const int m, const int n, const int k, const int j, const int i) {
+        ynew(m,n,k,j,i) = mu*ym1(m,n,k,j,i) + nu*ym2(m,n,k,j,i) + one_m*y0(m,n,k,j,i)
+                          + mut*dt*mym1(m,n,k,j,i) + gt*dt*my0(m,n,k,j,i);
+      });
+      Kokkos::deep_copy(ym2, ym1);
+      Kokkos::deep_copy(ym1, ynew);
+    }
+    Kokkos::deep_copy(u, ym1);                     // U^{n+1} = Y_s
+  }
+
+  //--------------------------------------------------------------------------------------
+  //! \fn Superstep (5D overload)
+  //! \brief Advance the conserved field `u` over `dt_super`, picking the RKL2 stage count
+  //! adaptively from the explicit parabolic stability limit `dt_exp`.
+  template <class OpFunc>
+  void Superstep(DvceArray5D<Real> u, Real dt_super, Real dt_exp, OpFunc op) const {
+    SuperstepStages(u, dt_super, NumStages(dt_super, dt_exp), op);
+  }
+
  private:
   ParabolicMethod method_;
 };
+
+//----------------------------------------------------------------------------------------
+//! \fn OperatorSplitStep
+//! \brief Advance one ParabolicOperator's `field` over the operator-split step `dt` with
+//! a single adaptive RKL2 superstep.  This is the BODY of the operator-split task
+//! (#13): the operator's ghost zones are refreshed (ApplyBoundary) up front and again
+//! before every RKL2 stage evaluation, so each M(.) sees a boundary-consistent stencil.
+//! The production task (Hydro::OperatorSplitConduction) and the unit test call this same
+//! function, so the wired path is exactly what the test exercises.
+inline void OperatorSplitStep(const ParabolicIntegrator &integ, ParabolicOperator &op,
+                              DvceArray5D<Real> field, Real dt) {
+  op.ApplyBoundary(field);
+  const Real dt_exp = op.ExplicitStableDt();
+  auto opfunc = [&op](DvceArray5D<Real> in, DvceArray5D<Real> out) {
+    op.ApplyBoundary(in);
+    op.OperatorAction(in, out);
+  };
+  integ.Superstep(field, dt, dt_exp, opfunc);
+}
 
 }  // namespace parabolic
 
