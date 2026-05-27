@@ -51,7 +51,8 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
 
   // (1) Evaluate every accessor inside a real device kernel and copy results to host.
   enum {
-    IVOL=0, IA1, IA2, IA3, IL1, IL2, IL3, IS1, IS2, IS3, ID1, ID2, ID3, NVAL
+    IVOL=0, IA1, IA2, IA3, IL1, IL2, IL3, ICW1, ICW2, ICW3,
+    IS1, IS2, IS3, ID1, ID2, ID3, NVAL
   };
   DvceArray1D<Real> d_vals("coord_geom_vals", NVAL);
   auto h_vals = Kokkos::create_mirror_view(d_vals);
@@ -64,6 +65,9 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
     d_vals(IL1)  = Edge1Length(csys, dx1);
     d_vals(IL2)  = Edge2Length(csys, dx2);
     d_vals(IL3)  = Edge3Length(csys, dx3);
+    d_vals(ICW1) = CenterWidth1(csys, dx1);
+    d_vals(ICW2) = CenterWidth2(csys, dx2);
+    d_vals(ICW3) = CenterWidth3(csys, dx3);
     d_vals(IS1)  = CoordSrc1Coeff(csys);
     d_vals(IS2)  = CoordSrc2Coeff(csys);
     d_vals(IS3)  = CoordSrc3Coeff(csys);
@@ -79,10 +83,17 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   test.CheckNear(h_vals(IA2),  dx1*dx3,     0.0, 0.0, "Face2Area == dx1*dx3");
   test.CheckNear(h_vals(IA3),  dx1*dx2,     0.0, 0.0, "Face3Area == dx1*dx2");
 
-  // (3) Cartesian edge lengths are the cell widths (exact).
+  // (3) Cartesian edge lengths are the cell widths (exact); they are the CT denominators
+  // (mhd_ct divides EMF differences by Edge?Length in the differentiation direction).
   test.CheckNear(h_vals(IL1), dx1, 0.0, 0.0, "Edge1Length == dx1");
   test.CheckNear(h_vals(IL2), dx2, 0.0, 0.0, "Edge2Length == dx2");
   test.CheckNear(h_vals(IL3), dx3, 0.0, 0.0, "Edge3Length == dx3");
+
+  // (3b) Cartesian cell-center widths are the cell widths (exact).  These are the newdt
+  // CFL widths (hydro/mhd_newdt.cpp divide CenterWidth? by the signal speed).
+  test.CheckNear(h_vals(ICW1), dx1, 0.0, 0.0, "CenterWidth1 == dx1");
+  test.CheckNear(h_vals(ICW2), dx2, 0.0, 0.0, "CenterWidth2 == dx2");
+  test.CheckNear(h_vals(ICW3), dx3, 0.0, 0.0, "CenterWidth3 == dx3");
 
   // (4) Cartesian space is flat: the coordinate-source coefficients vanish.
   test.CheckNear(h_vals(IS1), 0.0, 0.0, 0.0, "CoordSrc1Coeff == 0");

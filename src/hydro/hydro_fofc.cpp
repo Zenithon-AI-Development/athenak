@@ -10,6 +10,7 @@
 #include "mesh/mesh.hpp"
 #include "driver/driver.hpp"
 #include "coordinates/coordinates.hpp"
+#include "coordinates/coord_geometry.hpp"
 #include "coordinates/cartesian_ks.hpp"
 #include "coordinates/cell_locations.hpp"
 #include "eos/eos.hpp"
@@ -51,29 +52,31 @@ void Hydro::FOFC(Driver *pdriver, int stage) {
     auto &u0_ = u0;
     auto &u1_ = u1;
     auto &utest_ = utest;
+    auto csys = pmy_pack->pcoord->coord_system;
 
     // Index bounds
     int il = is-1, iu = ie+1, jl = js, ju = je, kl = ks, ku = ke;
     if (multi_d) { jl = js-1, ju = je+1; }
     if (three_d) { kl = ks-1, ku = ke+1; }
 
-    // Estimate updated conserved variables and cell-centered fields
+    // Estimate updated conserved variables and cell-centered fields.  The trial flux
+    // divergence is routed through the same geometry-agnostic FluxDivX? helpers as the
+    // full update (hydro_update.cpp); Cartesian reduces to the legacy (F_{i+1}-F_i)/dx.
     par_for("FOFC-newu", DevExeSpace(), 0, nmb-1, kl, ku, jl, ju, il, iu,
     KOKKOS_LAMBDA(const int m, const int k, const int j, const int i) {
-      Real dtodx1 = beta_dt/size.d_view(m).dx1;
-      Real dtodx2 = beta_dt/size.d_view(m).dx2;
-      Real dtodx3 = beta_dt/size.d_view(m).dx3;
-
       // Estimate conserved variables
       for (int n=0; n<nhyd_; ++n) {
-        Real divf = dtodx1*(flx1(m,n,k,j,i+1) - flx1(m,n,k,j,i));
+        Real divf = FluxDivX1(csys, flx1(m,n,k,j,i), flx1(m,n,k,j,i+1),
+                              size.d_view(m).dx1);
         if (multi_d) {
-          divf += dtodx2*(flx2(m,n,k,j+1,i) - flx2(m,n,k,j,i));
+          divf += FluxDivX2(csys, flx2(m,n,k,j,i), flx2(m,n,k,j+1,i),
+                            size.d_view(m).dx2);
         }
         if (three_d) {
-          divf += dtodx3*(flx3(m,n,k+1,j,i) - flx3(m,n,k,j,i));
+          divf += FluxDivX3(csys, flx3(m,n,k,j,i), flx3(m,n,k+1,j,i),
+                            size.d_view(m).dx3);
         }
-        utest_(m,n,k,j,i) = gam0*u0_(m,n,k,j,i) + gam1*u1_(m,n,k,j,i) - divf;
+        utest_(m,n,k,j,i) = gam0*u0_(m,n,k,j,i) + gam1*u1_(m,n,k,j,i) - beta_dt*divf;
       }
     });
 
