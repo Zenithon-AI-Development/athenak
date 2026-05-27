@@ -13,6 +13,8 @@
 #include "mesh/mesh.hpp"
 #include "driver/driver.hpp"
 #include "eos/eos.hpp"
+#include "coordinates/coordinates.hpp"
+#include "coordinates/coord_geometry.hpp"
 #include "mhd.hpp"
 #include "dyn_grmhd/dyn_grmhd.hpp"
 
@@ -41,6 +43,7 @@ TaskStatus MHD::RKUpdate(Driver *pdriver, int stage) {
   auto flx2 = uflx.x2f;
   auto flx3 = uflx.x3f;
   auto &mbsize = pmy_pack->pmb->mb_size;
+  auto csys = pmy_pack->pcoord->coord_system;
 
   // hierarchical parallel loop that updates conserved variables to intermediate step
   // using weights and fractional time step appropriate to stages of time-integrator used
@@ -52,9 +55,10 @@ TaskStatus MHD::RKUpdate(Driver *pdriver, int stage) {
   KOKKOS_LAMBDA(TeamMember_t member, const int m, const int n, const int k, const int j) {
     ScrArray1D<Real> divf(member.team_scratch(scr_level), ncells1);
 
-    // compute dF1/dx1
+    // compute dF1/dx1 (geometry-agnostic; Cartesian reduces to (F_{i+1}-F_i)/dx1)
     par_for_inner(member, is, ie, [&](const int i) {
-      divf(i) = (flx1(m,n,k,j,i+1) - flx1(m,n,k,j,i))/mbsize.d_view(m).dx1;
+      divf(i) = FluxDivX1(csys, flx1(m,n,k,j,i), flx1(m,n,k,j,i+1),
+                          mbsize.d_view(m).dx1);
     });
     member.team_barrier();
 
@@ -62,7 +66,8 @@ TaskStatus MHD::RKUpdate(Driver *pdriver, int stage) {
     // Fluxes must be summed in pairs to symmetrize round-off error in each dir
     if (multi_d) {
       par_for_inner(member, is, ie, [&](const int i) {
-        divf(i) += (flx2(m,n,k,j+1,i) - flx2(m,n,k,j,i))/mbsize.d_view(m).dx2;
+        divf(i) += FluxDivX2(csys, flx2(m,n,k,j,i), flx2(m,n,k,j+1,i),
+                             mbsize.d_view(m).dx2);
       });
       member.team_barrier();
     }
@@ -71,7 +76,8 @@ TaskStatus MHD::RKUpdate(Driver *pdriver, int stage) {
     // Fluxes must be summed in pairs to symmetrize round-off error in each dir
     if (three_d) {
       par_for_inner(member, is, ie, [&](const int i) {
-        divf(i) += (flx3(m,n,k+1,j,i) - flx3(m,n,k,j,i))/mbsize.d_view(m).dx3;
+        divf(i) += FluxDivX3(csys, flx3(m,n,k,j,i), flx3(m,n,k+1,j,i),
+                             mbsize.d_view(m).dx3);
       });
       member.team_barrier();
     }

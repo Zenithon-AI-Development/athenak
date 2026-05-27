@@ -14,6 +14,7 @@
 #include "athena.hpp"
 #include "parameter_input.hpp"
 #include "mesh/mesh.hpp"
+#include "coordinates/coord_geometry.hpp"  // CoordSystem + inline geometry accessors
 
 // forward declarations
 struct EOS_Data;
@@ -51,6 +52,10 @@ class Coordinates {
  public:
   explicit Coordinates(ParameterInput *pin, MeshBlockPack *ppack);
   ~Coordinates() {}
+
+  // coordinate system selected from `<coord> system` (default cartesian); curvilinear
+  // kernels dispatch on this via the inline accessors in coord_geometry.hpp
+  CoordSystem coord_system = CoordSystem::cartesian;
 
   // flags to denote relativistic dynamics in these coordinates
   bool is_special_relativistic = false;
