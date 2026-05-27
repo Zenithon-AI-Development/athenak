@@ -88,6 +88,12 @@ Driver::Driver(ParameterInput *pin, Mesh *pmesh, Real wtlim, Kokkos::Timer* ptim
     nlim = pin->GetOrAddInteger("time", "nlim", -1);
     ndiag = pin->GetOrAddInteger("time", "ndiag", 1);
 
+    // Select the operator-split parabolic integrator backend (RKL2 super-time-stepping
+    // by default; the implicit backend is deferred -- see ADR-0001). This wires the
+    // <time> parabolic_integrator selector; the integrator stays inert until a
+    // ParabolicOperator is registered in the once-per-step tasklist slots (issue #13).
+    pparabolic.SetFromInput(pin);
+
     if (integrator == "rk1") {
       // RK1: first-order Runge-Kutta / the forward Euler (FE) method
       nimp_stages = 0;
