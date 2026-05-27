@@ -19,6 +19,7 @@
 #include "parameter_input.hpp"
 #include "outputs/outputs.hpp"
 #include "pgen/pgen.hpp"
+#include "driver/parabolic_integrator.hpp"
 
 //----------------------------------------------------------------------------------------
 //! \class Driver
@@ -45,6 +46,9 @@ class Driver {
   Real a_twid[4][4], a_impl;       // matrix elements for implicit stages in ImEx
   Real cfl_limit;                  // maximum CFL number for integrator
   Real gamma;                      // gamma value for the IMEX_new integrator
+  // operator-split parabolic (super-time-stepping) integrator, selected by
+  // <time> parabolic_integrator (ADR-0001; inert until a ParabolicOperator is wired, #13)
+  parabolic::ParabolicIntegrator pparabolic;
   Kokkos::Timer* pwall_clock_;     // timer for tracking the wall clock
   Real wall_time;
 
