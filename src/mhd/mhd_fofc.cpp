@@ -10,6 +10,7 @@
 #include "mesh/mesh.hpp"
 #include "driver/driver.hpp"
 #include "coordinates/coordinates.hpp"
+#include "coordinates/coord_geometry.hpp"
 #include "coordinates/cartesian_ks.hpp"
 #include "coordinates/cell_locations.hpp"
 #include "eos/eos.hpp"
@@ -61,29 +62,33 @@ void MHD::FOFC(Driver *pdriver, int stage) {
     auto &utest_ = utest;
     auto &bcctest_ = bcctest;
     auto &b1_ = b1;
+    auto csys = pmy_pack->pcoord->coord_system;
 
     // Index bounds
     int il = is-1, iu = ie+1, jl = js, ju = je, kl = ks, ku = ke;
     if (multi_d) { jl = js-1, ju = je+1; }
     if (three_d) { kl = ks-1, ku = ke+1; }
 
-    // Estimate updated conserved variables and cell-centered fields
+    // Estimate updated conserved variables and cell-centered fields.  The trial flux
+    // divergence uses the same FluxDivX? helpers as the full update (mhd_update.cpp), and
+    // the trial CT field-update divides each EMF difference by the cell-edge length in
+    // the differentiation direction (Edge?Length), mirroring the constrained transport in
+    // mhd_ct.cpp; Cartesian reduces both to the legacy /dx arithmetic.
     par_for("FOFC-newu", DevExeSpace(), 0, nmb-1, kl, ku, jl, ju, il, iu,
     KOKKOS_LAMBDA(const int m, const int k, const int j, const int i) {
-      Real dtodx1 = beta_dt/size.d_view(m).dx1;
-      Real dtodx2 = beta_dt/size.d_view(m).dx2;
-      Real dtodx3 = beta_dt/size.d_view(m).dx3;
-
       // Estimate conserved variables
       for (int n=0; n<nmhd_; ++n) {
-        Real divf = dtodx1*(flx1(m,n,k,j,i+1) - flx1(m,n,k,j,i));
+        Real divf = FluxDivX1(csys, flx1(m,n,k,j,i), flx1(m,n,k,j,i+1),
+                              size.d_view(m).dx1);
         if (multi_d) {
-          divf += dtodx2*(flx2(m,n,k,j+1,i) - flx2(m,n,k,j,i));
+          divf += FluxDivX2(csys, flx2(m,n,k,j,i), flx2(m,n,k,j+1,i),
+                            size.d_view(m).dx2);
         }
         if (three_d) {
-          divf += dtodx3*(flx3(m,n,k+1,j,i) - flx3(m,n,k,j,i));
+          divf += FluxDivX3(csys, flx3(m,n,k,j,i), flx3(m,n,k+1,j,i),
+                            size.d_view(m).dx3);
         }
-        utest_(m,n,k,j,i) = gam0*u0_(m,n,k,j,i) + gam1*u1_(m,n,k,j,i) - divf;
+        utest_(m,n,k,j,i) = gam0*u0_(m,n,k,j,i) + gam1*u1_(m,n,k,j,i) - beta_dt*divf;
       }
 
       // Estimate updated cell-centered fields
@@ -95,15 +100,21 @@ void MHD::FOFC(Driver *pdriver, int stage) {
       bcctest_(m,IBY,k,j,i) = gam0*bcc0_(m,IBY,k,j,i) + gam1*b2old;
       bcctest_(m,IBZ,k,j,i) = gam0*bcc0_(m,IBZ,k,j,i) + gam1*b3old;
 
-      bcctest_(m,IBY,k,j,i) += dtodx1*(e3x1_(m,k,j,i+1) - e3x1_(m,k,j,i));
-      bcctest_(m,IBZ,k,j,i) -= dtodx1*(e2x1_(m,k,j,i+1) - e2x1_(m,k,j,i));
+      bcctest_(m,IBY,k,j,i) += beta_dt*(e3x1_(m,k,j,i+1) - e3x1_(m,k,j,i))
+                               /Edge1Length(csys, size.d_view(m).dx1);
+      bcctest_(m,IBZ,k,j,i) -= beta_dt*(e2x1_(m,k,j,i+1) - e2x1_(m,k,j,i))
+                               /Edge1Length(csys, size.d_view(m).dx1);
       if (multi_d) {
-        bcctest_(m,IBX,k,j,i) -= dtodx2*(e3x2_(m,k,j+1,i) - e3x2_(m,k,j,i));
-        bcctest_(m,IBZ,k,j,i) += dtodx2*(e1x2_(m,k,j+1,i) - e1x2_(m,k,j,i));
+        bcctest_(m,IBX,k,j,i) -= beta_dt*(e3x2_(m,k,j+1,i) - e3x2_(m,k,j,i))
+                                 /Edge2Length(csys, size.d_view(m).dx2);
+        bcctest_(m,IBZ,k,j,i) += beta_dt*(e1x2_(m,k,j+1,i) - e1x2_(m,k,j,i))
+                                 /Edge2Length(csys, size.d_view(m).dx2);
       }
       if (three_d) {
-        bcctest_(m,IBX,k,j,i) += dtodx3*(e2x3_(m,k+1,j,i) - e2x3_(m,k,j,i));
-        bcctest_(m,IBY,k,j,i) -= dtodx3*(e1x3_(m,k+1,j,i) - e1x3_(m,k,j,i));
+        bcctest_(m,IBX,k,j,i) += beta_dt*(e2x3_(m,k+1,j,i) - e2x3_(m,k,j,i))
+                                 /Edge3Length(csys, size.d_view(m).dx3);
+        bcctest_(m,IBY,k,j,i) -= beta_dt*(e1x3_(m,k+1,j,i) - e1x3_(m,k,j,i))
+                                 /Edge3Length(csys, size.d_view(m).dx3);
       }
     });
 

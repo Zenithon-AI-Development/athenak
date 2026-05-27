@@ -9,12 +9,17 @@
 //  \brief coordinate-system enum + inline device geometry accessors.
 //
 // These are the geometry-agnostic building blocks that let the finite-volume kernels
-// (flux divergence, and -- in later issues -- CT, newdt, and the diffusion operators)
-// run without hard-coding uniform-Cartesian arithmetic.  A run selects its coordinate
-// system with the input parameter `<coord> system` (default `cartesian`, stored as the
-// CoordSystem enum on the Coordinates class), and the kernels call the inline accessors
-// below to obtain cell volumes, face areas, edge lengths, geometric source coefficients,
-// and the conservative flux divergence.
+// (flux divergence, constrained transport, the CFL timestep, and -- in later issues --
+// the diffusion operators) run without hard-coding uniform-Cartesian arithmetic.  A run
+// selects its coordinate system with the input parameter `<coord> system` (default
+// `cartesian`, stored as the CoordSystem enum on the Coordinates class), and the kernels
+// call the inline accessors below to obtain cell volumes, face areas, edge lengths,
+// cell-center widths, geometric source coefficients, and the conservative flux div.
+//
+// The constrained-transport curl (mhd_ct.cpp) divides the EMF difference by the cell-edge
+// length in the differentiation direction (Edge?Length), and newdt divides the cell-
+// center width (CenterWidth?) by the signal speed; both reduce to the legacy `/dx` on the
+// Cartesian path so the update stays byte-identical with zero extra FLOPs.
 //
 // Every accessor is a KOKKOS_INLINE_FUNCTION so it inlines into device kernels with zero
 // call overhead.  The Cartesian specialization returns the analytic uniform-grid
@@ -125,6 +130,53 @@ static Real Edge2Length(CoordSystem csys, Real dx2) {
 
 KOKKOS_INLINE_FUNCTION
 static Real Edge3Length(CoordSystem csys, Real dx3) {
+  switch (csys) {
+    case CoordSystem::cartesian:
+    default:
+      return dx3;
+  }
+}
+
+//----------------------------------------------------------------------------------------
+//! \fn Real CenterWidth1()
+//! \brief physical width of cell (i,j,k) through its center along x1, used by the CFL
+//! timestep (newdt) as dt ~ CenterWidth/signal-speed.  Cartesian: dx1.
+//!
+//! This is the cell-CENTER width, distinct from Edge1Length (a cell-edge length): in
+//! curvilinear systems they differ (e.g. cylindrical CenterWidth2 = x1v*dx2 evaluated at
+//! the cell-center radius x1v, whereas Edge2Length = r*dx2 at a face radius).  Cartesian
+//! collapses both to dx, so newdt routed through this accessor stays byte-identical.
+
+KOKKOS_INLINE_FUNCTION
+static Real CenterWidth1(CoordSystem csys, Real dx1) {
+  switch (csys) {
+    case CoordSystem::cartesian:
+    default:
+      return dx1;
+  }
+}
+
+//----------------------------------------------------------------------------------------
+//! \fn Real CenterWidth2()
+//! \brief physical width of cell (i,j,k) through its center along x2 (see CenterWidth1).
+//! Cartesian: dx2.  (Cylindrical: x1v*dx2, the near-axis-aware azimuthal CFL width.)
+
+KOKKOS_INLINE_FUNCTION
+static Real CenterWidth2(CoordSystem csys, Real dx2) {
+  switch (csys) {
+    case CoordSystem::cartesian:
+    default:
+      return dx2;
+  }
+}
+
+//----------------------------------------------------------------------------------------
+//! \fn Real CenterWidth3()
+//! \brief physical width of cell (i,j,k) through its center along x3 (see CenterWidth1).
+//! Cartesian: dx3.
+
+KOKKOS_INLINE_FUNCTION
+static Real CenterWidth3(CoordSystem csys, Real dx3) {
   switch (csys) {
     case CoordSystem::cartesian:
     default:

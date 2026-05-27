@@ -16,6 +16,8 @@
 #include "mesh/mesh.hpp"
 #include "driver/driver.hpp"
 #include "eos/eos.hpp"
+#include "coordinates/coordinates.hpp"
+#include "coordinates/coord_geometry.hpp"
 #include "hydro.hpp"
 #include "diffusion/conduction.hpp"
 #include "srcterms/srcterms.hpp"
@@ -47,6 +49,7 @@ TaskStatus Hydro::NewTimeStep(Driver *pdrive, int stage) {
   auto &is_special_relativistic_ = pmy_pack->pcoord->is_special_relativistic;
   auto &is_general_relativistic_ = pmy_pack->pcoord->is_general_relativistic;
   auto &is_dynamical_relativistic_ = pmy_pack->pcoord->is_dynamical_relativistic;
+  auto csys = pmy_pack->pcoord->coord_system;
   const int nmkji = (pmy_pack->nmb_thispack)*nx3*nx2*nx1;
   const int nkji = nx3*nx2*nx1;
   const int nji  = nx2*nx1;
@@ -63,9 +66,12 @@ TaskStatus Hydro::NewTimeStep(Driver *pdrive, int stage) {
       k += ks;
       j += js;
 
-      min_dt1 = fmin((mbsize.d_view(m).dx1/fabs(w0_(m,IVX,k,j,i))), min_dt1);
-      min_dt2 = fmin((mbsize.d_view(m).dx2/fabs(w0_(m,IVY,k,j,i))), min_dt2);
-      min_dt3 = fmin((mbsize.d_view(m).dx3/fabs(w0_(m,IVZ,k,j,i))), min_dt3);
+      min_dt1 = fmin((CenterWidth1(csys, mbsize.d_view(m).dx1)/fabs(w0_(m,IVX,k,j,i))),
+                     min_dt1);
+      min_dt2 = fmin((CenterWidth2(csys, mbsize.d_view(m).dx2)/fabs(w0_(m,IVY,k,j,i))),
+                     min_dt2);
+      min_dt3 = fmin((CenterWidth3(csys, mbsize.d_view(m).dx3)/fabs(w0_(m,IVZ,k,j,i))),
+                     min_dt3);
     }, Kokkos::Min<Real>(dt1), Kokkos::Min<Real>(dt2),Kokkos::Min<Real>(dt3));
   } else {
     // find smallest dx/(v +/- Cs) in each direction for hydrodynamic problems
@@ -112,9 +118,9 @@ TaskStatus Hydro::NewTimeStep(Driver *pdrive, int stage) {
         max_dv2 = fabs(w0_(m,IVY,k,j,i)) + cs;
         max_dv3 = fabs(w0_(m,IVZ,k,j,i)) + cs;
       }
-      min_dt1 = fmin((mbsize.d_view(m).dx1/max_dv1), min_dt1);
-      min_dt2 = fmin((mbsize.d_view(m).dx2/max_dv2), min_dt2);
-      min_dt3 = fmin((mbsize.d_view(m).dx3/max_dv3), min_dt3);
+      min_dt1 = fmin((CenterWidth1(csys, mbsize.d_view(m).dx1)/max_dv1), min_dt1);
+      min_dt2 = fmin((CenterWidth2(csys, mbsize.d_view(m).dx2)/max_dv2), min_dt2);
+      min_dt3 = fmin((CenterWidth3(csys, mbsize.d_view(m).dx3)/max_dv3), min_dt3);
     }, Kokkos::Min<Real>(dt1), Kokkos::Min<Real>(dt2),Kokkos::Min<Real>(dt3));
   }
 
