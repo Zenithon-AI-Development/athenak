@@ -3,8 +3,10 @@
 // Copyright(C) 2020 James M. Stone <jmstone@ias.edu> and the Athena code team
 // Licensed under the 3-clause BSD License (the "LICENSE")
 //========================================================================================
-//! \file z4c_one_puncture.cpp
-//  \brief Problem generator for a single puncture placed at the origin of the domain
+//! \file gauss_legendre_test.cpp
+//  \brief Unit test: cross integrals of spin-weighted spherical harmonics on a
+//  GaussLegendreGrid should be delta functions (orthonormality).  Converted to the shared
+//  unit_test.hpp assert/report helpers (see that header and sample_unit_test.cpp).
 
 #include <algorithm>
 #include <cmath>
@@ -25,19 +27,22 @@
 #include "coordinates/cell_locations.hpp"
 #include "geodesic-grid/gauss_legendre.hpp"
 #include "utils/spherical_harm.hpp"
+#include "pgen/unit_tests/unit_test.hpp"
 
 using u32    = uint_least32_t;
 using s32    = int_least32_t;
 using engine = std::mt19937;
 
 //----------------------------------------------------------------------------------------
-//! \fn ProblemGenerator::UserProblem_()
-//! \brief Problem Generator for single puncture
+//! \fn ProblemGenerator::UserProblem()
+//! \brief Gauss-Legendre spherical-harmonic orthonormality unit test.
 void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   MeshBlockPack *pmbp = pmy_mesh_->pmb_pack;
   auto &indcs = pmy_mesh_->mb_indcs;
+  (void)indcs;
 
-  // ADMOnePuncture(pmbp, pin);
+  unit_test::UnitTest test("gauss_legendre_test");
+
   int ntheta = pin->GetOrAddInteger("problem", "ntheta", 16);
 
   GaussLegendreGrid grid(pmbp, ntheta, 1);
@@ -62,10 +67,10 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
     ms.push_back(m);
   }
 
-  double ylmR1,ylmI1,ylmR2,ylmI2;
+  double ylmR1, ylmI1, ylmR2, ylmI2;
   double int_r, int_i;
-  bool failed = false;
   double max_err = 0;
+  const double tol = 1e-10;
 
   // outer loop over pairs of spherical harmonics
   for (int n1 = 0; n1 < 10; ++n1)
@@ -87,31 +92,22 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
       int_i += weight*(ylmR1*ylmI2 + ylmR2*ylmI1);
     }
 
-    if (ls[n1] == ls[n2] && ms[n1] == ms[n2]) {
-      max_err = (abs(int_r-1)> max_err) ? abs(int_r-1) : max_err;
-      max_err = (abs(int_i)> max_err) ? abs(int_i) : max_err;
+    // expected: real part is 1 on the diagonal (same l,m) and 0 otherwise; imag part is
+    // always 0 (the harmonics are orthonormal under the conjugated inner product).
+    bool diagonal = (ls[n1] == ls[n2] && ms[n1] == ms[n2]);
+    double expected_r = diagonal ? 1.0 : 0.0;
+    max_err = std::max(max_err, std::abs(int_r - expected_r));
+    max_err = std::max(max_err, std::abs(int_i));
 
-      if (abs(int_r-1) >= 1e-10 || abs(int_i) >= 1e-10) {
-        failed = true;
-      }
-    } else {
-      max_err = (abs(int_r)> max_err) ? abs(int_r) : max_err;
-      max_err = (abs(int_i)> max_err) ? abs(int_i) : max_err;
-
-      if (abs(int_r) >= 1e-10 || abs(int_i) >= 1e-10) {
-        failed = true;
-      }
-    }
-    if (failed == true) {
-      std::cout << "Gauss Legendre Integral Test Failed"<< std::endl;
-      std::cout << "l1=" << ls[n1] << '\t' << "m1=" << ms[n1]<< std::endl;
-      std::cout << "l2=" << ls[n2] << '\t' << "m2=" << ms[n2]<< std::endl;
-      std::cout << "Maximum Error is " << max_err << std::endl;
-      std::cout << std::endl;
-      exit(EXIT_FAILURE);
-    }
+    std::ostringstream label;
+    label << "<Y(l=" << ls[n1] << ",m=" << ms[n1] << ")|Y(l=" << ls[n2]
+          << ",m=" << ms[n2] << ")>";
+    test.CheckNear(int_r, expected_r, 0.0, tol, label.str() + " real part");
+    test.CheckNear(int_i, 0.0, 0.0, tol, label.str() + " imag part");
   }
-  std::cout << "Test Passed with Maximum Error is " << max_err << std::endl;
+
+  std::cout << "[gauss_legendre_test] maximum error = " << max_err << std::endl;
+  test.Finish();
 
   return;
 }
