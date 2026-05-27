@@ -1,0 +1,4 @@
+# Diagnostic plots are build artifacts, regenerated on every run. Keep the dir, not
+# its contents.
+*
+!.gitignore
