@@ -129,9 +129,15 @@ TaskStatus Hydro::NewTimeStep(Driver *pdrive, int stage) {
   if (pmy_pack->pmesh->multi_d) { dtnew = std::min(dtnew, dt2); }
   if (pmy_pack->pmesh->three_d) { dtnew = std::min(dtnew, dt3); }
 
-  // compute timestep for diffusion
+  // compute timestep for diffusion.  When conduction is advanced operator-split (STS), it
+  // must NOT limit the hyperbolic timestep -- that is the whole point -- so leave its dt
+  // unbounded; the RKL2 superstep covers the full hyperbolic dt internally.
   if (pcond != nullptr) {
-    pcond->NewTimeStep(w0, peos->eos_data);
+    if (cond_operator_split) {
+      pcond->dtnew = static_cast<Real>(std::numeric_limits<float>::max());
+    } else {
+      pcond->NewTimeStep(w0, peos->eos_data);
+    }
   }
   // compute source terms timestep
   if (psrc != nullptr) {

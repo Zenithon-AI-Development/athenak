@@ -83,6 +83,10 @@ Hydro::Hydro(MeshBlockPack *ppack, ParameterInput *pin) :
   if (pin->DoesParameterExist("hydro","conductivity") ||
       pin->DoesParameterExist("hydro","tdep_conductivity")) {
     pcond = new Conduction("hydro", ppack, pin);
+    // Optionally advance conduction operator-split via the RKL2 STS integrator (ADR-0001)
+    // instead of fusing it into the hyperbolic flux.  Read only when conduction is on, so
+    // existing inputs are untouched (the param is not added otherwise).
+    cond_operator_split = pin->GetOrAddBoolean("hydro","conduction_operator_split",false);
   } else {
     pcond = nullptr;
   }
@@ -297,6 +301,7 @@ Hydro::~Hydro() {
   if (porb_u != nullptr) {delete porb_u;}
   delete pbval_u;
   if (psrc != nullptr) {delete psrc;}
+  if (pcond_op != nullptr) {delete pcond_op;}
   if (pcond != nullptr) {delete pcond;}
   if (pvisc != nullptr) {delete pvisc;}
   delete peos;

@@ -20,10 +20,13 @@
 #include "eos/eos.hpp"
 #include "diffusion/viscosity.hpp"
 #include "diffusion/conduction.hpp"
+#include "diffusion/conduction_operator.hpp"
 #include "srcterms/srcterms.hpp"
 #include "bvals/bvals.hpp"
 #include "shearing_box/shearing_box.hpp"
 #include "shearing_box/orbital_advection.hpp"
+#include "driver/driver.hpp"
+#include "driver/parabolic_integrator.hpp"
 #include "hydro/hydro.hpp"
 
 namespace hydro {
@@ -47,6 +50,16 @@ namespace hydro {
 
 void Hydro::AssembleHydroTasks(std::map<std::string, std::shared_ptr<TaskList>> tl) {
   TaskID none(0);
+
+  // assemble "before_timeintegrator" task list: operator-split parabolic conduction
+  // (RKL2 STS), once per step.  Only built when explicitly enabled, so default runs add
+  // no task and are byte-identical (ADR-0001, issue #13).
+  if (pcond != nullptr && cond_operator_split) {
+    pcond_op = new ConductionOperator(pmy_pack, u0, pcond->kappa,
+                                      peos->eos_data.gamma);
+    id.opsplit = tl["before_timeintegrator"]->AddTask(
+                   &Hydro::OperatorSplitConduction, this, none);
+  }
 
   // assemble "before_stagen" task list
   id.irecv = tl["before_stagen"]->AddTask(&Hydro::InitRecv, this, none);
@@ -184,7 +197,8 @@ TaskStatus Hydro::Fluxes(Driver *pdrive, int stage) {
   if (pvisc != nullptr) {
     pvisc->IsotropicViscousFlux(w0, pvisc->nu_iso, peos->eos_data, uflx);
   }
-  if (pcond != nullptr) {
+  // skip the fused heat flux when conduction is advanced operator-split (STS) instead
+  if (pcond != nullptr && !cond_operator_split) {
     pcond->AddHeatFlux(w0, peos->eos_data, uflx);
   }
 
@@ -399,6 +413,28 @@ TaskStatus Hydro::ConToPrim(Driver *pdrive, int stage) {
   int n3m1 = (indcs.nx3 > 1)? (indcs.nx3 + 2*ng - 1) : 0;
   peos->ConsToPrim(u0, w0, false, 0, n1m1, 0, n2m1, 0, n3m1);
   return TaskStatus::complete;
+}
+
+//----------------------------------------------------------------------------------------
+//! \fn TaskStatus Hydro::OperatorSplitConduction
+//! \brief Advance isotropic thermal conduction operator-split over one step via the RKL2
+//! super-time-stepping integrator (ADR-0001, issue #13).  Runs once per step in the
+//! "before_timeintegrator" slot: one adaptive RKL2 superstep diffuses the energy, then
+//! primitives are refreshed for the hyperbolic stages that follow.
+
+TaskStatus Hydro::OperatorSplitConduction(Driver *pdrive, int stage) {
+  if (pcond_op == nullptr) { return TaskStatus::complete; }
+  // single MeshBlock on a single rank only: ConductionOperator refreshes ghost zones with
+  // a local (insulated) fill between RKL2 substeps; multi-block inter-substep boundary
+  // exchange is the consuming physics issues' (#17/#18) responsibility.
+  if (pmy_pack->pmesh->nmb_total > 1 || global_variable::nranks > 1) {
+    std::cout << "### FATAL ERROR in " << __FILE__ << " at line " << __LINE__ << std::endl
+              << "conduction_operator_split currently supports a single MeshBlock on one "
+              << "MPI rank (inter-substep boundary exchange not yet wired)." << std::endl;
+    std::exit(EXIT_FAILURE);
+  }
+  parabolic::OperatorSplitStep(pdrive->pparabolic, *pcond_op, u0, pmy_pack->pmesh->dt);
+  return ConToPrim(pdrive, stage);  // refresh primitives after the operator-split update
 }
 
 //----------------------------------------------------------------------------------------
