@@ -139,6 +139,7 @@ add_executable(
         radiation/radiation_update.cpp
 
         radiation_fld/fld_grey_operator.cpp
+        radiation_fld/fld_multigroup_operator.cpp
 
         shearing_box/orbital_advection.cpp
         shearing_box/orbital_advection_cc.cpp
