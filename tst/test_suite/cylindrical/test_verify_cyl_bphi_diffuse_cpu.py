@@ -31,6 +31,14 @@ away from the axis, the eigenmode shape is preserved (single-scalar decay), the 
 decay matches the analytic rate, and baselines the profile through the shared
 verification harness.
 
+Oracle: Layer 1 -- analytic.  B_phi(r,t) = A J_1(k r) exp(-eta k^2 t) is the exact
+decaying eigenmode of the cylindrical resistive curl-curl operator: J_1 solves Bessel's
+equation of order 1, so [d_rr + (1/r) d_r - 1/r^2] J_1(k r) = -k^2 J_1(k r), giving the
+decay rate eta k^2.  With k = j_{1,1}/R (j_{1,1} = 3.83171, the first zero of J_1) the
+mode vanishes on the axis (J_1(0)=0) and at the outer radius (J_1(j_{1,1})=0).  Reference:
+Bessel-function theory (Abramowitz & Stegun 1972, ch. 9); resistive MHD diffusion.  The
+harness.verify baseline is a regression guard only.
+
 Auto-collected by run_test_suite.py (module name contains ``_cpu``).
 """
 
