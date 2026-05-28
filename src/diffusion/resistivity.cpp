@@ -9,11 +9,14 @@
 #include <algorithm>
 #include <iostream>
 #include <limits>
+#include <string>
 
 // Athena++ headers
 #include "athena.hpp"
 #include "parameter_input.hpp"
 #include "mesh/mesh.hpp"
+#include "mhd/mhd.hpp"
+#include "eos/eos.hpp"
 #include "resistivity.hpp"
 #include "current_density.hpp"
 
@@ -22,24 +25,61 @@
 
 Resistivity::Resistivity(MeshBlockPack *pp, ParameterInput *pin) :
   pmy_pack(pp) {
-  // Read parameters for Ohmic diffusion (if any)
-  eta_ohm = pin->GetReal("mhd","ohmic_resistivity");
+  // Resistivity model: "constant" (legacy, scalar eta_ohm) or Spitzer/Braginskii
+  // variable eta(rho,T_e) from the SIM-61 transport module (ADR-0003).
+  std::string model = pin->GetOrAddString("mhd","resistivity","constant");
 
-  // resistive timestep on MeshBlock(s) in this pack
-  dtnew = std::numeric_limits<float>::max();
-  auto size = pmy_pack->pmb->mb_size;
-  Real fac;
-  if (pp->pmesh->three_d) {
-    fac = 1.0/6.0;
-  } else if (pp->pmesh->two_d) {
-    fac = 0.25;
+  if (model == "constant") {
+    // Legacy constant Ohmic diffusivity -- byte-identical to the original path.
+    eta_ohm = pin->GetReal("mhd","ohmic_resistivity");
+    variable_eta = false;
+
+    // resistive timestep on MeshBlock(s) in this pack
+    dtnew = std::numeric_limits<float>::max();
+    auto size = pmy_pack->pmb->mb_size;
+    Real fac;
+    if (pp->pmesh->three_d) {
+      fac = 1.0/6.0;
+    } else if (pp->pmesh->two_d) {
+      fac = 0.25;
+    } else {
+      fac = 0.5;
+    }
+    for (int m=0; m<(pp->nmb_thispack); ++m) {
+      dtnew = std::min(dtnew, fac*SQR(size.h_view(m).dx1)/eta_ohm);
+      if (pp->pmesh->multi_d) {dtnew=std::min(dtnew,fac*SQR(size.h_view(m).dx2)/eta_ohm);}
+      if (pp->pmesh->three_d) {dtnew=std::min(dtnew,fac*SQR(size.h_view(m).dx3)/eta_ohm);}
+    }
+  } else if (model == "spitzer" || model == "braginskii") {
+    // Variable Spitzer/Braginskii eta(rho,T_e), eta_par/eta_perp from braginskii module.
+    variable_eta = true;
+    eta_ohm = 0.0;  // unused; the operator gates on variable_eta / IsActive()
+    rparams.dens_si     = pin->GetOrAddReal("mhd","resist_dens_si",1.0);
+    rparams.temp_si     = pin->GetOrAddReal("mhd","resist_temp_si",1.0);
+    rparams.bmag_si     = pin->GetOrAddReal("mhd","resist_bmag_si",1.0);
+    rparams.eta_si      = pin->GetOrAddReal("mhd","resist_eta_si",1.0);
+    rparams.zbar        = pin->GetOrAddReal("mhd","resist_zbar",1.0);
+    rparams.m_i         = pin->GetOrAddReal("mhd","resist_m_i",braginskii::kProtonMass);
+    rparams.ln_lambda   = pin->GetOrAddReal("mhd","resist_lnlambda",0.0);
+    rparams.anisotropic = pin->GetOrAddBoolean("mhd","resist_anisotropic",false);
+    rparams.rho_floor   = pin->GetOrAddReal("mhd","vacuum_density",-1.0);
+    rparams.eta_vac     = pin->GetOrAddReal("mhd","vacuum_resistivity",0.0);
+
+    // allocate the cell-centered eta field over the full cell extent (incl. ghosts);
+    // it is (re)filled from the current MHD state by ComputeEta() each substep.
+    auto &indcs = pp->pmesh->mb_indcs;
+    int nc1 = indcs.nx1 + 2*indcs.ng;
+    int nc2 = (indcs.nx2 > 1) ? (indcs.nx2 + 2*indcs.ng) : 1;
+    int nc3 = (indcs.nx3 > 1) ? (indcs.nx3 + 2*indcs.ng) : 1;
+    Kokkos::realloc(eta, pp->nmb_thispack, nc3, nc2, nc1);
+
+    // dt is set from max(eta) by NewTimeStep() (called in Driver::Initialize); start big
+    dtnew = std::numeric_limits<float>::max();
   } else {
-    fac = 0.5;
-  }
-  for (int m=0; m<(pp->nmb_thispack); ++m) {
-    dtnew = std::min(dtnew, fac*SQR(size.h_view(m).dx1)/eta_ohm);
-    if (pp->pmesh->multi_d) {dtnew = std::min(dtnew,fac*SQR(size.h_view(m).dx2)/eta_ohm);}
-    if (pp->pmesh->three_d) {dtnew = std::min(dtnew,fac*SQR(size.h_view(m).dx3)/eta_ohm);}
+    std::cout << "### FATAL ERROR in " << __FILE__ << " at line " << __LINE__ << std::endl
+              << "Unknown <mhd> resistivity = '" << model << "' (expected 'constant', "
+              << "'spitzer', or 'braginskii')" << std::endl;
+    std::exit(EXIT_FAILURE);
   }
 }
 
@@ -47,6 +87,97 @@ Resistivity::Resistivity(MeshBlockPack *pp, ParameterInput *pin) :
 // Resistivity destructor
 
 Resistivity::~Resistivity() {
+}
+
+//----------------------------------------------------------------------------------------
+//! \fn void Resistivity::ComputeEta()
+//! \brief Fill the cell-centered magnetic-diffusivity field eta(m,k,j,i) (code units)
+//!  from the current MHD primitive state (rho, T_e = (gamma-1) e/rho) and cell-centered
+//!  |B|, using the Spitzer/Braginskii model + vacuum-resistivity floor.  No-op in the
+//!  constant-eta path.  Covers the full cell extent (incl. ghosts) so the OhmicEField /
+//!  OhmicEnergyFlux edge/face averages are valid up to the domain boundary.
+
+void Resistivity::ComputeEta() {
+  if (!variable_eta) {return;}
+  EOS_Data &eos = pmy_pack->pmhd->peos->eos_data;
+  if (!eos.is_ideal) {
+    std::cout << "### FATAL ERROR in " << __FILE__ << " at line " << __LINE__ << std::endl
+              << "Variable Spitzer/Braginskii resistivity requires an ideal-gas EOS "
+              << "(temperature from internal energy)" << std::endl;
+    std::exit(EXIT_FAILURE);
+  }
+  Real gm1 = eos.gamma - 1.0;
+  auto rp = rparams;
+  auto eta_ = eta;
+  auto w0_ = pmy_pack->pmhd->w0;
+  auto bcc_ = pmy_pack->pmhd->bcc0;
+  int nmb1 = pmy_pack->nmb_thispack - 1;
+  int nc1 = eta.extent_int(3);
+  int nc2 = eta.extent_int(2);
+  int nc3 = eta.extent_int(1);
+
+  par_for("resist_eta", DevExeSpace(), 0, nmb1, 0, nc3-1, 0, nc2-1, 0, nc1-1,
+  KOKKOS_LAMBDA(const int m, const int k, const int j, const int i) {
+    Real rho  = w0_(m,IDN,k,j,i);
+    Real temp = gm1*w0_(m,IEN,k,j,i)/rho;
+    Real bx = bcc_(m,IBX,k,j,i);
+    Real by = bcc_(m,IBY,k,j,i);
+    Real bz = bcc_(m,IBZ,k,j,i);
+    Real bmag = sqrt(bx*bx + by*by + bz*bz);
+    eta_(m,k,j,i) = resistivity::EffectiveDiffusivity(rp, rho, temp, bmag);
+  });
+}
+
+//----------------------------------------------------------------------------------------
+//! \fn void Resistivity::NewTimeStep()
+//! \brief Recompute the explicit resistive-diffusion timestep from the current max(eta)
+//!  (variable-eta path).  No-op in the constant path (dtnew set once in the ctor).
+
+void Resistivity::NewTimeStep() {
+  if (!variable_eta) {return;}
+  ComputeEta();
+
+  // global max of eta over the interior cells of this pack
+  auto &indcs = pmy_pack->pmesh->mb_indcs;
+  int is = indcs.is, nx1 = indcs.nx1;
+  int js = indcs.js, nx2 = indcs.nx2;
+  int ks = indcs.ks, nx3 = indcs.nx3;
+  auto eta_ = eta;
+  const int nmkji = (pmy_pack->nmb_thispack)*nx3*nx2*nx1;
+  const int nkji = nx3*nx2*nx1;
+  const int nji  = nx2*nx1;
+  Real max_eta = 0.0;
+  Kokkos::parallel_reduce("resist_dt", Kokkos::RangePolicy<>(DevExeSpace(), 0, nmkji),
+  KOKKOS_LAMBDA(const int idx, Real &mx) {
+    int m = (idx)/nkji;
+    int k = (idx - m*nkji)/nji;
+    int j = (idx - m*nkji - k*nji)/nx1;
+    int i = (idx - m*nkji - k*nji - j*nx1) + is;
+    k += ks;
+    j += js;
+    mx = fmax(mx, eta_(m,k,j,i));
+  }, Kokkos::Max<Real>(max_eta));
+
+  dtnew = std::numeric_limits<float>::max();
+  if (max_eta <= 0.0) {return;}
+  auto size = pmy_pack->pmb->mb_size;
+  Real fac;
+  if (pmy_pack->pmesh->three_d) {
+    fac = 1.0/6.0;
+  } else if (pmy_pack->pmesh->two_d) {
+    fac = 0.25;
+  } else {
+    fac = 0.5;
+  }
+  for (int m=0; m<(pmy_pack->nmb_thispack); ++m) {
+    dtnew = std::min(dtnew, fac*SQR(size.h_view(m).dx1)/max_eta);
+    if (pmy_pack->pmesh->multi_d) {
+      dtnew = std::min(dtnew, fac*SQR(size.h_view(m).dx2)/max_eta);
+    }
+    if (pmy_pack->pmesh->three_d) {
+      dtnew = std::min(dtnew, fac*SQR(size.h_view(m).dx3)/max_eta);
+    }
+  }
 }
 
 //----------------------------------------------------------------------------------------
@@ -63,6 +194,11 @@ void Resistivity::OhmicEField(const DvceFaceFld4D<Real> &b0, DvceEdgeFld4D<Real>
   int ks = indcs.ks, ke = indcs.ke;
   int ncells1 = indcs.nx1 + 2*(indcs.ng);
   int nmb1 = pmy_pack->nmb_thispack - 1;
+
+  // refresh the cell-centered eta(rho,T_e) field for the variable-eta path
+  if (variable_eta) {ComputeEta();}
+  auto var = variable_eta;
+  auto eta_fld = eta;
 
   //---- 1-D problem:
   //  copy face-centered E-fields to edges and return.
@@ -89,10 +225,11 @@ void Resistivity::OhmicEField(const DvceFaceFld4D<Real> &b0, DvceEdgeFld4D<Real>
 
       // Add E_{resistive} = \eta J to corner-centered electric fields
       par_for_inner(member, is, ie+1, [&](const int i) {
-        e2(m,ks,  js  ,i) += eta_o*j2(i);
-        e2(m,ke+1,js  ,i) += eta_o*j2(i);
-        e3(m,ks  ,js  ,i) += eta_o*j3(i);
-        e3(m,ks  ,je+1,i) += eta_o*j3(i);
+        Real eta_i = var ? 0.5*(eta_fld(m,ks,js,i-1) + eta_fld(m,ks,js,i)) : eta_o;
+        e2(m,ks,  js  ,i) += eta_i*j2(i);
+        e2(m,ke+1,js  ,i) += eta_i*j2(i);
+        e3(m,ks  ,js  ,i) += eta_i*j3(i);
+        e3(m,ks  ,je+1,i) += eta_i*j3(i);
       });
     });
     return;
@@ -120,11 +257,15 @@ void Resistivity::OhmicEField(const DvceFaceFld4D<Real> &b0, DvceEdgeFld4D<Real>
 
       // Add E_{resistive} = \eta J to corner-centered electric fields
       par_for_inner(member, is, ie+1, [&](const int i) {
-        e1(m,ks,  j,i) += eta_o*j1(i);
-        e1(m,ke+1,j,i) += eta_o*j1(i);
-        e2(m,ks,  j,i) += eta_o*j2(i);
-        e2(m,ke+1,j,i) += eta_o*j2(i);
-        e3(m,ks  ,j,i) += eta_o*j3(i);
+        Real eta_e1 = var ? 0.5*(eta_fld(m,ks,j-1,i) + eta_fld(m,ks,j,i)) : eta_o;
+        Real eta_e2 = var ? 0.5*(eta_fld(m,ks,j,i-1) + eta_fld(m,ks,j,i)) : eta_o;
+        Real eta_e3 = var ? 0.25*(eta_fld(m,ks,j-1,i-1) + eta_fld(m,ks,j-1,i) +
+                                  eta_fld(m,ks,j  ,i-1) + eta_fld(m,ks,j  ,i)) : eta_o;
+        e1(m,ks,  j,i) += eta_e1*j1(i);
+        e1(m,ke+1,j,i) += eta_e1*j1(i);
+        e2(m,ks,  j,i) += eta_e2*j2(i);
+        e2(m,ke+1,j,i) += eta_e2*j2(i);
+        e3(m,ks  ,j,i) += eta_e3*j3(i);
       });
     });
     return;
@@ -152,9 +293,15 @@ void Resistivity::OhmicEField(const DvceFaceFld4D<Real> &b0, DvceEdgeFld4D<Real>
 
     // Add E_{resistive} = \eta J to corner-centered electric fields
     par_for_inner(member, is, ie+1, [&](const int i) {
-      e1(m,k,j,i) += eta_o*j1(i);
-      e2(m,k,j,i) += eta_o*j2(i);
-      e3(m,k,j,i) += eta_o*j3(i);
+      Real eta_e1 = var ? 0.25*(eta_fld(m,k-1,j-1,i) + eta_fld(m,k-1,j,i) +
+                                eta_fld(m,k  ,j-1,i) + eta_fld(m,k  ,j,i)) : eta_o;
+      Real eta_e2 = var ? 0.25*(eta_fld(m,k-1,j,i-1) + eta_fld(m,k-1,j,i) +
+                                eta_fld(m,k  ,j,i-1) + eta_fld(m,k  ,j,i)) : eta_o;
+      Real eta_e3 = var ? 0.25*(eta_fld(m,k,j-1,i-1) + eta_fld(m,k,j-1,i) +
+                                eta_fld(m,k,j  ,i-1) + eta_fld(m,k,j  ,i)) : eta_o;
+      e1(m,k,j,i) += eta_e1*j1(i);
+      e2(m,k,j,i) += eta_e2*j2(i);
+      e3(m,k,j,i) += eta_e3*j3(i);
     });
   });
 
@@ -177,7 +324,13 @@ void Resistivity::OhmicEnergyFlux(const DvceFaceFld4D<Real> &b,
   auto size = pmy_pack->pmb->mb_size;
   bool &multi_d = pmy_pack->pmesh->multi_d;
   bool &three_d = pmy_pack->pmesh->three_d;
-  Real qa = 0.25*eta_ohm;
+  Real qa = 0.25*eta_ohm;  // constant-eta prefactor (byte-identical legacy path)
+
+  // refresh the cell-centered eta(rho,T_e) field for the variable-eta path; the Poynting
+  // flux must use the same eta as the resistive EMF for energy consistency (ADR-0003)
+  if (variable_eta) {ComputeEta();}
+  auto var = variable_eta;
+  auto eta_fld = eta;
 
   //------------------------------
   // energy fluxes in x1-direction
@@ -201,7 +354,8 @@ void Resistivity::OhmicEnergyFlux(const DvceFaceFld4D<Real> &b,
     }
 
     // flx1 = (E X B)_{1} =  ((\eta J) X B)_{1} = \eta (J2*B3 - J3*B2)
-    flx1(m,IEN,k,j,i) += qa*(j2k  *(b.x3f(m,k  ,j  ,i) + b.x3f(m,k  ,j  ,i-1)) +
+    Real qf = var ? 0.125*(eta_fld(m,k,j,i-1) + eta_fld(m,k,j,i)) : qa;
+    flx1(m,IEN,k,j,i) += qf*(j2k  *(b.x3f(m,k  ,j  ,i) + b.x3f(m,k  ,j  ,i-1)) +
                              j2kp1*(b.x3f(m,k+1,j  ,i) + b.x3f(m,k+1,j  ,i-1)) -
                              j3j  *(b.x2f(m,k  ,j  ,i) + b.x2f(m,k  ,j  ,i-1)) -
                              j3jp1*(b.x2f(m,k  ,j+1,i) + b.x2f(m,k  ,j+1,i-1)));
@@ -228,7 +382,8 @@ void Resistivity::OhmicEnergyFlux(const DvceFaceFld4D<Real> &b,
     }
 
     // E2 = \eta (J X B)_{2} = \eta (J3*B1 - J1*B3)
-    flx2(m,IEN,k,j,i) += qa*(j3i  *(b.x1f(m,k  ,j,i  ) + b.x1f(m,k  ,j-1,i  )) +
+    Real qf = var ? 0.125*(eta_fld(m,k,j-1,i) + eta_fld(m,k,j,i)) : qa;
+    flx2(m,IEN,k,j,i) += qf*(j3i  *(b.x1f(m,k  ,j,i  ) + b.x1f(m,k  ,j-1,i  )) +
                              j3ip1*(b.x1f(m,k  ,j,i+1) + b.x1f(m,k  ,j-1,i+1)) -
                              j1k  *(b.x3f(m,k  ,j,i  ) + b.x3f(m,k  ,j-1,i  )) -
                              j1kp1*(b.x3f(m,k+1,j,i  ) + b.x3f(m,k+1,j-1,i  )));
@@ -251,8 +406,9 @@ void Resistivity::OhmicEnergyFlux(const DvceFaceFld4D<Real> &b,
     Real j2ip1 = -(b.x3f(m,k,j,i+1) - b.x3f(m,k  ,j,i  ))/size.d_view(m).dx1
                 + (b.x1f(m,k,j,i+1) - b.x1f(m,k-1,j,i+1))/size.d_view(m).dx3;
 
-    // E2 = \eta (J X B)_{2} = \eta (J1*B2 - J2*B1)
-    flx3(m,IEN,k,j,i) += qa*(j1j  *(b.x2f(m,k,j  ,i  ) + b.x2f(m,k-1,j  ,i  )) +
+    // E3 = \eta (J X B)_{3} = \eta (J1*B2 - J2*B1)
+    Real qf = var ? 0.125*(eta_fld(m,k-1,j,i) + eta_fld(m,k,j,i)) : qa;
+    flx3(m,IEN,k,j,i) += qf*(j1j  *(b.x2f(m,k,j  ,i  ) + b.x2f(m,k-1,j  ,i  )) +
                              j1jp1*(b.x2f(m,k,j+1,i  ) + b.x2f(m,k-1,j+1,i  )) -
                              j2i  *(b.x1f(m,k,j  ,i  ) + b.x1f(m,k-1,j  ,i  )) -
                              j2ip1*(b.x1f(m,k,j  ,i+1) + b.x1f(m,k-1,j  ,i+1)));

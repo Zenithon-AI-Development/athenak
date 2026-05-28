@@ -102,8 +102,10 @@ MHD::MHD(MeshBlockPack *ppack, ParameterInput *pin) :
     pvisc = nullptr;
   }
 
-  // Resistivity (only constructed if needed)
-  if (pin->DoesParameterExist("mhd","ohmic_resistivity")) {
+  // Resistivity (only constructed if needed): legacy constant "ohmic_resistivity" or the
+  // Spitzer/Braginskii variable eta(rho,T_e) selected via "resistivity" (ADR-0003).
+  if (pin->DoesParameterExist("mhd","ohmic_resistivity") ||
+      pin->DoesParameterExist("mhd","resistivity")) {
     presist = new Resistivity(ppack, pin);
   } else {
     presist = nullptr;
