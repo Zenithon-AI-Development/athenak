@@ -1,0 +1,71 @@
+# AthenaK input: cylindrical resistive B_phi diffusion verification (ADR-0004, issue #27).
+#
+# Verifies the special cylindrical resistive B_phi diffusion operator
+# (ResistiveBphiOperator): the -eta*B_phi/r^2 curl-curl term, the conservative
+# (1/r)d_r(r*flux) radial form, and the antisymmetric axis ghost B_phi(i-1) = -B_phi(i).
+# The operator is advanced operator-split by RKL2 super-time-stepping ENTIRELY inside the
+# cyl_bphi_diffuse user pgen (it is not yet wired into the driver tasklist), which seeds a
+# Bessel J_1(k r) eigenmode (the exact decaying solution of the axisymmetric resistive
+# B_phi equation), evolves it, and writes the radial profile the Python test reads.
+#
+# 1-D RADIAL run: r in [0, R=1] with k = j_{1,1}/R so the mode vanishes on the axis
+# (J_1(0)=0) and at the outer radius (J_1(j_{1,1})=0).  nlim = tlim = 0 -> the driver does
+# no time integration; UserProblem does all the work and exits.
+# See tst/test_suite/cylindrical/test_verify_cyl_bphi_diffuse_cpu.py.
+
+<comment>
+problem   = cylindrical resistive B_phi diffusion (Bessel J_1 eigenmode decay)
+reference = ADR-0004 (the one true cylindrical resistive exception)
+
+<job>
+basename  = cyl_bphi_diffuse   # problem ID: basename of output filenames
+
+<mesh>
+nghost    = 2          # number of ghost cells
+nx1       = 256        # radial zones
+x1min     = 0.0        # r_min (the axis)
+x1max     = 1.0        # r_max (the J_1 outer node)
+ix1_bc    = axis       # r=0 axisymmetric boundary (operator overrides with antisym ghost)
+ox1_bc    = outflow    # outer radial boundary (operator overrides with antisym/Dirichlet)
+
+nx2       = 1          # azimuthal (phi) zones (1 -> axisymmetric)
+x2min     = -0.5       # phi_min
+x2max     = 0.5        # phi_max
+ix2_bc    = periodic   # phi boundary
+ox2_bc    = periodic   # phi boundary
+
+nx3       = 1          # axial (z) zones
+x3min     = -0.5       # z_min
+x3max     = 0.5        # z_max
+ix3_bc    = periodic   # z boundary
+ox3_bc    = periodic   # z boundary
+
+<coord>
+system    = cylindrical  # (x1,x2,x3) = (r,phi,z)
+
+<meshblock>
+nx1       = 256        # cells per MeshBlock, X1-dir
+nx2       = 1          # cells per MeshBlock, X2-dir
+nx3       = 1          # cells per MeshBlock, X3-dir
+
+<time>
+evolution  = dynamic   # (nlim = tlim = 0: the pgen drives the operator-split step itself)
+integrator = rk2       # (unused: nlim = tlim = 0)
+cfl_number = 0.3       # CFL number
+nlim       = 0         # no driver time integration
+tlim       = 0.0       # no driver time integration
+ndiag      = 100       # cycles between diagnostic output
+parabolic_integrator = sts   # RKL2 super-time-stepping (ADR-0001)
+
+<hydro>
+eos         = ideal    # EOS type (only for grid sizing / gamma; no hydro is evolved)
+reconstruct = plm      # spatial reconstruction method
+rsolver     = hllc     # Riemann solver
+gamma       = 1.666666666666667  # gamma = C_p/C_v
+
+<problem>
+pgen_name = cyl_bphi_diffuse  # (informational; user pgen selected via -D PROBLEM)
+eta     = 0.01         # constant magnetic diffusivity (SIM-76 / #20 field, constant fill)
+amp     = 1.0          # B_phi eigenmode amplitude
+n_super = 60           # number of RKL2 supersteps
+dt_fac  = 200.0        # superstep size in units of the explicit-stable dt

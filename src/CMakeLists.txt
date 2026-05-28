@@ -34,6 +34,7 @@ add_executable(
         diffusion/aniso_conduction_operator.cpp
         diffusion/conduction.cpp
         diffusion/conduction_operator.cpp
+        diffusion/resistive_bphi_operator.cpp
         diffusion/resistivity.cpp
         diffusion/viscosity.cpp
 
