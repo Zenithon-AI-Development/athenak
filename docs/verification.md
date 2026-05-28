@@ -44,7 +44,7 @@ Directories: `cylindrical/`, `verification/`, `unit_tests/`.
 | `test_verify_cyl_bphi_diffuse_cpu.py` | 1 | analytic | Bessel-J₁ resistive eigenmode decay B_φ(r,t)=A·J₁(kr)·exp(−η k² t) | closed form (Bessel-J₁ eigenmode); Abramowitz & Stegun 1972 | self |
 | `test_verify_resistive_decay_cpu.py` | 1 | analytic | Transverse Fourier mode B_y(x,t)=b₀ sin(kx)·exp(−η k² t) with analytic Spitzer η(ρ,T_e); measured decay rate vs analytic | closed form; Spitzer 1962, Braginskii 1965 | self |
 | `test_unit_cyl_mhd_ct_divb_cpu.py` | 1 | analytic | Cylindrical constrained-transport curl-B divergence vanishes to machine precision (div(B)=0) | closed form (CT identity) | self |
-| `test_verify_cyl_field_loop_cpu.py` | 2 | self-snapshot | max\|div(B)\| at round-off (initial + advected) + harness baseline; **no advected-loop shape oracle** | — | `test_unit_cyl_mhd_ct_divb_cpu.py` — **TODO(#83)** |
+| `test_verify_cyl_field_loop_cpu.py` | 2 | self-snapshot | max\|div(B)\| at round-off (initial + advected) is the binding physics oracle; azimuthally-averaged \|B\|_rms(r) harness baseline is a cited-method regression guard for the expected slow numerical diffusion of the advected loop | Gardiner & Stone 2005 (field-loop advection test) | `test_unit_cyl_mhd_ct_divb_cpu.py` (div(B)=0) |
 
 ## Radiation — flux-limited diffusion and matter coupling
 
@@ -122,17 +122,22 @@ each test also keeps a `harness.verify` regression baseline.
 
 ---
 
-## Layer-2 self-snapshot gaps (TODO)
+## Layer-2 self-snapshot gaps — all closed
 
-The test below asserts only against a self-captured snapshot (plus qualitative sanity
-properties) and has no documented Layer-1 oracle yet. It is grounded for now by the listed
-method-correctness anchor and is scheduled to be upgraded to an independent oracle by a follow-up slice
-(per ADR-0008). (Planar `sod` was grounded against the exact Riemann solution in V4 / #79;
-`cyl_aniso_ring` was grounded in V6 / #81 against the published Parrish–Stone ring-test behavior plus
-the analytic `aniso_conduction` + `parabolic_conduction` unit-test method anchors; `cyl_blast` was
-grounded in V7 / #82 against the circular symmetry of the self-similar blast front — the Athena/Athena++
-blast benchmark's symmetry oracle.)
+Every Layer-2 (self-snapshot) test now carries a documented oracle/citation and a Layer-1
+method-correctness anchor, so there are **no remaining verification gaps** under this index (per
+ADR-0008). The snapshot-only tests flagged at adoption were each grounded by a V-series grounding slice:
 
-| Test | Method anchor (current) | Grounding slice |
-|------|-------------------------|-----------------|
-| `test_verify_cyl_field_loop_cpu.py` | `test_unit_cyl_mhd_ct_divb_cpu.py` (div(B)=0) | **V8 / #83** — documented advected-loop oracle |
+- planar `sod` (`test_verify_sod_cpu.py`) — grounded in V4 / #79 against the exact Riemann solution
+  (promoted to Layer 1).
+- `cyl_aniso_ring` (`test_verify_cyl_aniso_ring_cpu.py`) — grounded in V6 / #81 against the published
+  Parrish–Stone ring-test behavior plus the analytic `aniso_conduction` + `parabolic_conduction`
+  unit-test method anchors (stays Layer 2 with anchor).
+- `cyl_blast` (`test_verify_cyl_blast_cpu.py`) — grounded in V7 / #82 against the circular symmetry of
+  the self-similar blast front, the Athena/Athena++ blast benchmark's symmetry oracle (promoted to
+  Layer 1).
+- `cyl_field_loop` (`test_verify_cyl_field_loop_cpu.py`) — grounded in V8 / #83: the machine-precision
+  div(B) check is the binding physics oracle, the advected-loop configuration cites Gardiner & Stone
+  2005 (field-loop advection test), and the analytic `test_unit_cyl_mhd_ct_divb` unit test (div(B)=0)
+  is the method-correctness anchor; the `|B|_rms(r)` baseline is a cited-method regression guard for
+  the loop's expected slow numerical diffusion (stays Layer 2 with anchor).

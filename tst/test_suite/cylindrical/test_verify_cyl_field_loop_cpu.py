@@ -21,6 +21,18 @@ The test:
   * plots the azimuthally-averaged field magnitude vs r and saves/diffs a golden baseline.
 
 Auto-collected by run_test_suite.py (module name contains ``_cpu``).
+
+Oracle: Layer 2 -- self-snapshot.  The in-test PHYSICS oracle is the machine-precision
+div(B) check: the cylindrical finite-volume divergence of the CT-evolved field stays at
+round-off (max|div(B)| < 1e-10) both initially and after advection -- the binding
+correctness assertion (a conserved-quantity identity layered on the snapshot).  The
+advected-loop configuration is the Gardiner & Stone 2005 field-loop advection test (a
+weak field loop carried by a rigid flow); its azimuthally-averaged |B|_rms(r) harness
+baseline is a cited-method REGRESSION guard capturing the expected slow numerical
+diffusion of the loop under advection, NOT an independent shape oracle (an advected field
+loop has no closed-form profile).  The cylindrical constrained-transport method is
+grounded by the analytic test_unit_cyl_mhd_ct_divb unit test (div(B)=0 to machine
+precision) -- this row's method-correctness anchor.
 """
 
 # Modules
