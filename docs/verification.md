@@ -31,7 +31,7 @@ Directories: `cylindrical/`, `verification/`.
 | `test_verify_cyl_mignone_cpu.py` | 1 | analytic | Closed-form geometric-dilution solution ρ(r,t)=(r₀/r)ρ₀(r₀), r₀=r−vt; PLM 2nd-order convergence (L1 ~ N⁻²) | closed form; cf. Mignone 2014 cyl advection | self |
 | `test_cyl_equilibrium_cpu.py` | 1 | analytic | Uniform-pressure cylindrical static equilibrium: geometric source S₁=⟨1/r⟩(ρv_φ²+p) cancels flux divergence, held to round-off | closed form (steady state) | self |
 | `test_verify_cyl_blast_cpu.py` | 2 | self-snapshot | Shock-front sphericity (azimuthal distortion (r_max−r_min)/r_ave < tol) + harness baseline; **no quantitative blast-wave oracle** | — | `test_verify_cyl_sod_cpu.py`, `test_verify_cyl_mignone_cpu.py` — **TODO(#82)** |
-| `test_verify_sod_cpu.py` | 2 | self-snapshot | harness.verify baseline of the t=0.25 profiles only; **no exact-Riemann comparison** | — | `test_verify_cyl_sod_cpu.py` — **TODO(#79)** |
+| `test_verify_sod_cpu.py` | 1 | analytic | Exact Sod Riemann solution at t=0.25 (planar shock tube); relative L1 (density+pressure) within tolerance, Linf bounded by the ~1-cell contact/shock smearing | Toro 2009; Sod 1978 | self |
 
 ## Magnetohydrodynamics
 
@@ -124,14 +124,13 @@ each test also keeps a `harness.verify` regression baseline.
 
 ## Layer-2 self-snapshot gaps (TODO)
 
-The four tests below assert only against a self-captured snapshot (plus qualitative sanity
+The three tests below assert only against a self-captured snapshot (plus qualitative sanity
 properties) and have no documented Layer-1 oracle yet. Each is grounded for now by the listed
 method-correctness anchor and is scheduled to be upgraded to an independent oracle by a follow-up slice
-(per ADR-0008).
+(per ADR-0008). (Planar `sod` was grounded against the exact Riemann solution in V4 / #79.)
 
 | Test | Method anchor (current) | Grounding slice |
 |------|-------------------------|-----------------|
-| `test_verify_sod_cpu.py` (planar Sod) | `test_verify_cyl_sod_cpu.py` (exact Riemann) | **V4 / #79** — exact-Riemann oracle |
 | `test_verify_cyl_aniso_ring_cpu.py` | `test_unit_aniso_conduction_cpu.py` (Parrish–Stone ring) | **V6 / #81** — documented ring-test oracle |
 | `test_verify_cyl_blast_cpu.py` | `test_verify_cyl_sod_cpu.py`, `test_verify_cyl_mignone_cpu.py` | **V7 / #82** — documented oracle |
 | `test_verify_cyl_field_loop_cpu.py` | `test_unit_cyl_mhd_ct_divb_cpu.py` (div(B)=0) | **V8 / #83** — documented advected-loop oracle |
