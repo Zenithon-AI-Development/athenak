@@ -1,0 +1,70 @@
+# AthenaK input file for the multigroup FLD Marshak-wave verification
+# (radiation_fld_multigroup).
+#
+# Drives the N-group flux-limited radiation diffusion operator (FLDMultigroupOperator,
+# per-group Larsen limiter, per-group Rosseland D) with the RKL2 super-time-stepping
+# integrator (issue [17a]/#24, ADR-0001/0007).  The operator is advanced operator-split
+# entirely inside ProblemGenerator::UserProblem (it is not yet wired into the driver
+# tasklist), so a tiny <z4c> block satisfies AddPhysics and nlim = tlim = 0 means the
+# driver does no hyperbolic integration.
+#
+# An optically-thick cold slab is heated from the inner-x1 Dirichlet source (all groups);
+# each group g diffuses with its own coefficient D_g = c/(3 chi_g), chi_g read from the
+# tabulated Rosseland transport opacity, so the groups penetrate to different depths.
+#
+# <problem>/opacity_file defaults to a repo-relative path; the Python verification wrapper
+# overrides it with an absolute path (problem/opacity_file=<abspath>) since the run executes
+# from tst/build_pgen/<problem>/src.
+
+<comment>
+problem   = multigroup FLD Marshak wave verification (per-group Rosseland D)
+
+<job>
+basename  = multigroup_fld     # problem ID: basename of output filenames
+
+<mesh>
+nghost    = 2          # Number of ghost cells
+nx1       = 256        # Number of zones in X1-direction
+x1min     = 0.0        # minimum value of X1
+x1max     = 1.0        # maximum value of X1
+ix1_bc    = outflow    # inner-X1 boundary flag (FLD operator overrides ghosts itself)
+ox1_bc    = outflow    # outer-X1 boundary flag
+
+nx2       = 1          # Number of zones in X2-direction
+x2min     = -0.5       # minimum value of X2
+x2max     = 0.5        # maximum value of X2
+ix2_bc    = periodic   # inner-X2 boundary flag
+ox2_bc    = periodic   # outer-X2 boundary flag
+
+nx3       = 1          # Number of zones in X3-direction
+x3min     = -0.5       # minimum value of X3
+x3max     = 0.5        # maximum value of X3
+ix3_bc    = periodic   # inner-X3 boundary flag
+ox3_bc    = periodic   # outer-X3 boundary flag
+
+<meshblock>
+nx1       = 256        # Number of cells in each MeshBlock, X1-dir
+nx2       = 1          # Number of cells in each MeshBlock, X2-dir
+nx3       = 1          # Number of cells in each MeshBlock, X3-dir
+
+<time>
+evolution            = dynamic   # dynamic/kinematic/static
+integrator           = rk2       # hyperbolic time integration algorithm
+parabolic_integrator = sts       # operator-split parabolic backend (RKL2 STS)
+cfl_number           = 0.3       # The Courant, Friedrichs, & Lewy (CFL) Number
+nlim                 = 0         # cycle limit (0: do no integration, just run UserProblem)
+tlim                 = 0         # time limit
+ndiag                = 1         # cycles between diagnostic output
+
+<problem>
+opacity_file = inputs/radiation_fld/multigroup_opacity.cn4  # multigroup opacity fixture
+c_light   = 1.0        # code-unit speed of light
+rho_bg    = 1.0e-2     # uniform background mass density (fixture reference node)
+te_bg     = 1.0e2      # uniform background electron temperature (fixture reference node)
+n_larsen  = 2.0        # Larsen flux-limiter exponent
+e_source  = 1.0        # inner-x1 Dirichlet radiation-energy source (hot wall, all groups)
+e_floor   = 0.1        # initial/cold radiation energy
+tlim_fld  = 50.0       # FLD integration time
+n_super   = 20         # number of operator-split RKL2 supersteps
+
+<z4c>
