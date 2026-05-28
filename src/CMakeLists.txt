@@ -31,6 +31,7 @@ add_executable(
         coordinates/coordinates.cpp
         coordinates/excision.cpp
 
+        diffusion/aniso_conduction_operator.cpp
         diffusion/conduction.cpp
         diffusion/conduction_operator.cpp
         diffusion/resistivity.cpp
