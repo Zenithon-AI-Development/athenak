@@ -113,8 +113,9 @@ class MeshBlockPack;
 class MeshBoundaryValues {
  public:
   MeshBoundaryValues(MeshBlockPack *ppack, ParameterInput *pin, bool z4c);
-  // virtual: the class is polymorphic (virtual InitSendIndices/InitRecvIndices/InitFluxRecv)
-  // and derived MeshBoundaryValuesCC objects are deleted through their own pointers.
+  // virtual: the class is polymorphic (virtual InitSendIndices/InitRecvIndices/
+  // InitFluxRecv) and derived MeshBoundaryValuesCC objects are deleted through their own
+  // pointers.
   virtual ~MeshBoundaryValues();
 
   // data for all 56 buffers in most general 3D case. Not all elements used in most cases.
