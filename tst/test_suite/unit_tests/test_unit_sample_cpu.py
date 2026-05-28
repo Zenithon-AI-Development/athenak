@@ -8,6 +8,11 @@ failure -- see src/pgen/unit_tests/unit_test.hpp.
 
 This file demonstrates the auto-collection contract: dropping a
 test_unit_<name>_<device>.py here is enough; no edit to run_test_suite.py is needed.
+
+Oracle: n/a (not a physics test).  Scaffold for the auto-collection contract;
+ApproxEqual self-checks vs hardcoded values, with no independent oracle -- it verifies
+the harness wiring, not a physical result.  Excluded from the Layer-1/Layer-2 provenance
+classification in docs/verification.md.
 """
 
 # Modules

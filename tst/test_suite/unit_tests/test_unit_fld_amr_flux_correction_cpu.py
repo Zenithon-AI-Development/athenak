@@ -14,6 +14,13 @@ evaluates the FLDGreyOperator action M(E) = div(D grad E), and checks the discre
 conservation residual SUM(dV*M) is at round-off relative to its scale SUM|dV*M| (it is
 O(1) without the flux correction -> the red->green discriminator). The same registration
 is also wired into the anisotropic conduction (#18) and resistive B_phi (#27) operators.
+
+Oracle: Layer 1 -- analytic.  With the operator's face flux registered for AthenaK's
+conservative fine->coarse flux correction, the diffusion operator action M(E) = div(D grad
+E) conserves the diffused quantity across a static refinement boundary: the discrete
+conservation residual SUM(dV*M) sits at round-off vs SUM|dV*M| (it is O(1) without
+the correction -- the red->green discriminator).  References: closed form (conservation
+identity).
 """
 
 # Modules

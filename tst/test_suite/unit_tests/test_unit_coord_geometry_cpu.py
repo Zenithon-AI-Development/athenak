@@ -8,6 +8,12 @@ accessors in coordinates/coord_geometry.hpp return the analytic uniform-grid con
 that the flux-divergence helpers reduce to the legacy (F_{i+1}-F_i)/dx form -- the
 foundation that lets the hydro/MHD update be routed through the accessors without changing
 Cartesian behavior (ADR-0004, issue [1a]).
+
+Oracle: Layer 1 -- analytic.  The Cartesian coordinate accessors return the analytic
+uniform-grid constants and the flux-divergence helpers reduce to the legacy
+(F_{i+1} - F_i)/dx form bit-for-bit -- the byte-identity basis that lets the hydro/MHD
+update be routed through the accessors without changing Cartesian behavior.  References:
+closed form (Cartesian metric).
 """
 
 # Modules

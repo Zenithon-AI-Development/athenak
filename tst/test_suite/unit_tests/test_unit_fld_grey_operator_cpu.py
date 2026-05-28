@@ -12,6 +12,12 @@ operator
 action M(E) reproduces the discrete diffusion eigenvalue lambda_eig*(E-E0) with
 D = c/(3 chi) on an optically-thick cosine eigenmode; conservation by the insulated
 operator; and a finite, positive explicit stable dt.
+
+Oracle: Layer 1 -- analytic.  The Larsen flux limiter is checked against its closed-form
+limits (lambda(0)=1/3 diffusion limit, free-streaming cap lambda*R->1, monotonicity) and
+the operator action against the discrete diffusion eigenvalue lambda_eig*(E-E0) with
+D = c/(3 chi) on an optically-thick cosine eigenmode; plus exact conservation by the
+insulated operator.  References: closed form; Larsen flux limiter.
 """
 
 # Modules

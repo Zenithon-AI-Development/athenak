@@ -11,6 +11,12 @@ code units), applies the linear code<->SI conversions, reproduces the density-in
 and T^-1.5 scaling of Spitzer resistivity, distinguishes eta_perp >= eta_par under
 magnetization, and activates the vacuum-resistivity floor below a density threshold
 (issue [7a], ADR-0003).
+
+Oracle: Layer 1 -- analytic.  The variable magnetic-diffusivity helper composes the
+Spitzer/Braginskii chain: density-independent T^-1.5 scaling, eta_perp >= eta_par
+under magnetization, the code<->SI conversions, and the vacuum-resistivity floor below a
+density threshold.  References: Spitzer 1962; Braginskii 1965 (Reviews of Plasma Physics
+1, 205).
 """
 
 # Modules

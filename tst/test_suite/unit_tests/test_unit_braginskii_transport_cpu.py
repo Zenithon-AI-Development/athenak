@@ -9,6 +9,12 @@ reproduce the Braginskii reference values (collision times, parallel kappa/eta
 coefficients, Spitzer parallel resistivity), the unmagnetized (x->0) and
 strongly-magnetized limits, and that the Bohm-like anomalous term and the
 vacuum-resistivity floor activate as specified (ADR-0003/0006, issue [5]).
+
+Oracle: Layer 1 -- literature.  The magnetized Braginskii coefficients reproduce the
+published reference values (collision times, parallel kappa/eta, Spitzer parallel
+resistivity), the unmagnetized (x->0) and strongly-magnetized limits, and the Bohm-like
+anomalous term + vacuum-resistivity floor.  References: Braginskii 1965 (Reviews of Plasma
+Physics 1, 205); Spitzer 1962 (Physics of Fully Ionized Gases, 2nd ed.).
 """
 
 # Modules

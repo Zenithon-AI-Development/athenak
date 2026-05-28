@@ -15,6 +15,13 @@ kappa_perp, to machine precision); a Parrish-Stone ring test where heat conducts
 azimuthal field lines while cross-field radial leakage stays a tiny fraction; the
 Sharma-Hammett monotonic limiter (no cross-field over/undershoot); and the Larsen
 field-aligned flux cap (saturation at the free-streaming limit).
+
+Oracle: Layer 1 -- literature.  Field-aligned heat-flux projection (kappa_par >>
+kappa_perp; mode along B -> kappa_par diffusion, across B -> kappa_perp, to machine
+precision), the Parrish-Stone ring test (heat follows the azimuthal field; cross-field
+leakage tiny), the Sharma-Hammett monotonic limiter, and the Larsen free-streaming cap.
+References: Parrish & Stone 2005; Sharma & Hammett 2007; Braginskii 1965.  This unit test
+is the method-correctness anchor for the Layer-2 test_verify_cyl_aniso_ring (TODO #81).
 """
 
 # Modules

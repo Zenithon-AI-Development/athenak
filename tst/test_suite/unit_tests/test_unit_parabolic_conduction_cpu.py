@@ -15,6 +15,13 @@ convergence
 under superstep refinement; exact total-energy conservation by the insulated operator; and
 stability/decay at dt = 256 dt_exp where forward Euler would diverge. It drives the same
 parabolic::OperatorSplitStep tasklist-task body the production Hydro task uses.
+
+Oracle: Layer 1 -- analytic.  On a cosine diffusion eigenmode the operator action equals
+lambda*(E-E0) (pinning flux divergence and D = kappa(gamma-1)); the STS-advanced result
+matches the analytic exp(lambda t) decay and the explicit forward-Euler reference, shows
+2nd-order temporal convergence, conserves energy exactly, and stays stable at
+dt = 256 dt_exp.  References: closed form (diffusion eigenmode); Meyer, Balsara & Aslam
+2014 (RKL2).
 """
 
 # Modules

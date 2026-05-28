@@ -8,6 +8,12 @@ constrained-transport curl B = curl(E) on a small cylindrical grid using the sam
 r-weighted edge lengths / face areas as mhd_ct.cpp's cylindrical branch, then verifies
 the cylindrical finite-volume divergence of B vanishes to machine precision -- i.e.
 constrained transport preserves div(B)=0 in curvilinear geometry (ADR-0004, issue [3a]).
+
+Oracle: Layer 1 -- analytic.  The cylindrical constrained-transport curl B = curl(E),
+built with the same r-weighted edge lengths / face areas as mhd_ct.cpp, obeys the
+finite-volume identity div(curl E) = 0 exactly; the test pins the cylindrical div(B) to
+machine precision (closed-form CT identity).  This unit test is the method-correctness
+anchor for the Layer-2 test_verify_cyl_field_loop (advected div(B) snapshot; TODO #83).
 """
 
 # Modules
