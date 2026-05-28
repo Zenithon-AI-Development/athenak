@@ -1,0 +1,79 @@
+# AthenaK input file: Mignone cylindrical radial-advection convergence (ADR-0004, #15).
+#
+# Pure radial advection (evolution=kinematic, "advect" Riemann solver) of a smooth
+# density profile on a 1D radial grid r in [1,2], at constant radial velocity v_r.  The
+# cylindrical continuity equation  d_t rho + (1/r) d_r(r rho v_r) = 0  has the exact
+# solution  rho(r,t) = (r0/r) rho_init(r0),  r0 = r - v_r t  (geometric dilution).  A
+# correct cylindrical flux divergence converges to this analytic solution at the order
+# of the reconstruction (2nd order for PLM).  The verification test
+# (test_verify_cyl_mignone_cpu.py) runs several resolutions, measures the L1 error vs the
+# exact solution, checks the convergence rate against the reference, and saves a baseline.
+#
+# The isothermal sound speed is set tiny so the (physically-correct) <1/r>*p radial
+# geometric pressure source is negligible: this isolates the continuity-equation geometry,
+# which is exactly what the Mignone advection test probes.
+
+<comment>
+problem   = Mignone cylindrical radial advection
+reference = Mignone, JCP 270, 784 (2014)
+
+<job>
+basename  = cyl_mignone  # problem ID: basename of output filenames
+
+<mesh>
+nghost    = 3          # Number of ghost cells
+nx1       = 128        # radial zones (overridden per-resolution by the test)
+x1min     = 1.0        # r_min (off-axis)
+x1max     = 2.0        # r_max
+ix1_bc    = outflow    # inner radial boundary
+ox1_bc    = outflow    # outer radial boundary
+
+nx2       = 1          # azimuthal (phi) zones (1 -> axisymmetric)
+x2min     = -0.5       # phi_min
+x2max     = 0.5        # phi_max
+ix2_bc    = periodic   # phi boundary
+ox2_bc    = periodic   # phi boundary
+
+nx3       = 1          # axial (z) zones
+x3min     = -0.5       # z_min
+x3max     = 0.5        # z_max
+ix3_bc    = periodic   # z boundary
+ox3_bc    = periodic   # z boundary
+
+<coord>
+system    = cylindrical  # (x1,x2,x3) = (r,phi,z)
+
+<meshblock>
+nx1       = 128        # cells per MeshBlock, X1-dir (overridden by the test)
+nx2       = 1          # cells per MeshBlock, X2-dir
+nx3       = 1          # cells per MeshBlock, X3-dir
+
+<time>
+evolution  = kinematic # frozen velocity field -> pure advection
+integrator = rk2       # time integration algorithm
+cfl_number = 0.2       # CFL number
+nlim       = -1        # cycle limit
+tlim       = 0.2       # time limit
+ndiag      = 1000      # cycles between diagnostic output
+
+<hydro>
+eos             = isothermal  # required by the advection pgen
+reconstruct     = plm         # 2nd-order reconstruction -> 2nd-order convergence
+rsolver         = advect      # pure-advection Riemann solver (kinematic)
+iso_sound_speed = 1.0e-6      # tiny -> geometric pressure source negligible
+
+<problem>
+pgen_name   = advection   # problem generator name
+advect_dens = true        # advect the density field
+flow_dir    = 1           # flow direction (radial)
+iproblem    = 1           # 1 = smooth sine profile (smooth -> clean convergence)
+velocity    = 1.0         # constant radial velocity v_r
+amplitude   = 0.2         # amplitude of the advected density profile
+
+<output1>
+file_type   = tab       # tabular data dump
+variable    = hydro_w   # primitive variables (dens, vel)
+data_format = %24.16e   # full double precision
+dt          = 0.2       # output at t=0 (00000) and t=tlim (00001)
+slice_x2    = 0.0       # slice in x2 (phi)
+slice_x3    = 0.0       # slice in x3 (z)

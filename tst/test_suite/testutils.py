@@ -267,6 +267,69 @@ def run_unit_test(
         os.chdir(original_dir)
 
 
+def pgen_run_dir(problem: str) -> str:
+    """Absolute path to the run/working directory of a custom-pgen build (see run_pgen).
+
+    Outputs (tab/, bin/, *.dat, ...) written by ``run_pgen(problem, ...)`` land here, so
+    a test reads its results via e.g. os.path.join(pgen_run_dir(problem), "bin", "...").
+    """
+    return os.path.join(_repo_root(), "tst", "build_pgen", problem, "src")
+
+
+def run_pgen(
+    problem: str,
+    input_file: str,
+    args: List[str] = None,
+    flags: List[str] = None,
+    threads: int = os.cpu_count(),
+) -> bool:
+    """
+    Build and run a *custom* problem generator (built with -D PROBLEM=<problem>).
+
+    Some pgens (e.g. blast, and later the MagLIF/Z-pinch generator) are user pgens that
+    define ProblemGenerator::UserProblem and are NOT compiled into the default
+    ``built_in_pgens`` test-suite binary -- they must be built with -D PROBLEM=<problem>.
+    This helper builds such a pgen into a dedicated, per-problem build directory
+    (tst/build_pgen/<problem>) -- exactly like run_unit_test does for unit_tests/<name>,
+    so it never clobbers the shared suite binary and an unchanged rerun is a no-op build.
+
+    The binary runs with its cwd set to pgen_run_dir(problem); any outputs (tab/, bin/,
+    history, ...) are written there.  Pass an ABSOLUTE input_file path (the per-problem
+    build dir has no ``inputs`` symlink).
+
+    Args:
+        problem: pgen file basename under src/pgen/ (e.g. "blast").
+        input_file: path to the athinput (resolved to absolute).
+        args: extra command-line overrides passed to the binary.
+        flags: extra cmake flags (e.g. ["-D", "Kokkos_ENABLE_CUDA=On"]).
+        threads: parallelism for make.
+
+    Returns:
+        True if the run exited 0, False otherwise.
+
+    Raises:
+        RuntimeError: if cmake configuration or the build itself fails.
+    """
+    args = args or []
+    flags = flags or []
+    repo_root = _repo_root()
+    build_dir = os.path.join(repo_root, "tst", "build_pgen", problem)
+    input_file = os.path.abspath(input_file)
+
+    original_dir = os.getcwd()
+    try:
+        os.chdir(repo_root)
+        config = ["cmake"] + flags + ["-D", f"PROBLEM={problem}", "-B", build_dir]
+        if not run_command(config):
+            raise RuntimeError(f"CMake configuration for pgen '{problem}' failed")
+        os.chdir(os.path.join(build_dir, "src"))
+        if not run_command(["make", "-j", f"{threads}"]):
+            raise RuntimeError(f"Build of pgen '{problem}' failed")
+        return run_command(["./athena", "-i", input_file] + args)
+    finally:
+        os.chdir(original_dir)
+
+
 def read_dictionary_from_file(file_path):
     """
     Reads a dictionary from a file where each line is in the format "key: value".

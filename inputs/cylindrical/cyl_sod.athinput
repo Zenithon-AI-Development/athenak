@@ -1,0 +1,83 @@
+# AthenaK input file: cylindrical Sod shock tube (ADR-0004 verification, issue #15).
+#
+# Sod's shock tube run along the RADIAL direction at LARGE radius (r in [100,101]).
+# At large r the cylindrical geometric source <1/r>~1e-2 is a small perturbation, so the
+# radial solution must reduce to the exact PLANAR Sod Riemann solution to ~1%.  This is a
+# genuine correctness check of the cylindrical hydro update + geometric source (a bug in
+# the radial flux divergence or source would break the agreement with the analytic
+# planar solution).  The verification test (test_verify_cyl_sod_cpu.py) compares the
+# numerical profile against the exact Sod solution and saves a regression baseline.
+
+<comment>
+problem   = cylindrical Sod shock tube
+reference = Sod, G.A., JCP 27, pp. 1-31 (1978); Mignone, JCP 270 (2014)
+
+<job>
+basename  = cyl_sod    # problem ID: basename of output filenames
+
+<mesh>
+nghost    = 2          # Number of ghost cells
+nx1       = 256        # radial zones
+x1min     = 100.0      # r_min (large radius -> weak geometric source)
+x1max     = 101.0      # r_max
+ix1_bc    = outflow    # inner radial boundary (waves never reach it)
+ox1_bc    = outflow    # outer radial boundary
+
+nx2       = 1          # azimuthal (phi) zones (1 -> axisymmetric)
+x2min     = -0.5       # phi_min
+x2max     = 0.5        # phi_max
+ix2_bc    = periodic   # phi boundary
+ox2_bc    = periodic   # phi boundary
+
+nx3       = 1          # axial (z) zones
+x3min     = -0.5       # z_min
+x3max     = 0.5        # z_max
+ix3_bc    = periodic   # z boundary
+ox3_bc    = periodic   # z boundary
+
+<coord>
+system    = cylindrical  # (x1,x2,x3) = (r,phi,z)
+
+<meshblock>
+nx1       = 256        # cells per MeshBlock, X1-dir
+nx2       = 1          # cells per MeshBlock, X2-dir
+nx3       = 1          # cells per MeshBlock, X3-dir
+
+<time>
+evolution  = dynamic   # dynamic/kinematic/static
+integrator = rk2       # time integration algorithm
+cfl_number = 0.4       # CFL number
+nlim       = -1        # cycle limit
+tlim       = 0.2       # time limit (waves stay interior)
+ndiag      = 100       # cycles between diagnostic output
+
+<hydro>
+eos         = ideal    # EOS type
+reconstruct = plm      # spatial reconstruction method
+rsolver     = hllc     # Riemann solver (sharp contact)
+gamma       = 1.4      # gamma = C_p/C_v
+
+<problem>
+pgen_name = shock_tube  # problem generator name
+shock_dir = 1           # shock direction (radial)
+xshock    = 100.5       # interface position (midpoint of [100,101])
+
+dl = 1.0               # density   (inner / "left")
+pl = 1.0               # pressure
+ul = 0.0               # v_r
+vl = 0.0               # v_phi
+wl = 0.0               # v_z
+
+dr = 0.125             # density   (outer / "right")
+pr = 0.1               # pressure
+ur = 0.0               # v_r
+vr = 0.0               # v_phi
+wr = 0.0               # v_z
+
+<output1>
+file_type   = tab       # tabular data dump
+variable    = hydro_w   # primitive variables
+data_format = %24.16e   # full double precision
+dt          = 0.2       # output at t=0 (00000) and t=tlim (00001)
+slice_x2    = 0.0       # slice in x2 (phi)
+slice_x3    = 0.0       # slice in x3 (z)
