@@ -21,7 +21,8 @@ kappa_perp; mode along B -> kappa_par diffusion, across B -> kappa_perp, to mach
 precision), the Parrish-Stone ring test (heat follows the azimuthal field; cross-field
 leakage tiny), the Sharma-Hammett monotonic limiter, and the Larsen free-streaming cap.
 References: Parrish & Stone 2005; Sharma & Hammett 2007; Braginskii 1965.  This unit test
-is the method-correctness anchor for the Layer-2 test_verify_cyl_aniso_ring (TODO #81).
+(with test_unit_parabolic_conduction) is a method-correctness anchor for the Layer-2
+test_verify_cyl_aniso_ring (grounded in #81).
 """
 
 # Modules

@@ -23,6 +23,19 @@ alignment), the azimuthal far-field is heated while cross-field radial leakage s
 tiny fraction (leakage within tolerance), no new extrema form (Sharma-Hammett
 monotonicity), and baselines both profiles through the shared verification harness.
 
+Oracle: Layer 2 -- self-snapshot.  This cylindrical-metric ring profile has no
+closed-form solution, so the harness.verify baselines (the azimuthal-spread and
+radial-confinement profiles) are a regression guard only, over an
+anisotropic-conduction method verified independently elsewhere.  The
+method-correctness anchors are test_unit_aniso_conduction (analytic field-aligned
+heat-flux projection: a mode along B reduces to kappa_par diffusion, across B to
+kappa_perp, to machine precision) and test_unit_parabolic_conduction (analytic cosine
+diffusion eigenmode, exp(lambda t) decay).  The qualitative asserts reproduce the
+published ring-test behavior -- heat conducts along the field lines while cross-field
+leakage stays a tiny fraction (Parrish & Stone 2005, the canonical
+anisotropic-conduction ring test), with no new extrema created on the grid (Sharma &
+Hammett 2007, the monotonised anisotropic-diffusion slope limiter).
+
 Auto-collected by run_test_suite.py (module name contains ``_cpu``).
 """
 
