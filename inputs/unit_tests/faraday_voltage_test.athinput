@@ -1,0 +1,60 @@
+# AthenaK input: Faraday load-voltage reduction unit test (issue [18a]/#31, ADR-0005).
+#
+# Drives the cylindrical (ADR-0004) MHD path so the unit test can set B_phi on the x2-faces
+# and reduce the poloidal flux Phi = int int B_phi dr dz (and its time derivative, the
+# Faraday load voltage V = dPhi/dt).  All work happens in ProblemGenerator::UserProblem,
+# which exits cleanly (nlim = tlim = 0; no driver integration).  A 3-D box with nx2 = 2
+# phi-planes and an axisymmetric field also exercises the per-plane (divide-by-nphi)
+# average.  Auto-run by tst/test_suite/unit_tests/test_unit_faraday_voltage_cpu.py.
+
+<comment>
+problem   = Faraday load-voltage global reduction unit test
+reference = ADR-0005 (pluggable voltage-driven circuit boundary)
+
+<job>
+basename  = faraday_voltage_test
+
+<mesh>
+nghost    = 2
+nx1       = 8          # radial (r) zones
+x1min     = 0.5        # r_min (> 0: no axis, irrelevant to the poloidal-plane flux)
+x1max     = 1.5        # r_max
+ix1_bc    = outflow    # inner radial boundary
+ox1_bc    = outflow    # outer radial boundary
+
+nx2       = 4          # azimuthal (phi) planes (>1 exercises the per-plane average)
+x2min     = 0.0        # phi_min
+x2max     = 6.2831853071795862  # phi_max = 2*pi
+ix2_bc    = periodic   # phi boundary
+ox2_bc    = periodic   # phi boundary
+
+nx3       = 4          # axial (z) zones
+x3min     = 0.0        # z_min
+x3max     = 1.0        # z_max
+ix3_bc    = periodic   # z boundary
+ox3_bc    = periodic   # z boundary
+
+<coord>
+system    = cylindrical  # (x1,x2,x3) = (r,phi,z)
+
+<meshblock>
+nx1       = 8          # one MeshBlock spans the whole domain
+nx2       = 4
+nx3       = 4
+
+<time>
+evolution  = dynamic   # dynamic so the hlld solver is accepted (no integration: nlim=0)
+integrator = rk2
+cfl_number = 0.3
+nlim       = 0         # no cycles: UserProblem does all the work then exits
+tlim       = 0.0
+ndiag      = 1
+
+<mhd>
+eos         = ideal
+reconstruct = plm
+rsolver     = hlld
+gamma       = 1.666666666666667
+
+<problem>
+pgen_name = faraday_voltage_test  # (informational; user pgen selected at build via -D PROBLEM)
