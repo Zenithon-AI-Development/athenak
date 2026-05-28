@@ -1,0 +1,79 @@
+# AthenaK input file for the 2T equilibration-chain verification (ohmic_2t_chain) --
+# ADR-0002/0003 verification, issue [14c]/#30.
+#
+# Drives the Ohmic->electron heating source (three_temp::ApplyOhmicElectronHeating) and the
+# 2T point-implicit radiation coupling targeting T_e
+# (radiationfld::PointImplicitElectronRadiationCoupling).  Neither is wired into the driver
+# tasklist yet, so both are advanced operator-split entirely inside
+# ProblemGenerator::UserProblem; the <hydro> block supplies only the local array sizing, and
+# nlim = tlim = 0 means the driver does no hyperbolic integration.
+#
+# A spatially-uniform cell carries four energy reservoirs (magnetic, electron, ion,
+# radiation).  Each step: (1) Ohmic dissipation moves the magnetic-energy decrement onto the
+# electrons (E_tot held fixed -> ions untouched); (2) the point-implicit coupling exchanges
+# energy between the electrons (T_e) and the radiation (mirrored in E_tot -> ions untouched).
+# The (E_r, e_ele) trajectory is compared to an RK4 reference; e_ion stays constant and the
+# closed system me + e_ele + e_ion + E_r is conserved to machine precision.
+
+<comment>
+problem   = 2T equilibration chain: Ohmic -> electron -> radiation/ion
+
+<job>
+basename  = ohmic_2t_chain   # problem ID: basename of output filenames
+
+<mesh>
+nghost    = 2          # Number of ghost cells
+nx1       = 16         # Number of zones in X1-direction
+x1min     = 0.0        # minimum value of X1
+x1max     = 1.0        # maximum value of X1
+ix1_bc    = outflow    # inner-X1 boundary flag
+ox1_bc    = outflow    # outer-X1 boundary flag
+
+nx2       = 1          # Number of zones in X2-direction
+x2min     = -0.5       # minimum value of X2
+x2max     = 0.5        # maximum value of X2
+ix2_bc    = periodic   # inner-X2 boundary flag
+ox2_bc    = periodic   # outer-X2 boundary flag
+
+nx3       = 1          # Number of zones in X3-direction
+x3min     = -0.5       # minimum value of X3
+x3max     = 0.5        # maximum value of X3
+ix3_bc    = periodic   # inner-X3 boundary flag
+ox3_bc    = periodic   # outer-X3 boundary flag
+
+<meshblock>
+nx1       = 16         # Number of cells in each MeshBlock, X1-dir
+nx2       = 1          # Number of cells in each MeshBlock, X2-dir
+nx3       = 1          # Number of cells in each MeshBlock, X3-dir
+
+<time>
+evolution            = dynamic   # dynamic/kinematic/static
+integrator           = rk2       # hyperbolic time integration algorithm
+cfl_number           = 0.3       # The Courant, Friedrichs, & Lewy (CFL) Number
+nlim                 = 0         # cycle limit (0: do no integration, just run UserProblem)
+tlim                 = 0         # time limit
+ndiag                = 1         # cycles between diagnostic output
+
+<hydro>
+eos          = ideal   # EOS type (only for grid sizing; no hydro is evolved)
+reconstruct  = plm     # spatial reconstruction method
+rsolver      = llf     # Riemann-solver to be used
+gamma        = 1.66666666666666667   # gamma = C_p/C_v = 5/3 (unused; cv_ele is prescribed)
+
+<problem>
+pgen_name = ohmic_2t_chain   # (ignored: built with -D PROBLEM=...)
+c_light   = 1.0        # code-unit speed of light
+a_rad     = 1.0        # code-unit radiation constant (E_r = a T^4 at equilibrium)
+cv_ele    = 1.0        # electron volumetric heat capacity (T_e = e_ele/cv_ele)
+chi_a     = 1.0        # Planck absorption coefficient kappa_P*rho [1/length]
+eta       = 0.1        # magnetic diffusivity (code) for the Ohmic source
+jx        = 1.0        # current-density components J = curl B (|J|^2 = 1 -> Q = eta)
+jy        = 0.0
+jz        = 0.0
+me0       = 2.0        # initial magnetic energy 1/2 B^2 (depleted by Ohmic dissipation)
+ke        = 0.0        # bulk kinetic energy (static)
+te0       = 0.5        # initial electron temperature (e_ele0 = cv_ele*te0 = 0.5)
+eion0     = 1.0        # ion internal energy (must stay constant: ions untouched)
+erad0     = 0.0        # initial radiation energy (cold)
+dt        = 0.02       # chain macro-step (beta = c*chi_a*dt = 0.02 -> accurate vs RK4)
+nstep     = 300        # number of steps (t_end = 6 -> well-developed chain)
