@@ -52,8 +52,8 @@ Directories: `verification/`, `unit_tests/`.
 
 | Test | Layer | Oracle type | Ground-truth oracle | Citation | Method anchor |
 |------|-------|-------------|---------------------|----------|---------------|
-| `test_verify_marshak_fld_cpu.py` | 1 | analytic | Error-function Marshak wave E_r(x,t) with equilibrium diffusion D=c/(3χ) and Larsen flux limiter | closed form (Marshak); Larsen limiter | self |
-| `test_verify_multigroup_fld_cpu.py` | 1 | analytic | Per-group erfc Marshak wave with group-specific D_g=c/(3χ_g) from tabulated Rosseland opacity | closed form (per-group Marshak) | self |
+| `test_verify_marshak_fld_cpu.py` | 1 | analytic | Error-function Marshak wave E_r(x,t) with equilibrium diffusion D=c/(3χ) and Larsen flux limiter | closed form (erfc); Marshak 1958, Zel'dovich & Raizer 1967; FLD anchor arXiv:2504.10760 | self |
+| `test_verify_multigroup_fld_cpu.py` | 1 | analytic | Per-group erfc Marshak wave with group-specific D_g=c/(3χ_g) from tabulated Rosseland opacity | closed form (per-group erfc); Marshak 1958, Zel'dovich & Raizer 1967; arXiv:2504.10760 | self |
 | `test_verify_rad_equilibration_cpu.py` | 1 | analytic | Radiative equilibrium a·T⁴=E_r and erfc Marshak front with D=c/(3χ) | closed form | self |
 | `test_verify_multigroup_rad_hydro_cpu.py` | 1 | analytic | Planck-spectrum equilibrium E_g=a·T_eq⁴[F(x_{g+1})−F(x_g)] + local spectral lock; RK4 ODE reference; independent quadrature for F(x) | closed form (Planck spectrum) + RK4 | self |
 | `test_verify_ohmic_2t_chain_cpu.py` | 1 | analytic | RK4 reference integration of the coupled Ohmic→electron→radiation ODE; backward-Euler truncation + energy conservation | closed form (RK4 ODE reference) | self |
