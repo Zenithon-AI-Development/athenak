@@ -269,6 +269,14 @@ TaskStatus MHD::MHDSrcTerms(Driver *pdrive, int stage) {
     pmy_pack->pdyngr->AddCoordTerms(w0, bcc0, beta_dt, u0, pmy_pack->pmesh->mb_indcs.ng);
   }
 
+  // Add curvilinear (cylindrical) geometric source terms (ADR-0004, #16): the radial
+  // centrifugal+pressure+magnetic-hoop-stress source and the angular-momentum-conserving
+  // azimuthal source, using the cell-centered field and the x1-flux from the Fluxes task.
+  if (pmy_pack->pcoord->coord_system != CoordSystem::cartesian) {
+    pmy_pack->pcoord->CoordSrcTermsMHDCyl(w0, bcc0, uflx.x1f, peos->eos_data,
+                                          beta_dt, u0);
+  }
+
   // Add user source terms
   if (pmy_pack->pmesh->pgen->user_srcs) {
     (pmy_pack->pmesh->pgen->user_srcs_func)(pmy_pack->pmesh, beta_dt);

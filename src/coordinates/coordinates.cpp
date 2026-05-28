@@ -31,16 +31,10 @@ Coordinates::Coordinates(ParameterInput *pin, MeshBlockPack *ppack) :
     coord_system = CoordSystem::cartesian;
   } else if (csys.compare("cylindrical") == 0) {
     coord_system = CoordSystem::cylindrical;
-    // Cylindrical (ADR-0004, issue #14) currently supports Newtonian HYDRO only: the
-    // curvilinear MHD constrained-transport/hoop-stress path is issue #16, and the
-    // relativistic metric machinery is Cartesian-only.  Guard unsupported combinations
+    // Cylindrical (ADR-0004) supports Newtonian HYDRO (issue #14) and MHD (issue #16: the
+    // B_phi hoop-stress source + r-weighted constrained-transport edges).  The
+    // relativistic metric machinery remains Cartesian-only, so guard SR/GR combinations
     // rather than silently produce wrong results.
-    if (pin->DoesBlockExist("mhd")) {
-      std::cout << "### FATAL ERROR in "<< __FILE__ <<" at line " << __LINE__ << std::endl
-                << "<coord> system = 'cylindrical' with an <mhd> block is not yet "
-                << "implemented (cylindrical MHD is issue #16)." << std::endl;
-      std::exit(EXIT_FAILURE);
-    }
     if (pin->GetOrAddBoolean("coord","special_rel",false) ||
         pin->GetOrAddBoolean("coord","general_rel",false) ||
         pin->DoesBlockExist("adm") || pin->DoesBlockExist("z4c")) {
@@ -440,6 +434,70 @@ void Coordinates::CoordSrcTermsHydroCyl(const DvceArray5D<Real> &w0,
     cons(m,IM1,k,j,i) += dt*src1;
 
     // azimuthal source (angular-momentum-conserving, re-symmetrized x1-flux of rho v_phi)
+    Real fl = flx1(m,IM2,k,j,i);
+    Real fr = flx1(m,IM2,k,j,i+1);
+    Real src2 = CoordSrc2Coeff(csys, rm, rp)*(rm*fl + rp*fr);
+    cons(m,IM2,k,j,i) -= dt*src2;
+  });
+
+  return;
+}
+
+//----------------------------------------------------------------------------------------
+//! \fn Coordinates::CoordSrcTermsMHDCyl()
+//! \brief Cylindrical (curvilinear) geometric source terms for Newtonian MHD (ADR-0004,
+//! issue #16).  Same shape as CoordSrcTermsHydroCyl, but the radial source also carries
+//! the magnetic stress in addition to the centrifugal + gas-pressure terms:
+//!
+//!   radial:    S_1 = <1/r>(rho v_phi^2 + p + 1/2(B_r^2 - B_phi^2 + B_z^2))
+//!   azimuthal: S_2 = -CoordSrc2Coeff*(rm*F_l + rp*F_r)   [F = x1-flux of IM2]
+//!
+//! The magnetic term is the phi-phi component of the Maxwell stress, 1/2 B^2 - B_phi^2 =
+//! 1/2(B_r^2 - B_phi^2 + B_z^2); the -B_phi^2 piece is the pinch hoop stress.  The
+//! azimuthal source reuses the hydro form because in MHD uflx.x1f(IM2) already carries
+//! the -B_r B_phi Maxwell stress, so the re-symmetrized flux conserves the total (kinetic
+//! + magnetic) angular momentum r*(rho v_phi) to round-off (Athena++/Skinner-Ostriker).
+
+void Coordinates::CoordSrcTermsMHDCyl(const DvceArray5D<Real> &w0,
+                                      const DvceArray5D<Real> &bcc,
+                                      const DvceArray5D<Real> &flx1,
+                                      const EOS_Data &eos, const Real dt,
+                                      DvceArray5D<Real> &cons) {
+  auto &indcs = pmy_pack->pmesh->mb_indcs;
+  int is = indcs.is, ie = indcs.ie;
+  int js = indcs.js, je = indcs.je;
+  int ks = indcs.ks, ke = indcs.ke;
+  int nx1 = indcs.nx1;
+  auto &size = pmy_pack->pmb->mb_size;
+  auto csys = coord_system;
+  bool is_ideal = eos.is_ideal;
+  Real gm1 = eos.gamma - 1.0;
+  Real iso_cs = eos.iso_cs;
+  int nmb1 = pmy_pack->nmb_thispack - 1;
+
+  par_for("coord_src_mhd_cyl", DevExeSpace(), 0, nmb1, ks, ke, js, je, is, ie,
+  KOKKOS_LAMBDA(const int m, const int k, const int j, const int i) {
+    Real x1min = size.d_view(m).x1min;
+    Real x1max = size.d_view(m).x1max;
+    Real rm = LeftEdgeX(i-is,   nx1, x1min, x1max);  // r at i-1/2 face
+    Real rp = LeftEdgeX(i+1-is, nx1, x1min, x1max);  // r at i+1/2 face
+
+    Real rho  = w0(m,IDN,k,j,i);
+    Real vphi = w0(m,IVY,k,j,i);
+    Real pgas = (is_ideal) ? gm1*w0(m,IEN,k,j,i) : iso_cs*iso_cs*rho;
+
+    // cell-centered field components (IBX=B_r, IBY=B_phi, IBZ=B_z)
+    Real br = bcc(m,IBX,k,j,i);
+    Real bp = bcc(m,IBY,k,j,i);
+    Real bz = bcc(m,IBZ,k,j,i);
+    // phi-phi Maxwell stress = 1/2 B^2 - B_phi^2 = 1/2(B_r^2 - B_phi^2 + B_z^2)
+    Real pmag = 0.5*(br*br - bp*bp + bz*bz);
+
+    // radial centrifugal + (gas + magnetic) pressure source (incl. -B_phi^2 hoop stress)
+    Real src1 = CoordSrc1Coeff(csys, rm, rp)*(rho*vphi*vphi + pgas + pmag);
+    cons(m,IM1,k,j,i) += dt*src1;
+
+    // azimuthal source (angular-momentum-conserving, re-symmetrized x1-flux of IM2)
     Real fl = flx1(m,IM2,k,j,i);
     Real fr = flx1(m,IM2,k,j,i+1);
     Real src2 = CoordSrc2Coeff(csys, rm, rp)*(rm*fl + rp*fr);

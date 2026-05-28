@@ -15,6 +15,7 @@
 #include "eos/eos.hpp"
 #include "coordinates/coordinates.hpp"
 #include "coordinates/coord_geometry.hpp"
+#include "coordinates/cell_locations.hpp"
 #include "mhd.hpp"
 #include "dyn_grmhd/dyn_grmhd.hpp"
 
@@ -44,6 +45,7 @@ TaskStatus MHD::RKUpdate(Driver *pdriver, int stage) {
   auto flx3 = uflx.x3f;
   auto &mbsize = pmy_pack->pmb->mb_size;
   auto csys = pmy_pack->pcoord->coord_system;
+  int nx1 = indcs.nx1;
 
   // hierarchical parallel loop that updates conserved variables to intermediate step
   // using weights and fractional time step appropriate to stages of time-integrator used
@@ -55,10 +57,18 @@ TaskStatus MHD::RKUpdate(Driver *pdriver, int stage) {
   KOKKOS_LAMBDA(TeamMember_t member, const int m, const int n, const int k, const int j) {
     ScrArray1D<Real> divf(member.team_scratch(scr_level), ncells1);
 
-    // compute dF1/dx1 (geometry-agnostic; Cartesian reduces to (F_{i+1}-F_i)/dx1)
+    // compute dF1/dx1 (geometry-agnostic; Cartesian reduces to (F_{i+1}-F_i)/dx1).  In
+    // cylindrical the radial face radii rm,rp weight the flux divergence; they are only
+    // computed off the Cartesian path so the Cartesian update stays byte-identical.
     par_for_inner(member, is, ie, [&](const int i) {
+      Real rm = 0.0, rp = 0.0;
+      if (csys != CoordSystem::cartesian) {
+        Real x1min = mbsize.d_view(m).x1min, x1max = mbsize.d_view(m).x1max;
+        rm = LeftEdgeX(i-is,   nx1, x1min, x1max);
+        rp = LeftEdgeX(i+1-is, nx1, x1min, x1max);
+      }
       divf(i) = FluxDivX1(csys, flx1(m,n,k,j,i), flx1(m,n,k,j,i+1),
-                          mbsize.d_view(m).dx1);
+                          mbsize.d_view(m).dx1, rm, rp);
     });
     member.team_barrier();
 
@@ -66,8 +76,12 @@ TaskStatus MHD::RKUpdate(Driver *pdriver, int stage) {
     // Fluxes must be summed in pairs to symmetrize round-off error in each dir
     if (multi_d) {
       par_for_inner(member, is, ie, [&](const int i) {
+        Real x1v = 0.0;
+        if (csys != CoordSystem::cartesian) {
+          x1v = CellCenterX(i-is, nx1, mbsize.d_view(m).x1min, mbsize.d_view(m).x1max);
+        }
         divf(i) += FluxDivX2(csys, flx2(m,n,k,j,i), flx2(m,n,k,j+1,i),
-                             mbsize.d_view(m).dx2);
+                             mbsize.d_view(m).dx2, x1v);
       });
       member.team_barrier();
     }

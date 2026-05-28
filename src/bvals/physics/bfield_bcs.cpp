@@ -47,6 +47,20 @@ void MeshBoundaryValues::BFieldBCs(MeshBlockPack *ppack, DualArray2D<Real> b_in,
             if (k == n3-1) {b0.x3f(m,k+1,j,is-i-1) = b0.x3f(m,k+1,j,is+i);}
           }
           break;
+        case BoundaryFlag::axis:
+          // cylindrical r=0 axisymmetric axis (ADR-0004, issue #16): the in-plane field
+          // components B_r and B_phi are antisymmetric across the axis (they reverse with
+          // the radial direction), B_z is symmetric.  B_r reflects like the reflect BC;
+          // the B_phi antisymmetric ghost (B_phi(i-1) = -B_phi(i)) is the cylindrical
+          // difference from reflect (which keeps B_phi even).
+          for (int i=0; i<ng; ++i) {
+            b0.x1f(m,k,j,is-i-1) = -b0.x1f(m,k,j,is+i+1);
+            b0.x2f(m,k,j,is-i-1) = -b0.x2f(m,k,j,is+i);
+            if (j == n2-1) {b0.x2f(m,k,j+1,is-i-1) = -b0.x2f(m,k,j+1,is+i);}
+            b0.x3f(m,k,j,is-i-1) =  b0.x3f(m,k,j,is+i);
+            if (k == n3-1) {b0.x3f(m,k+1,j,is-i-1) = b0.x3f(m,k+1,j,is+i);}
+          }
+          break;
         case BoundaryFlag::outflow:
         case BoundaryFlag::diode:
         case BoundaryFlag::vacuum:
@@ -77,6 +91,7 @@ void MeshBoundaryValues::BFieldBCs(MeshBlockPack *ppack, DualArray2D<Real> b_in,
 
       // apply physical boundaries to outer_x1
       switch (mb_bcs.d_view(m,BoundaryFace::outer_x1)) {
+        case BoundaryFlag::axis:  // axis (inner_x1 only); reflect
         case BoundaryFlag::reflect:
           for (int i=0; i<ng; ++i) {
             b0.x1f(m,k,j,ie+i+2) = -b0.x1f(m,k,j,ie-i);
@@ -125,6 +140,7 @@ void MeshBoundaryValues::BFieldBCs(MeshBlockPack *ppack, DualArray2D<Real> b_in,
     KOKKOS_LAMBDA(int m, int k, int i) {
       // apply physical boundaries to inner_x2
       switch (mb_bcs.d_view(m,BoundaryFace::inner_x2)) {
+        case BoundaryFlag::axis:  // axis (inner_x1 only); reflect
         case BoundaryFlag::reflect:
           for (int j=0; j<ng; ++j) {
             b0.x1f(m,k,js-j-1,i) =  b0.x1f(m,k,js+j,i);
@@ -164,6 +180,7 @@ void MeshBoundaryValues::BFieldBCs(MeshBlockPack *ppack, DualArray2D<Real> b_in,
 
       // apply physical boundaries to outer_x2
       switch (mb_bcs.d_view(m,BoundaryFace::outer_x2)) {
+        case BoundaryFlag::axis:  // axis (inner_x1 only); reflect
         case BoundaryFlag::reflect:
           for (int j=0; j<ng; ++j) {
             b0.x1f(m,k,je+j+1,i) =  b0.x1f(m,k,je-j,i);
@@ -212,6 +229,7 @@ void MeshBoundaryValues::BFieldBCs(MeshBlockPack *ppack, DualArray2D<Real> b_in,
   KOKKOS_LAMBDA(int m, int j, int i) {
     // apply physical boundaries to inner_x3
     switch (mb_bcs.d_view(m,BoundaryFace::inner_x3)) {
+      case BoundaryFlag::axis:  // axis (inner_x1 only); reflect
       case BoundaryFlag::reflect:
         for (int k=0; k<ng; ++k) {
           b0.x1f(m,ks-k-1,j,i) =  b0.x1f(m,ks+k,j,i);
@@ -251,6 +269,7 @@ void MeshBoundaryValues::BFieldBCs(MeshBlockPack *ppack, DualArray2D<Real> b_in,
 
     // apply physical boundaries to outer_x3
     switch (mb_bcs.d_view(m,BoundaryFace::outer_x3)) {
+      case BoundaryFlag::axis:  // axis (inner_x1 only); reflect
       case BoundaryFlag::reflect:
         for (int k=0; k<ng; ++k) {
           b0.x1f(m,ke+k+1,j,i) =  b0.x1f(m,ke-k,j,i);
