@@ -1,0 +1,77 @@
+# AthenaK input file: cylindrical blast-wave sphericity (ADR-0004 verification, #15).
+#
+# A blast wave is initialized as a circular over-pressured region in PHYSICAL space,
+# centered OFF the axis at (r,phi) = (1.5, 0), and evolved on a 2D (r,phi) polar grid.
+# Although the grid is curvilinear, the shock must remain CIRCULAR in physical space:
+# its front radius (measured from the blast center) should be the same in all
+# directions.  Any azimuthal distortion of the shock front is a direct measure of an
+# error in the geometric (curvilinear) hydro update.  The verification test
+# (test_verify_cyl_blast_cpu.py) measures the shock-front radius vs angle, asserts the
+# distortion is within tolerance, and saves a regression baseline.
+
+<comment>
+problem   = cylindrical blast-wave sphericity
+reference = Londrillo & Del Zanna, ApJ 530, 508 (2000); Athena++ blast regression
+
+<job>
+basename  = cyl_blast  # problem ID: basename of output filenames
+
+<mesh>
+nghost    = 2          # Number of ghost cells
+nx1       = 128        # radial zones
+x1min     = 1.0        # r_min (off-axis; no axis BC needed)
+x1max     = 2.0        # r_max
+ix1_bc    = outflow    # inner radial boundary
+ox1_bc    = outflow    # outer radial boundary
+
+nx2       = 128        # azimuthal (phi) zones
+x2min     = -0.5       # phi_min (radians)
+x2max     = 0.5        # phi_max (radians)
+ix2_bc    = outflow    # phi boundary (wedge, not full circle)
+ox2_bc    = outflow    # phi boundary
+
+nx3       = 1          # axial (z) zones (2D r-phi run)
+x3min     = -0.5       # z_min
+x3max     = 0.5        # z_max
+ix3_bc    = periodic   # z boundary
+ox3_bc    = periodic   # z boundary
+
+<coord>
+system    = cylindrical  # (x1,x2,x3) = (r,phi,z)
+
+<meshblock>
+nx1       = 128        # cells per MeshBlock, X1-dir
+nx2       = 128        # cells per MeshBlock, X2-dir
+nx3       = 1          # cells per MeshBlock, X3-dir
+
+<time>
+evolution  = dynamic   # dynamic/kinematic/static
+integrator = rk2       # time integration algorithm
+cfl_number = 0.3       # CFL number
+nlim       = -1        # cycle limit
+tlim       = 0.15      # time limit (shock stays interior)
+ndiag      = 200       # cycles between diagnostic output
+
+<hydro>
+eos         = ideal    # EOS type
+reconstruct = plm      # spatial reconstruction method
+rsolver     = hllc     # Riemann solver
+gamma       = 1.4      # gamma = C_p/C_v
+
+<problem>
+pgen_name    = blast   # problem generator name
+x1_0         = 1.5     # blast center r  (off-axis)
+x2_0         = 0.0     # blast center phi
+x3_0         = 0.0     # blast center z
+outer_radius = 0.1     # outer edge of initial over-pressured region
+inner_radius = 0.1     # inner_radius arg: rin = outer_radius - inner_radius = 0
+prat         = 100.0   # initial pressure ratio (blast / ambient)
+drat         = 1.0     # initial density ratio
+pn_amb       = 0.1     # ambient pressure
+dn_amb       = 1.0     # ambient density
+
+<output1>
+file_type = bin        # binary dump (full 2D field; tab is 1D-slice only)
+variable  = hydro_w    # primitive variables
+id        = blast      # file id -> bin/cyl_blast.blast.XXXXX.bin
+dt        = 0.15       # output at t=0 (00000) and t=tlim (00001)

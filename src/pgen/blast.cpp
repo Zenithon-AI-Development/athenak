@@ -25,6 +25,7 @@
 #include "dyn_grmhd/dyn_grmhd.hpp"
 #include "coordinates/adm.hpp"
 #include "coordinates/cell_locations.hpp"
+#include "coordinates/coordinates.hpp"
 
 namespace {
   Real R_max0;     // Maximum radius at t=t0.
@@ -156,6 +157,13 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   Real prat = pin->GetReal("problem", "prat");
   Real drat = pin->GetOrAddReal("problem", "drat", 1.0);
   Real b_amb = pin->GetOrAddReal("problem", "b_amb", 0.1);
+  // Blast center, in code coordinates (default origin).  In cylindrical coordinates
+  // (x1,x2,x3)=(r,phi,z) the center is given as (r,phi,z) and the over-pressured region
+  // is a circle in PHYSICAL space, so an off-axis blast genuinely exercises the
+  // curvilinear geometry (the shock must stay circular despite the polar grid).
+  Real x1_0 = pin->GetOrAddReal("problem", "x1_0", 0.0);
+  Real x2_0 = pin->GetOrAddReal("problem", "x2_0", 0.0);
+  Real x3_0 = pin->GetOrAddReal("problem", "x3_0", 0.0);
   std::string coords = pin->GetOrAddString("problem", "coordinates", "cartesian");
   bool warp = false;
   bool snake = false;
@@ -186,6 +194,16 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   int &ks = indcs.ks; int &ke = indcs.ke;
   auto &size = pmbp->pmb->mb_size;
 
+  // Coordinate system + physical-space blast center.  For Cartesian with a default
+  // (0,0,0) center this reduces to the original sqrt(x1^2+x2^2+x3^2) radius exactly.
+  CoordSystem csys = pmbp->pcoord->coord_system;
+  Real cx0 = x1_0, cy0 = x2_0, cz0 = x3_0;
+  if (csys == CoordSystem::cylindrical) {
+    cx0 = x1_0*cos(x2_0);
+    cy0 = x1_0*sin(x2_0);
+    cz0 = x3_0;
+  }
+
   // initialize Hydro variables ----------------------------------------------------------
   if (pmbp->phydro != nullptr) {
     auto &w0_ = pmbp->phydro->w0;
@@ -210,7 +228,14 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
       int nx3 = indcs.nx3;
       Real x3v = CellCenterX(k-ks, nx3, x3min, x3max);
 
-      Real rad = sqrt(SQR(x1v) + SQR(x2v) + SQR(x3v));
+      // Distance from the blast center in PHYSICAL space (geometry-aware).
+      Real px = x1v, py = x2v, pz = x3v;
+      if (csys == CoordSystem::cylindrical) {
+        px = x1v*cos(x2v);
+        py = x1v*sin(x2v);
+        pz = x3v;
+      }
+      Real rad = sqrt(SQR(px-cx0) + SQR(py-cy0) + SQR(pz-cz0));
 
       Real den = dn_amb;
       Real pres = pn_amb;
