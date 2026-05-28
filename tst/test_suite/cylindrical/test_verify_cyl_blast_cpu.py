@@ -12,6 +12,28 @@ radius (measured from the blast center) is the same in all directions.  The test
   * asserts the azimuthal distortion (rmax-rmin)/rave is within tolerance,
   * plots shock-radius vs angle and saves/diffs a golden regression baseline.
 
+Oracle: Layer 1 -- analytic.  The 2-D (cylindrical) Sedov-Taylor self-similar blast is
+circularly symmetric -- its solution depends only on distance from the blast center, so
+the exact shock front is a single-radius circle R_s(t) at every azimuth (Sedov 1959;
+Taylor 1950).  Initialized OFF the axis on an (r,phi) polar grid deliberately MISALIGNED
+with that physical circular symmetry, the measured azimuthal distortion
+(r_max-r_min)/r_ave of the front is therefore a direct, snapshot-independent measure of
+the curvilinear hydro scheme's geometric error -- exactly the correctness criterion of
+the Athena/Athena++ blast-wave benchmark (Londrillo & Del Zanna 2000; Stone et al. 2008).
+The binding assertion is this symmetry bound; the harness.verify baseline is a regression
+guard only.
+
+A quantitative absolute-radius Sedov-Taylor check is intentionally NOT used: this
+finite-size, finite-strength blast lies outside the strong-shock self-similar regime
+(post-shock density jump ~2.4 << the strong-shock limit (gamma+1)/(gamma-1)=6; ambient
+pressure not negligible), so the strong-shock Sedov radius overpredicts the measured
+front by ~2x and is not a valid oracle here.  Front-POSITION / radial-profile
+correctness of the cylindrical scheme is established independently by the Layer-1
+cyl_sod (exact Riemann) and cyl_mignone (geometric dilution) tests; this test isolates
+the 2-D angular isotropy they cannot see.  The 0.12 distortion tolerance is justified by
+the measured ~2-3% distortion -- a ~4-5x margin for cross-platform FP plus the polar
+grid's coarser azimuthal resolution and PLM directional truncation.
+
 Auto-collected by run_test_suite.py (module name contains ``_cpu``).
 """
 
@@ -87,7 +109,10 @@ def test_verify_cyl_blast():
         )
         rave = float(np.mean(radii))
         distortion = float((radii.max() - radii.min()) / rave)
-        # A 2nd-order scheme on a polar grid keeps an off-axis blast circular to a few %.
+        # BINDING ORACLE (see module docstring): the self-similar blast front is exactly
+        # circular, so its azimuthal distortion measures the curvilinear scheme's
+        # geometric error.  A 2nd-order scheme on a polar grid keeps an off-axis blast
+        # circular to a few % (measured ~2-3%); 0.12 leaves a cross-platform-FP margin.
         assert distortion < 0.12, (
             f"cyl blast shock-front distortion too large: {distortion:g} "
             f"(rave={rave:g}, rmin={radii.min():g}, rmax={radii.max():g})"

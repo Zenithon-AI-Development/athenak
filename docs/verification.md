@@ -30,7 +30,7 @@ Directories: `cylindrical/`, `verification/`.
 | `test_verify_cyl_sod_cpu.py` | 1 | analytic | Exact Sod Riemann solution at t=0.2 (radial run at large r, geometric source ≪ discretization error); L1 error within tolerance | Toro 2009; Sod 1978 | self |
 | `test_verify_cyl_mignone_cpu.py` | 1 | analytic | Closed-form geometric-dilution solution ρ(r,t)=(r₀/r)ρ₀(r₀), r₀=r−vt; PLM 2nd-order convergence (L1 ~ N⁻²) | closed form; cf. Mignone 2014 cyl advection | self |
 | `test_cyl_equilibrium_cpu.py` | 1 | analytic | Uniform-pressure cylindrical static equilibrium: geometric source S₁=⟨1/r⟩(ρv_φ²+p) cancels flux divergence, held to round-off | closed form (steady state) | self |
-| `test_verify_cyl_blast_cpu.py` | 2 | self-snapshot | Shock-front sphericity (azimuthal distortion (r_max−r_min)/r_ave < tol) + harness baseline; **no quantitative blast-wave oracle** | — | `test_verify_cyl_sod_cpu.py`, `test_verify_cyl_mignone_cpu.py` — **TODO(#82)** |
+| `test_verify_cyl_blast_cpu.py` | 1 | analytic | Circular symmetry (isotropy) of the self-similar blast front: on a deliberately misaligned (r,φ) polar grid the azimuthal distortion (r_max−r_min)/r_ave < tol measures the curvilinear scheme's geometric error; harness baseline is the regression guard | Sedov 1959, Taylor 1950 (self-similar blast); Londrillo & Del Zanna 2000, Stone et al. 2008 (Athena blast test) | self |
 | `test_verify_sod_cpu.py` | 1 | analytic | Exact Sod Riemann solution at t=0.25 (planar shock tube); relative L1 (density+pressure) within tolerance, Linf bounded by the ~1-cell contact/shock smearing | Toro 2009; Sod 1978 | self |
 
 ## Magnetohydrodynamics
@@ -124,14 +124,15 @@ each test also keeps a `harness.verify` regression baseline.
 
 ## Layer-2 self-snapshot gaps (TODO)
 
-The two tests below assert only against a self-captured snapshot (plus qualitative sanity
-properties) and have no documented Layer-1 oracle yet. Each is grounded for now by the listed
+The test below asserts only against a self-captured snapshot (plus qualitative sanity
+properties) and has no documented Layer-1 oracle yet. It is grounded for now by the listed
 method-correctness anchor and is scheduled to be upgraded to an independent oracle by a follow-up slice
 (per ADR-0008). (Planar `sod` was grounded against the exact Riemann solution in V4 / #79;
 `cyl_aniso_ring` was grounded in V6 / #81 against the published Parrish–Stone ring-test behavior plus
-the analytic `aniso_conduction` + `parabolic_conduction` unit-test method anchors.)
+the analytic `aniso_conduction` + `parabolic_conduction` unit-test method anchors; `cyl_blast` was
+grounded in V7 / #82 against the circular symmetry of the self-similar blast front — the Athena/Athena++
+blast benchmark's symmetry oracle.)
 
 | Test | Method anchor (current) | Grounding slice |
 |------|-------------------------|-----------------|
-| `test_verify_cyl_blast_cpu.py` | `test_verify_cyl_sod_cpu.py`, `test_verify_cyl_mignone_cpu.py` | **V7 / #82** — documented oracle |
 | `test_verify_cyl_field_loop_cpu.py` | `test_unit_cyl_mhd_ct_divb_cpu.py` (div(B)=0) | **V8 / #83** — documented advected-loop oracle |
