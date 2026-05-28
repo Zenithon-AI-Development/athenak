@@ -25,6 +25,9 @@
 #include "hydro/hydro.hpp"
 #include "mhd/mhd.hpp"
 #include "radiation/radiation.hpp"
+#include "coordinates/coordinates.hpp"
+#include "coordinates/cell_locations.hpp"
+#include "coordinates/coord_geometry.hpp"
 #include "coordinates/adm.hpp"
 #include "z4c/z4c.hpp"
 #include "z4c/z4c_amr.hpp"
@@ -1104,7 +1107,35 @@ void MeshRefinement::RefineFC(DualArray1D<int> &n2o, DvceFaceFld4D<Real> &b,
   });
 
   // Second prolongate face-centered fields at internal faces of fine cells using
-  // divergence-preserving operator of Toth & Roe (2002)
+  // divergence-preserving operator of Toth & Roe (2002).  In cylindrical geometry the
+  // construction is carried out on the magnetic fluxes (Balsara JCP 174, 614 (2001); see
+  // ProlongFCInternal): this needs the inner/mid/outer fine radial face radii, which are
+  // derived here from the *new* MeshBlock LogicalLocations (the new mb_size is not yet
+  // installed -- it is set only after all RefineCC/RefineFC calls complete).
+  auto csys = pmy_mesh->pmb_pack->pcoord->coord_system;
+  auto &nx1 = indcs.nx1;
+  DualArray1D<RegionSize> new_size("ref_newsize", new_nmb);
+  if (csys != CoordSystem::cartesian) {
+    auto &ms = pmy_mesh->mesh_size;
+    for (int m=0; m<new_nmb; ++m) {
+      LogicalLocation &ll = new_lloc_eachmb[m+ngids_];
+      std::int32_t nmbx1 = pmy_mesh->nmb_rootx1 << (ll.level - pmy_mesh->root_level);
+      Real x1mn = (ll.lx1==0) ? ms.x1min : LeftEdgeX(ll.lx1, nmbx1, ms.x1min, ms.x1max);
+      Real x1mx = (ll.lx1==(nmbx1-1)) ? ms.x1max
+                                      : LeftEdgeX(ll.lx1+1, nmbx1, ms.x1min, ms.x1max);
+      std::int32_t nmbx2 = pmy_mesh->nmb_rootx2 << (ll.level - pmy_mesh->root_level);
+      Real x2mn = (ll.lx2==0) ? ms.x2min : LeftEdgeX(ll.lx2, nmbx2, ms.x2min, ms.x2max);
+      Real x2mx = (ll.lx2==(nmbx2-1)) ? ms.x2max
+                                      : LeftEdgeX(ll.lx2+1, nmbx2, ms.x2min, ms.x2max);
+      new_size.h_view(m).x1min = x1mn;
+      new_size.h_view(m).x1max = x1mx;
+      new_size.h_view(m).dx1 = (x1mx - x1mn)/static_cast<Real>(nx1);
+      new_size.h_view(m).dx2 = (x2mx - x2mn)/static_cast<Real>(indcs.nx2);
+    }
+    new_size.template modify<HostMemSpace>();
+    new_size.template sync<DevExeSpace>();
+  }
+
   bool &one_d = pmy_mesh->one_d;
   par_for("RefineFC-int",DevExeSpace(), 0,(new_nmb-1), cks,cke, cjs,cje, cis,cie,
   KOKKOS_LAMBDA(const int m, const int k, const int j, const int i) {
@@ -1115,11 +1146,34 @@ void MeshRefinement::RefineFC(DualArray1D<int> &n2o, DvceFaceFld4D<Real> &b,
       int fk = (k - cks)*2 + ks;   // fine k
 
       if (one_d) {
-        // In 1D, interior face field is trivial
-        b.x1f(m,fk,fj,fi+1) = 0.5*(b.x1f(m,fk,fj,fi) + b.x1f(m,fk,fj,fi+2));
-      } else {
+        if (csys == CoordSystem::cartesian) {
+          // In 1D, interior face field is trivial
+          b.x1f(m,fk,fj,fi+1) = 0.5*(b.x1f(m,fk,fj,fi) + b.x1f(m,fk,fj,fi+2));
+        } else {
+          // 1D cylindrical: divide the radial-flux (r*B_r) average by the mid radius so
+          // r*B_r stays constant (div-free) across the refinement.
+          Real x1mn = new_size.d_view(m).x1min;
+          Real x1mx = new_size.d_view(m).x1max;
+          Real rm   = LeftEdgeX(fi  -is, nx1, x1mn, x1mx);
+          Real rmid = LeftEdgeX(fi+1-is, nx1, x1mn, x1mx);
+          Real rp   = LeftEdgeX(fi+2-is, nx1, x1mn, x1mx);
+          b.x1f(m,fk,fj,fi+1) =
+              0.5*(rm*b.x1f(m,fk,fj,fi) + rp*b.x1f(m,fk,fj,fi+2))/rmid;
+        }
+      } else if (csys == CoordSystem::cartesian) {
         // in multi-D call inlined prolongation operator for FC fields at internal faces
         ProlongFCInternal(m,fk,fj,fi,three_d,b);
+      } else {
+        // 2D cylindrical (r,phi): pass fine-block radial geometry to the flux-form
+        // Balsara prolongation (3D cylindrical SMR/AMR is gated off in Coordinates ctor).
+        Real x1mn = new_size.d_view(m).x1min;
+        Real x1mx = new_size.d_view(m).x1max;
+        Real dx1f = new_size.d_view(m).dx1;
+        Real dx2f = new_size.d_view(m).dx2;
+        Real rm   = LeftEdgeX(fi  -is, nx1, x1mn, x1mx);
+        Real rmid = LeftEdgeX(fi+1-is, nx1, x1mn, x1mx);
+        Real rp   = LeftEdgeX(fi+2-is, nx1, x1mn, x1mx);
+        ProlongFCInternal(m,fk,fj,fi,three_d,b, csys, rm, rmid, rp, dx1f, dx2f);
       }
     }
   });

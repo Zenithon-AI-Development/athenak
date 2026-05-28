@@ -50,6 +50,21 @@ Coordinates::Coordinates(ParameterInput *pin, MeshBlockPack *ppack) :
                 << std::endl;
       std::exit(EXIT_FAILURE);
     }
+    // SMR/AMR in cylindrical is divergence-preserving only for 2D (r,phi): the flux-form
+    // Balsara prolongation of the face B-field (issue #38, ADR-0004) is implemented for
+    // the 2D internal face and the 1D radial face, but not the full 3D (r,phi,z) Toth &
+    // Roe flux-form.  Refuse 3D cylindrical SMR/AMR rather than silently break div(B) at
+    // fine/coarse boundaries.
+    std::string refine = pin->GetOrAddString("mesh_refinement", "refinement", "none");
+    bool multilevel = (refine.compare("adaptive")==0) || (refine.compare("static")==0);
+    bool three_d = (pin->GetOrAddInteger("mesh", "nx3", 1) > 1);
+    if (multilevel && three_d) {
+      std::cout << "### FATAL ERROR in "<< __FILE__ <<" at line " << __LINE__ << std::endl
+                << "3D cylindrical SMR/AMR is not yet supported: issue #38 implements "
+                << "the 2D (r,phi) divergence-preserving Balsara prolongation of B. Use "
+                << "a 2D (r,phi) mesh or a uniform (non-refined) grid." << std::endl;
+      std::exit(EXIT_FAILURE);
+    }
   } else {
     std::cout << "### FATAL ERROR in "<< __FILE__ <<" at line " << __LINE__ << std::endl
               << "Unsupported <coord> system = '" << csys << "'. Only 'cartesian' and "
