@@ -1,0 +1,98 @@
+# AthenaK input: single-mode magneto-Rayleigh-Taylor (MRT) on a driven liner (benchmark 1, #39).
+#
+# Reuses the integrated MagLIF/Z-pinch problem generator (-D PROBLEM=maglif, issue [10a]/#32).
+# A dense cylindrical liner is SUSTAINEDLY accelerated radially inward by a prescribed constant
+# load current: the magnetic pressure of the enclosed B_phi field (the light fluid) pushes on the
+# dense liner (the heavy fluid), which is the classic magneto-Rayleigh-Taylor (MRT) unstable
+# configuration on the outer (liner/vacuum) interface.  A single axial (z) mode is seeded on the
+# liner; under the continuous inward acceleration it grows (the MRT feed), and the radiographic
+# observable is the growth of that single-mode amplitude / the modulation of a synthetic
+# side-on radiograph.  This is FLASH MagLIF validation benchmark 1 (single-mode MRT, the
+# Phase-1 convergence point) from Ellison et al. 2025 (arXiv:2504.10760).
+#
+# PHYSICS SCOPE (honest, per the #32 MagLIF-pgen scope note + the PRD Phase-1 sequencing):
+# the grey-FLD radiation, anisotropic conduction and variable resistivity operators are
+# operator-split modules that are NOT yet wired into the production MHD driver, so this
+# benchmark exercises the WIRED stack -- cylindrical ideal-MHD (ADR-0004) + the prescribed-
+# I(t) circuit drive (ADR-0005 mode A).  Each operator-split closure is verified independently
+# (#25 anisotropic conduction in cylindrical, #27 cylindrical B_phi resistive operator, #28
+# coupled grey rad-hydro, #41 multigroup); the adiabatic-MHD MRT growth measured here is the
+# Phase-1 backbone benchmark, with the closures layered in once the driver wiring lands.
+#
+# ADR-0004 fixes the axial direction to x3 and AthenaK forbids the (nx2=1, nx3>1) topology, so
+# the axially-resolved run uses a thin azimuthal (phi) wedge -- the axisymmetric IC replicates
+# the r-z state across phi.  Built with -D PROBLEM=maglif (a USER pgen, not in the suite binary).
+
+<comment>
+problem   = MagLIF single-mode magneto-Rayleigh-Taylor (benchmark 1)
+
+<job>
+basename  = maglif_mrt
+
+<mesh>
+nghost    = 2
+nx1       = 64         # radial zones
+x1min     = 0.0        # r = 0 axis
+x1max     = 1.0        # outer radius R_out (driven boundary)
+ix1_bc    = axis       # cylindrical r=0 axisymmetric boundary (issue #16)
+ox1_bc    = user       # circuit-driven B_phi boundary (issue #21)
+
+nx2       = 4          # thin azimuthal (phi) wedge (axisymmetric IC)
+x2min     = 0.0
+x2max     = 1.0
+ix2_bc    = periodic
+ox2_bc    = periodic
+
+nx3       = 48         # axial (z) zones -- resolves the single-mode perturbation (~16/wavelength)
+x3min     = 0.0
+x3max     = 1.0
+ix3_bc    = periodic
+ox3_bc    = periodic
+
+<meshblock>
+nx1       = 64
+nx2       = 4
+nx3       = 48
+
+<coord>
+system    = cylindrical  # (x1,x2,x3) = (r,phi,z)
+
+<time>
+evolution  = dynamic
+integrator = rk2
+cfl_number = 0.3
+nlim       = 100000
+tlim       = 0.4
+ndiag      = 200
+
+<mhd>
+eos         = ideal
+reconstruct = plm
+rsolver     = hlld
+gamma       = 1.6666666666666667
+dfloor      = 1.0e-5
+pfloor      = 1.0e-7
+
+<problem>
+current_mode     = driven       # driven (mu0*I/2*pi*r) B_phi outer boundary
+current_waveform = constant     # prescribed I(t): constant load current -> SUSTAINED acceleration
+i0               = 3.0          # load current (code units) -- strong enough for a clean implosion
+t_rise           = 1.0          # ramp time (unused for the constant waveform)
+mu0              = 1.0          # code-unit permeability (Heaviside-Lorentz: 1)
+r_fuel           = 0.4          # fuel/liner interface radius
+r_liner          = 0.6          # liner/vacuum interface (current sheet)
+d_fuel           = 0.05         # fuel (inner gas) density
+d_liner          = 1.0          # liner (dense shell) density
+d_vac            = 0.01         # vacuum (outer gap) density
+p0               = 1.0e-3       # uniform (low) thermal pressure
+bz0              = 0.1          # axial premagnetization field B_z
+perturbation     = single_mode  # single axial mode on the liner interface
+pert_amp         = 0.05         # radial interface perturbation amplitude
+pert_mode        = 3            # axial mode number (wavelength = Lz/pert_mode); distinct from RM (#36)
+pert_phase       = 0.0          # axial phase offset
+
+<output1>
+file_type   = bin
+variable    = mhd_w_bcc
+id          = prim
+dt          = 0.02
