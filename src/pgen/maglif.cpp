@@ -50,9 +50,11 @@
 #include "mesh/mesh.hpp"
 #include "coordinates/coordinates.hpp"
 #include "coordinates/cell_locations.hpp"
+#include "coordinates/coord_geometry.hpp"
 #include "bvals/bvals.hpp"
 #include "eos/eos.hpp"
 #include "mhd/mhd.hpp"
+#include "outputs/outputs.hpp"
 #include "circuit/drive_source.hpp"
 #include "circuit/drive_bphi_bc.hpp"
 #include "pgen.hpp"
@@ -100,6 +102,130 @@ void MagLIFBCs(Mesh *pm) {
 }  // namespace
 
 //----------------------------------------------------------------------------------------
+//! \fn void MagLIFConsHistory()
+//! \brief User history output: AMR-safe global diagnostics of the MagLIF implosion over
+//! all ACTIVE cells of all local MeshBlocks.  Enrolled only when <problem> user_hist=true
+//! (the AMR-vs-uniform verification inputs maglif_amr / maglif_uniform.athinput); the
+//! plain integrated-target run (#32) leaves it off, so that setup is unchanged.
+//!
+//! All quantities are CYLINDRICAL finite-volume integrals/reductions (cell volume
+//! 1/2(rp^2-rm^2)*dphi*dz, NOT the Cartesian dx1*dx2*dx3 the built-in mhd history uses),
+//! so they are the genuinely-conserved integrals AthenaK's conservative AMR
+//! restriction/prolongation preserves -- hence directly comparable between an AMR run and
+//! a uniform run, and continuous across a refinement event (issue #43).  Columns:
+//!   mass   = sum rho dV               (total mass; extensive -> rank SUM is correct)
+//!   etot   = sum E_mhd dV             (total MHD energy)
+//!   massr  = sum rho*r dV             (mass-weighted-radius numerator; <r>=massr/mass)
+//!   maxdivb= max |div(B)| (cyl FV)    (the #38 div-free-prolongation invariant)
+//!   maxdens= max rho                  (peak compression)
+//!   nmb    = local MeshBlock count    (rises when AMR refines)
+//!   ncells = active cell count        (AMR work proxy for the speedup vs uniform)
+//! History reduces by SUM across ranks (history.cpp); in a serial (_cpu) run that is the
+//! identity, so the two MAX columns report true global maxima -- this probe is _cpu-only
+//! by construction, exactly like cyl_field_loop's div(B) history (issue #38).
+
+void MagLIFConsHistory(HistoryData *pdata, Mesh *pm) {
+  pdata->nhist = 7;
+  pdata->label[0] = "mass";
+  pdata->label[1] = "etot";
+  pdata->label[2] = "massr";
+  pdata->label[3] = "maxdivb";
+  pdata->label[4] = "maxdens";
+  pdata->label[5] = "nmb";
+  pdata->label[6] = "ncells";
+
+  MeshBlockPack *pmbp = pm->pmb_pack;
+  auto &indcs = pm->mb_indcs;
+  int is = indcs.is, ie = indcs.ie;
+  int js = indcs.js, je = indcs.je;
+  int ks = indcs.ks, ke = indcs.ke;
+  int nx1 = indcs.nx1;
+  bool multi_d = pm->multi_d;
+  bool three_d = pm->three_d;
+  int nmb = pmbp->nmb_thispack;
+  auto &size = pmbp->pmb->mb_size;
+  auto u0 = pmbp->pmhd->u0;
+  auto b0 = pmbp->pmhd->b0;
+  auto csys = pmbp->pcoord->coord_system;
+
+  const int ni   = (ie - is + 1);
+  const int nji  = (je - js + 1)*ni;
+  const int nkji = (ke - ks + 1)*nji;
+
+  // (1) extensive cylindrical-volume integrals: mass, total energy, mass*radius.
+  Real mass = 0.0, etot = 0.0, massr = 0.0;
+  Kokkos::parallel_reduce("maglif_hist_sum",
+  Kokkos::RangePolicy<>(DevExeSpace(), 0, nmb*nkji),
+  KOKKOS_LAMBDA(const int idx, Real &lmass, Real &letot, Real &lmassr) {
+    int m = idx/nkji;
+    int kji = idx - m*nkji;
+    int k = kji/nji;
+    int ji = kji - k*nji;
+    int j = ji/ni;
+    int i = (ji - j*ni) + is;
+    j += js;
+    k += ks;
+    Real dx1 = size.d_view(m).dx1;
+    Real dx2 = size.d_view(m).dx2;
+    Real dx3 = size.d_view(m).dx3;
+    Real x1min = size.d_view(m).x1min;
+    Real x1max = size.d_view(m).x1max;
+    Real rm = LeftEdgeX(i  -is, nx1, x1min, x1max);
+    Real rp = LeftEdgeX(i+1-is, nx1, x1min, x1max);
+    Real x1v = CellCenterX(i-is, nx1, x1min, x1max);
+    Real vol = CellVolume(csys, dx1, dx2, dx3, rm, rp);
+    Real dn = u0(m,IDN,k,j,i);
+    lmass  += vol*dn;
+    letot  += vol*u0(m,IEN,k,j,i);
+    lmassr += vol*dn*x1v;
+  }, Kokkos::Sum<Real>(mass), Kokkos::Sum<Real>(etot), Kokkos::Sum<Real>(massr));
+
+  // (2) intensive maxima: peak density and the cyl finite-volume max|div(B)|.  The div(B)
+  // formula mirrors cyl_field_loop's history probe / the mhd_divb derived variable.
+  Real maxdens = 0.0, maxdivb = 0.0;
+  Kokkos::parallel_reduce("maglif_hist_max",
+  Kokkos::RangePolicy<>(DevExeSpace(), 0, nmb*nkji),
+  KOKKOS_LAMBDA(const int idx, Real &ldmax, Real &lbmax) {
+    int m = idx/nkji;
+    int kji = idx - m*nkji;
+    int k = kji/nji;
+    int ji = kji - k*nji;
+    int j = ji/ni;
+    int i = (ji - j*ni) + is;
+    j += js;
+    k += ks;
+    Real dx1 = size.d_view(m).dx1;
+    Real dx2 = size.d_view(m).dx2;
+    Real dx3 = size.d_view(m).dx3;
+    Real x1min = size.d_view(m).x1min;
+    Real x1max = size.d_view(m).x1max;
+    Real rm = LeftEdgeX(i  -is, nx1, x1min, x1max);
+    Real rp = LeftEdgeX(i+1-is, nx1, x1min, x1max);
+    Real vol = CellVolume(csys, dx1, dx2, dx3, rm, rp);
+    Real divb = (Face1Area(csys, dx2, dx3, rp)*b0.x1f(m,k,j,i+1)
+               - Face1Area(csys, dx2, dx3, rm)*b0.x1f(m,k,j,i))/vol;
+    if (multi_d) {
+      divb += Face2Area(csys, dx1, dx3)*(b0.x2f(m,k,j+1,i) - b0.x2f(m,k,j,i))/vol;
+    }
+    if (three_d) {
+      divb += Face3Area(csys, dx1, dx2, rm, rp)
+              *(b0.x3f(m,k+1,j,i) - b0.x3f(m,k,j,i))/vol;
+    }
+    ldmax = fmax(ldmax, u0(m,IDN,k,j,i));
+    lbmax = fmax(lbmax, fabs(divb));
+  }, Kokkos::Max<Real>(maxdens), Kokkos::Max<Real>(maxdivb));
+
+  pdata->hdata[0] = mass;
+  pdata->hdata[1] = etot;
+  pdata->hdata[2] = massr;
+  pdata->hdata[3] = maxdivb;
+  pdata->hdata[4] = maxdens;
+  pdata->hdata[5] = static_cast<Real>(nmb);
+  pdata->hdata[6] = static_cast<Real>(nmb*nkji);
+  for (int n=pdata->nhist; n<NHISTORY_VARIABLES; ++n) { pdata->hdata[n] = 0.0; }
+}
+
+//----------------------------------------------------------------------------------------
 //! \fn void ProblemGenerator::UserProblem()
 //! \brief Initialize the MagLIF liner/fuel/vacuum target (+ B_z premag + perturbation
 //!  seeding) and enroll the circuit-driven B_phi outer boundary.
@@ -131,6 +257,14 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   if (drive_source_.waveform == circuit::CurrentWaveform::tabulated) {
     std::string cfile = pin->GetOrAddString("problem", "current_file", "unset");
     circuit::ReadCurrentWaveform(cfile, drive_source_);
+  }
+
+  // Optional: enroll the conservation/div(B) history output (AMR-vs-uniform check, #43).
+  // Default off, so the plain integrated-target run (#32) is unchanged.  Set on restart
+  // too (before the restart return) so a resumed run keeps writing the history columns.
+  if (pin->GetOrAddBoolean("problem", "user_hist", false)) {
+    user_hist = true;
+    user_hist_func = MagLIFConsHistory;
   }
 
   if (restart) return;
