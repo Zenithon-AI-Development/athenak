@@ -143,6 +143,26 @@ bool PointImplicitGreyCoupling(Real e_rad_old, Real e_mat_old, Real cv,
   return true;
 }
 
+//----------------------------------------------------------------------------------------
+//! \fn bool PointImplicitElectronRadiationCoupling
+//! \brief 2T re-targeting of the point-implicit matter-radiation coupling to the ELECTRON
+//! temperature T_e (issue [14c]/#30, ADR-0002).  In the 2T stage radiation exchanges
+//! energy with the electrons -- absorption/emission heat the electrons, not a single
+//! matter fluid -- so the "matter" reservoir is the electron internal energy density
+//! `e_ele` with the electron volumetric heat capacity `cv_ele` (T_e = e_ele/cv_ele).  The
+//! backward-Euler quartic is identical to the grey 1T form; only the energy slot and heat
+//! capacity change, so this forwards to PointImplicitGreyCoupling with the electron
+//! quantities.  The ions are untouched by this exchange (they couple to the electrons
+//! separately, e.g. via collisional equilibration -- out of scope here).  Conserves
+//! `E_r + e_ele` to machine precision and relaxes to `a T_e^4 = E_r`.
+KOKKOS_INLINE_FUNCTION
+bool PointImplicitElectronRadiationCoupling(Real e_rad_old, Real e_ele_old, Real cv_ele,
+    Real chi_a, Real c_light, Real a_rad, Real dt,
+    Real &e_rad_new, Real &e_ele_new) {
+  return PointImplicitGreyCoupling(e_rad_old, e_ele_old, cv_ele, chi_a, c_light, a_rad,
+                                   dt, e_rad_new, e_ele_new);
+}
+
 }  // namespace radiationfld
 
 #endif  // RADIATION_FLD_MATTER_RADIATION_COUPLING_HPP_

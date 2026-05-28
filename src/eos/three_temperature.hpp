@@ -37,9 +37,24 @@
 //! ride in as arguments.  A consumer obtains them from the tabulated 3T EOS (#6,
 //! `eos/eos_table_3t.hpp`): invert `e_ele/rho -> T_e` and `e_ion/rho -> T_i`, then
 //! `p_ele = PressureEle(rho,T_e)`, `p_ion = PressureIon(rho,T_i)`.  Wiring `e_ele`
-//! through `ConsToPrim` with `p_gas = p_ele + p_ion` is issue [14b]/#26; the
-//! Ohmic/radiation physics sources re-targeted to `T_e` are [14c]/#30.  All functions are
-//! `KOKKOS_INLINE_FUNCTION` (host + device), trivially copied/captured into a `par_for`.
+//! through `ConsToPrim` with `p_gas = p_ele + p_ion` is issue [14b]/#26.  All functions
+//! here are `KOKKOS_INLINE_FUNCTION` (host + device), captured into a `par_for`.
+//!
+//! On top of the advection + PdV split, issue [14c]/#30 (ADR-0003) adds the **Ohmic
+//! (Joule) heating** source to `e_ele`.  AthenaK advances the resistive energy as a
+//! conservative Poynting flux `dE/dt = -div(eta (J x B))` while the resistive EMF
+//! `E_res = eta J` (the same edge current `J = curl B` that drives constrained-transport
+//! B-diffusion) decays the field; the dissipated magnetic energy reappears in the
+//! conserved `E_tot` as internal energy.  With `e_ion` recovered by subtraction that
+//! implicit Joule heat lands on the *ions* by default -- physically backwards, since the
+//! current is electron-carried.  ADR-0003's fix: deposit into `e_ele` the *local
+//! (non-transport) magnetic-energy decrement* of the CT update, computed from the **same
+//! discrete `eta` and `J`** (so electron gain == magnetic loss), then recover `e_ion` by
+//! subtraction.  The local dissipation rate per unit volume is `E_res . J = eta |J|^2`;
+//! depositing `eta |J|^2 dt` to `e_ele` leaves the ion residual unchanged and keeps total
+//! energy conserved (`OhmicHeatingRate` / `ApplyOhmicElectronHeating` below).  Do **not**
+//! re-discretize `eta J^2` at a different centering -- that mismatch is the energy leak
+//! ADR-0003 warns about; pass the consumer's CT `J` and `eta` in directly.
 //!
 //! Heaviside-Lorentz code units: magnetic energy density is `B^2/2` (CONTEXT.md),
 //! matching the rest of AthenaK's MHD (e.g. the energy assembled in PrimToCons).
@@ -123,6 +138,36 @@ Real ElectronPdVRate(Real pele, Real divv) {
 KOKKOS_INLINE_FUNCTION
 Real ApplyElectronPdV(Real eele, Real pele, Real divv, Real dt) {
   return eele + ElectronPdVRate(pele, divv)*dt;
+}
+
+//----------------------------------------------------------------------------------------
+//! \fn OhmicHeatingRate
+//! \brief Local Ohmic (Joule) dissipation rate per unit volume, `eta |J|^2`, where
+//!  `(j1,j2,j3)` are the cell-centred current-density components `J = curl B` and `eta`
+//!  is the magnetic diffusivity (ADR-0003, issue [14c]/#30).  This equals the resistive
+//!  electric field dotted with the current, `E_res . J` with `E_res = eta J`, i.e. the
+//!  rate at which the constrained-transport resistive update converts magnetic energy
+//!  into internal energy locally.  Computing it from the SAME discrete `eta` and `J` that
+//!  drive the CT B-diffusion is what keeps the electron heating consistent with the field
+//!  decay (no energy leak).  `eta >= 0`.
+KOKKOS_INLINE_FUNCTION
+Real OhmicHeatingRate(Real eta, Real j1, Real j2, Real j3) {
+  return eta*(SQR(j1) + SQR(j2) + SQR(j3));
+}
+
+//----------------------------------------------------------------------------------------
+//! \fn ApplyOhmicElectronHeating
+//! \brief Operator-split electron Ohmic-heating update over a step dt:
+//!         e_ele <- e_ele + eta |J|^2 dt.
+//!  The Joule dissipation is deposited entirely on the electrons (the current is
+//!  electron-carried).  Because the conservative `E_tot` update has already returned the
+//!  dissipated magnetic energy to the internal-energy budget, claiming exactly that local
+//!  decrement (`eta |J|^2 dt`) for `e_ele` and recovering `e_ion` by subtraction
+//!  (`IonInternalEnergyMHD`) leaves the ion energy unchanged and conserves total energy
+//!  by construction (ADR-0003).
+KOKKOS_INLINE_FUNCTION
+Real ApplyOhmicElectronHeating(Real eele, Real eta, Real j1, Real j2, Real j3, Real dt) {
+  return eele + OhmicHeatingRate(eta, j1, j2, j3)*dt;
 }
 
 }  // namespace three_temp
