@@ -1,0 +1,101 @@
+# AthenaK input: ICF confinement-time benchmark (FLASH MagLIF benchmark 4, #37).
+#
+# Reuses the integrated MagLIF/Z-pinch problem generator (-D PROBLEM=maglif, issue [10a]/#32)
+# to drive a dense beryllium liner enclosing low-density deuterium fuel radially inward with a
+# prescribed constant load current, run to STAGNATION.  Unlike the instability benchmarks
+# (single-/multi-mode MRT #39/#42, converging RM #36) this is a CLEAN bulk implosion: no
+# interface perturbation is seeded, so the 1-D radial run measures the confinement-time
+# signature directly -- the inner-radius (fuel/liner contact) trajectory imploding to a
+# minimum and rebounding, and the fuel compressing to a peak density at stagnation.  This is
+# benchmark 4 of the FLASH MagLIF validation ladder (Ellison et al. 2025, arXiv:2504.10760),
+# whose observables are the PDV/radiography inner-radius trajectory and the stagnation density.
+#
+# CONFINED STAGNATION.  The fuel is initialised in pressure equilibrium with the (cold) liner
+# (uniform p0, a clean contact -- no spurious initial expansion), so the cushion arises purely
+# from ADIABATIC compression: the fuel pressure rises as ~rho^gamma ~ R^-10/3, stiffer than the
+# magnetic piston (~R^-2), so it always wins at small radius and rebounds the liner.  The drive
+# (i0) is tuned so the liner stagnates at a finite, resolved radius (convergence ratio ~9, the
+# fuel compresses ~100x) and bounces back cleanly within tlim, staying safely off the r=0 axis.
+#
+# PHYSICS SCOPE (honest, per the #32 MagLIF-pgen scope note + the PRD Phase-1 sequencing):
+# the 2T tabulated EOS (#26), 2T Ohmic/radiation coupling (#30), grey/multigroup FLD radiation
+# and anisotropic conduction are operator-split modules that are NOT yet wired into the
+# production MHD driver, so this benchmark exercises the WIRED stack -- cylindrical ideal-MHD
+# (ADR-0004) + the prescribed-I(t) circuit drive (ADR-0005 mode A).  The 2T-EOS table inversion
+# and the matter-radiation coupling are verified in isolation (#26, #28, #30, #41).  The
+# adiabatic-MHD confinement-time signature measured here is the Phase-1 baseline; the tabulated
+# 2T EOS and radiation losses are layered in once the driver wiring lands.
+#
+# 1-D radial (nx2=nx3=1): a pure bulk stagnation, no MRT modes (those are #39/#42).  Built with
+# -D PROBLEM=maglif (a USER pgen, not in the suite binary).
+
+<comment>
+problem   = MagLIF ICF confinement time (benchmark 4): Be liner + D fuel, stagnation
+
+<job>
+basename  = maglif_icf
+
+<mesh>
+nghost    = 2
+nx1       = 256        # radial zones (resolve the deeply compressed near-axis fuel column)
+x1min     = 0.0        # r = 0 axis
+x1max     = 1.0        # outer radius R_out (driven boundary)
+ix1_bc    = axis       # cylindrical r=0 axisymmetric boundary (issue #16)
+ox1_bc    = user       # circuit-driven B_phi boundary (issue #21)
+
+nx2       = 1          # 1-D radial (axisymmetric, no azimuthal structure)
+x2min     = 0.0
+x2max     = 1.0
+ix2_bc    = periodic
+ox2_bc    = periodic
+
+nx3       = 1          # 1-D radial (no axial resolution -> clean bulk stagnation)
+x3min     = 0.0
+x3max     = 1.0
+ix3_bc    = periodic
+ox3_bc    = periodic
+
+<meshblock>
+nx1       = 256
+nx2       = 1
+nx3       = 1
+
+<coord>
+system    = cylindrical  # (x1,x2,x3) = (r,phi,z)
+
+<time>
+evolution  = dynamic
+integrator = rk2
+cfl_number = 0.3
+nlim       = 200000
+tlim       = 0.9         # captures run-in + implosion + stagnation + first rebound
+ndiag      = 500
+
+<mhd>
+eos         = ideal
+reconstruct = plm
+rsolver     = hlld
+gamma       = 1.6666666666666667
+dfloor      = 1.0e-6
+pfloor      = 1.0e-8
+
+<problem>
+current_mode     = driven       # driven (mu0*I/2*pi*r) B_phi outer boundary
+current_waveform = constant     # prescribed I(t): constant load current (B_phi present at t=0)
+i0               = 3.0          # load current (code units) -- tuned for a resolved stagnation
+t_rise           = 1.0          # ramp time (unused for the constant waveform)
+mu0              = 1.0          # code-unit permeability (Heaviside-Lorentz: 1)
+r_fuel           = 0.4          # fuel/liner interface radius (the inner-radius observable)
+r_liner          = 0.6          # liner/vacuum interface (current sheet)
+d_fuel           = 0.01         # deuterium fuel (inner gas) density
+d_liner          = 1.85         # beryllium liner (dense shell) density
+d_vac            = 0.001        # vacuum (outer gap) density
+p0               = 0.1          # uniform thermal pressure (fuel in equilibrium with liner)
+bz0              = 0.1          # axial premagnetization field B_z (magneto-insulation)
+perturbation     = none         # clean bulk implosion (no MRT/RM seed; confinement-time test)
+
+<output1>
+file_type   = bin
+variable    = mhd_w_bcc
+id          = prim
+dt          = 0.03
