@@ -19,6 +19,25 @@ the shared verification harness:
      optically-thin c-CFL cost STS cannot accelerate).  The test asserts the count rises
      monotonically toward the thin end and baselines the (tau_cell -> nstages) curve.
 
+Oracle: Layer 1 -- analytic.  With a constant extinction chi the optically-thick FLD
+operator sits in the equilibrium-diffusion limit (Larsen flux limiter lambda -> 1/3), so
+it reduces to the linear heat equation dE_r/dt = D d^2E_r/dx^2 with constant
+D = c/(3 chi).  For a cold slab (E_r = e_floor) heated from a step Dirichlet inner-x1
+source
+E_r(x1min) = e_source, the exact half-space solution is the complementary-error-function
+profile
+    E_r(x,t) = e_floor + (e_source - e_floor) * erfc( (x - x1min) / (2 sqrt(D t)) ),
+which satisfies the PDE, the Dirichlet BC (erfc(0)=1) and the cold far field (erfc->0)
+exactly.  The binding assertion (Part 1) is the L1/Linf error of the run profile vs this
+closed form; an independent finite-difference cross-check confirmed the residual of
+u_t - D u_xx evaluated on the closed form converges as O(dx^2) to zero (issue #78).  This
+is the linear (constant-opacity) limit of the classical radiation-diffusion Marshak wave
+(Marshak 1958, Phys. Fluids 1, 24; self-similar solution in Zel'dovich & Raizer 1967,
+Physics of Shock Waves, ch. X).  FLD as the MagLIF transport closure is anchored to the
+FLASH study Ellison et al. 2025 (arXiv:2504.10760).  Part 2 (the STS substage sweep) is a
+measure-first scaling diagnostic, not an oracle comparison.  The harness.verify baselines
+are regression guards only.
+
 Auto-collected by run_test_suite.py (module name contains ``_cpu``).
 """
 

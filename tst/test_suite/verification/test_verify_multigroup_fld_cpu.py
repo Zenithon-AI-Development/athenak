@@ -18,6 +18,23 @@ pgen's groups file (so the oracle is built from the actual table lookups, not
 re-implemented here); each group's run profile is compared to its analytic erfc (L1 /
 Linf) and all per-group profiles are baselined.
 
+Oracle: Layer 1 -- analytic.  In the equilibrium-diffusion limit (Larsen flux limiter
+lambda -> 1/3) each group g reduces to linear diffusion with its own constant coefficient
+D_g = c/(3 chi_g), where chi_g = rho * kappa_R,g is the per-group Rosseland extinction
+read from the tabulated opacity (so the oracle is built from the actual table lookups,
+not re-implemented here).  Each group's exact half-space solution is the per-group
+complementary-error-function Marshak wave
+    E_g(x,t) = e_floor + (e_source - e_floor) * erfc( (x - x1min) / (2 sqrt(D_g t)) ).
+The binding assertion is the per-group L1/Linf error of each run profile vs its closed
+form, plus the group-resolution check that larger-D_g (optically thinner) groups penetrate
+deeper.  An independent finite-difference cross-check confirmed the residual of
+u_t - D_g u_xx on the closed form converges as O(dx^2) to zero, and that larger D_g gives
+a larger E_g at fixed depth (issue #78).  This is the per-group linear (constant-opacity)
+limit of the classical radiation-diffusion Marshak wave (Marshak 1958, Phys. Fluids 1, 24;
+self-similar solution in Zel'dovich & Raizer 1967, Physics of Shock Waves, ch. X).
+Multigroup FLD as the MagLIF transport closure is anchored to the FLASH study Ellison et
+al. 2025 (arXiv:2504.10760).  The harness.verify baseline is a regression guard only.
+
 Auto-collected by run_test_suite.py (module name contains ``_cpu``).
 """
 
