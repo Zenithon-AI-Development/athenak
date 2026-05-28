@@ -7,18 +7,22 @@
 //! \brief Problem generator for a current-driven cylindrical Z-pinch column, wiring the
 //!  circuit drive source to the B_phi outer-radial boundary (ADR-0005, issue [9a]/#21).
 //!
-//! Lays down a uniform, static plasma column (rho, p, v=0) with an optional axial seed
-//! field B_z (premagnetization) on a cylindrical grid (x1,x2,x3)=(r,phi,z); the r=0 axis
-//! uses the `axis` BC (issue #16) and the outer radius R_out uses the new circuit-driven
-//! `user` B_phi BC.  A pulsed-power drive source supplies the load current I(t); the
-//! enrolled user_bcs_func evaluates I(pm->time) each step and sets the ghost azimuthal
-//! field via circuit::ApplyDriveBphiBC -- either driven (B_phi=mu0*I/2*pi*r) or the
-//! nocurrent vacuum extrapolation (d_r(r*B_phi)=0).  The initial B_phi is seeded
-//! consistently from I(0) so the field is continuous at t=0.
+//! Lays down a static plasma column (v=0) with an optional axial seed field B_z
+//! (premagnetization) on a cylindrical grid (x1,x2,x3)=(r,phi,z); the r=0 axis uses the
+//! `axis` BC (issue #16) and the outer radius R_out uses the new circuit-driven `user`
+//! B_phi BC.  A pulsed-power drive source supplies the load current I(t); the enrolled
+//! user_bcs_func evaluates I(pm->time) each step and sets the ghost azimuthal field via
+//! circuit::ApplyDriveBphiBC -- either driven (B_phi=mu0*I/2*pi*r) or the nocurrent
+//! vacuum extrapolation (d_r(r*B_phi)=0).  The initial B_phi is seeded consistently from
+//! I(0) so the field is continuous at t=0.
 //!
-//! This is a minimal Phase-1 driver exercising the drive-source/boundary plumbing: the
-//! full driven-liner verification (trajectory vs analytic compression) is issue #29, and
-//! the MagLIF liner/fuel/vacuum ICs are issue #32 -- both reuse the drive source here.
+//! Two initial-condition profiles (problem/profile):
+//!   * `uniform` (default) -- a uniform static column (rho=d0) threaded everywhere by the
+//!     driven 1/r field; the minimal Phase-1 driver exercising the drive/boundary plumb.
+//!   * `liner`   -- a dense liner shell (fuel | liner | vacuum, by radius) w/ the driven
+//!     field laid down ONLY in the vacuum OUTSIDE the liner (B_phi=0 in the fuel+liner).
+//!     The magnetic piston then compresses the liner radially inward -- the bulk
+//!     implosion verification of issue [9b]/#29 (trajectory vs the analytic thin-shell).
 //!
 //! USER pgen: build with -D PROBLEM=driven_pinch (not part of the default suite binary).
 
@@ -111,12 +115,26 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
 
   if (restart) return;
 
-  // ---- uniform static plasma column + optional axial seed field; B_phi from I(0) ----
+  // ---- static plasma column + optional axial seed field; B_phi from I(0) ----
+  std::string profile = pin->GetOrAddString("problem", "profile", "uniform");
+  bool is_liner = (profile == "liner");
   Real d0  = pin->GetOrAddReal("problem", "d0", 1.0);
   Real p0  = pin->GetOrAddReal("problem", "p0", 1.0);
   Real bz0 = pin->GetOrAddReal("problem", "bz0", 0.0);
   Real i_init = drive_source_.Current(0.0);
   Real mu0 = drive_source_.mu0;
+
+  // Liner-shell geometry (only read for profile=liner): three radial regions
+  //   fuel   [0, r_fuel)      -- low-density gas inside the liner (B_phi = 0)
+  //   liner  [r_fuel, r_liner)-- dense conducting shell           (B_phi = 0)
+  //   vacuum [r_liner, R_out) -- low-density gap carrying the driven 1/r field
+  // The current sheet sits at the liner outer edge r_liner: the magnetic pressure of the
+  // vacuum field just outside it drives the implosion (the magnetic piston).
+  Real r_fuel  = pin->GetOrAddReal("problem", "r_fuel", 0.4);
+  Real r_liner = pin->GetOrAddReal("problem", "r_liner", 0.6);
+  Real d_fuel  = pin->GetOrAddReal("problem", "d_fuel", 0.02);
+  Real d_liner = pin->GetOrAddReal("problem", "d_liner", 1.0);
+  Real d_vac   = pin->GetOrAddReal("problem", "d_vac", 0.01);
 
   auto &indcs = pmy_mesh_->mb_indcs;
   int &is = indcs.is; int &ie = indcs.ie;
@@ -136,14 +154,22 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
     Real &x1max = size.d_view(m).x1max;
     Real x1v = CellCenterX(i-is, nx1, x1min, x1max);
 
-    u0(m,IDN,k,j,i) = d0;
+    // Density profile: uniform column, or the liner shell (fuel | liner | vacuum).
+    Real dens = d0;
+    if (is_liner) {
+      dens = (x1v < r_fuel) ? d_fuel : ((x1v < r_liner) ? d_liner : d_vac);
+    }
+    u0(m,IDN,k,j,i) = dens;
     u0(m,IM1,k,j,i) = 0.0;
     u0(m,IM2,k,j,i) = 0.0;
     u0(m,IM3,k,j,i) = 0.0;
 
     // B_z (premag) is the x3-face field; B_r=0; B_phi (x2-face, cell-centred in r) is the
     // initial driven profile mu0*I(0)/(2*pi*r) so it matches the boundary value at t=0.
+    // For the liner profile the field exists ONLY in the vacuum outside the liner (the
+    // load current is enclosed by the liner), so B_phi=0 for r < r_liner.
     Real bphi = circuit::DrivenBphi(i_init, x1v, mu0);
+    if (is_liner && x1v < r_liner) { bphi = 0.0; }
     b0.x1f(m,k,j,i) = 0.0;
     b0.x2f(m,k,j,i) = bphi;
     b0.x3f(m,k,j,i) = bz0;

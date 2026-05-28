@@ -1,0 +1,85 @@
+# AthenaK input file for the current-driven cylindrical liner implosion (issue [9b]/#29).
+#
+# 1-D radial cylindrical MHD (x1=r in [0, R_out]) reusing the driven-pinch drive source +
+# circuit-driven `user` B_phi outer boundary (ADR-0005, issue #21), but with the LINER IC
+# profile: a dense conducting shell (fuel | liner | vacuum, by radius) with the driven 1/r
+# azimuthal field laid down ONLY in the vacuum gap OUTSIDE the liner.  A prescribed (here
+# constant) load current I(t) holds B_phi(R_out)=mu0*I/(2*pi*R_out); the magnetic pressure
+# just outside the liner acts as a piston that compresses the shell radially inward.  The
+# bulk implosion is purely 1-D radial (axisymmetric) so no Rayleigh-Taylor modes grow --
+# "bulk implosion only", to be verified against the analytic thin-shell model.
+#
+# Built with -D PROBLEM=driven_pinch (a USER pgen; not in the default suite binary).
+
+<comment>
+problem   = current-driven cylindrical liner implosion (thin-shell trajectory verification)
+
+<job>
+basename  = driven_liner
+
+<mesh>
+nghost    = 2
+nx1       = 128        # radial zones
+x1min     = 0.0        # r = 0 axis
+x1max     = 1.0        # outer radius R_out (driven boundary)
+ix1_bc    = axis       # cylindrical r=0 axisymmetric boundary (issue #16)
+ox1_bc    = user       # circuit-driven B_phi boundary (issue #21)
+
+nx2       = 1          # 1-D radial (phi trivial)
+x2min     = 0.0
+x2max     = 1.0
+ix2_bc    = periodic
+ox2_bc    = periodic
+
+nx3       = 1          # z trivial
+x3min     = 0.0
+x3max     = 1.0
+ix3_bc    = periodic
+ox3_bc    = periodic
+
+<meshblock>
+nx1       = 128
+nx2       = 1
+nx3       = 1
+
+<coord>
+system    = cylindrical  # (x1,x2,x3) = (r,phi,z)
+
+<time>
+evolution  = dynamic
+integrator = rk2
+cfl_number = 0.3
+nlim       = -1
+tlim       = 1.2
+ndiag      = 100
+
+<mhd>
+eos         = ideal
+reconstruct = plm
+rsolver     = hlld
+gamma       = 1.6666666666666667
+dfloor      = 1.0e-4      # density floor (well below all IC values; only the deep vacuum)
+pfloor      = 1.0e-6      # pressure floor (idem)
+
+<problem>
+profile          = liner        # dense liner shell driven inward by the magnetic piston
+current_mode     = driven       # driven (mu0*I/2*pi*r) B_phi outer boundary
+current_waveform = constant     # prescribed I(t): constant load current -> clean drive
+i0               = 1.0          # load current (code units)
+mu0              = 1.0          # code-unit permeability (Heaviside-Lorentz: 1)
+r_fuel           = 0.4          # fuel/liner interface radius
+r_liner          = 0.6          # liner/vacuum interface (liner outer edge; current sheet)
+d_fuel           = 0.02         # fuel (inner gas) density
+d_liner          = 1.0          # liner (dense shell) density
+d_vac            = 0.01         # vacuum (outer gap) density
+p0               = 1.0e-3       # uniform (low) thermal pressure
+bz0              = 0.0          # no axial premagnetization (pure B_phi drive)
+
+<output1>
+file_type   = tab
+variable    = mhd_w_bcc
+id          = prim
+data_format = %24.16e
+dt          = 0.06             # ~21 trajectory snapshots over [0, tlim]
+slice_x2    = 0.5
+slice_x3    = 0.5
