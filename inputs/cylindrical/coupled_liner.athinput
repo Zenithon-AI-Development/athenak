@@ -1,0 +1,101 @@
+# AthenaK input file for the coupled-circuit cylindrical liner implosion (issue [18c]/#40).
+#
+# End-to-end ADR-0005 MODE C: a voltage-driven lumped-element circuit ODE integrated
+# alongside the MHD, with the Faraday load voltage V_load = d(Phi)/dt fed back into the
+# circuit, sets the outer-radial B_phi boundary current.  1-D radial cylindrical MHD
+# (x1=r in [0, R_out]) with the driven-pinch `liner` IC (fuel | liner | vacuum); the
+# circuit starts at rest (I=0) so B_phi=0 at t=0, the open-circuit voltage source ramps the
+# current up, the magnetic piston compresses the shell inward, and the growing load
+# inductance L_load(R)=(mu0 H/2pi) ln(R_out/R) produces the back-EMF that loads the circuit
+# (current loss + the stagnation voltage spike).  Purely 1-D radial -> bulk implosion only.
+#
+# With circuit_Z0=0 and circuit_C=0 the series loop reduces to the pure inductor + coupled
+# load, L dI/dt = V_oc - V_load, so flux is conserved in the (series L + load) loop:
+#   L*I(t) + Phi(t) = V_oc * t        (constant V_oc, started from rest),
+# the clean coupled-circuit reference the verification (#40) checks against.
+#
+# Built with -D PROBLEM=coupled_liner (a USER pgen; not in the default suite binary).
+
+<comment>
+problem   = coupled-circuit cylindrical liner implosion (mode C, current/voltage verification)
+
+<job>
+basename  = coupled_liner
+
+<mesh>
+nghost    = 2
+nx1       = 128        # radial zones
+x1min     = 0.0        # r = 0 axis
+x1max     = 1.0        # outer radius R_out (driven boundary)
+ix1_bc    = axis       # cylindrical r=0 axisymmetric boundary (issue #16)
+ox1_bc    = user       # coupled-circuit-driven B_phi boundary (ADR-0005 mode C)
+
+nx2       = 1          # 1-D radial (phi trivial)
+x2min     = 0.0
+x2max     = 1.0
+ix2_bc    = periodic
+ox2_bc    = periodic
+
+nx3       = 1          # z trivial (poloidal-flux height H = x3max - x3min = 1)
+x3min     = 0.0
+x3max     = 1.0
+ix3_bc    = periodic
+ox3_bc    = periodic
+
+<meshblock>
+nx1       = 128
+nx2       = 1
+nx3       = 1
+
+<coord>
+system    = cylindrical  # (x1,x2,x3) = (r,phi,z)
+
+<time>
+evolution  = dynamic
+integrator = rk2
+cfl_number = 0.3
+nlim       = -1
+tlim       = 1.25
+ndiag      = 200
+
+<mhd>
+eos         = ideal
+reconstruct = plm
+rsolver     = hlld
+gamma       = 1.6666666666666667
+dfloor      = 1.0e-4      # density floor (well below all IC values; only the deep vacuum)
+pfloor      = 1.0e-6      # pressure floor (idem)
+
+<problem>
+user_hist        = true         # enroll the circuit current/voltage history diagnostic
+# --- coupled-circuit (ADR-0005 mode C) ---
+voltage_waveform = constant     # open-circuit voltage V_oc(t): constant source
+v_oc             = 2.0          # open-circuit (peak) voltage [code units]
+circuit_L        = 1.0          # series inductance
+circuit_Z0       = 0.0          # series/line resistance (0 -> pure L + coupled load)
+circuit_C        = 0.0          # series capacitance (<=0 -> capacitor dropped, pure RL loop)
+r_loss           = 0.0          # (constant) loss resistor R_loss
+mu0              = 1.0          # code-unit permeability (Heaviside-Lorentz: 1)
+# --- liner IC (fuel | liner | vacuum) ---
+r_fuel           = 0.4          # fuel/liner interface radius
+r_liner          = 0.6          # liner/vacuum interface (liner outer edge; current sheet)
+d_fuel           = 0.02         # fuel (inner gas) density
+d_liner          = 1.0          # liner (dense shell) density
+d_vac            = 0.01         # vacuum (outer gap) density
+p0               = 1.0e-3       # uniform (low) thermal pressure
+bz0              = 0.0          # no axial premagnetization (pure B_phi drive)
+
+<output1>
+file_type   = tab
+variable    = mhd_w_bcc
+id          = prim
+data_format = %24.16e
+dt          = 0.05             # ~21 trajectory snapshots over [0, tlim] (liner radius R(t))
+slice_x2    = 0.5
+slice_x3    = 0.5
+
+<output2>
+file_type      = hst
+data_format    = %24.16e
+user_hist_only = true          # the circuit waveforms only: I_circuit, V_cap, V_load, flux
+dt             = 0.005         # dense current/voltage traces (~200 samples over [0, tlim])
