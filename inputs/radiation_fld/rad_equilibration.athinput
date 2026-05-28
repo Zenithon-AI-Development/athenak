@@ -1,0 +1,87 @@
+# AthenaK input file for the coupled grey radiation-hydro verification
+# (radiation_fld_equilibration) -- ADR-0001 verification, issue [8c]/#28.
+#
+# Drives the grey flux-limited radiation diffusion operator (FLDGreyOperator, #17) together
+# with the per-cell point-implicit matter-radiation coupling (PointImplicitGreyCoupling,
+# #23).  Neither is wired into the driver tasklist yet, so both are advanced operator-split
+# entirely inside ProblemGenerator::UserProblem; the <hydro> block supplies only the
+# ideal-gas gamma (=> matter heat capacity cv = rho/(gamma-1)) and local array sizing, and
+# nlim = tlim = 0 means the driver does no hyperbolic integration.
+#
+# PART 1: a spatially-uniform box relaxes from thermal non-equilibrium to a T^4 = E_r by the
+# point-implicit coupling alone (FLD is a no-op on a flat field) -- the equilibration test.
+# PART 2: a cold absorbing slab heated from an inner-x1 Dirichlet radiation source; the
+# radiation diffuses (FLD) while the strong coupling locks matter to local radiative
+# equilibrium -- the coupled "radiating absorption front".
+
+<comment>
+problem   = coupled grey radiation-hydro: equilibration + absorption front
+
+<job>
+basename  = rad_equilibration   # problem ID: basename of output filenames
+
+<mesh>
+nghost    = 2          # Number of ghost cells
+nx1       = 256        # Number of zones in X1-direction
+x1min     = 0.0        # minimum value of X1
+x1max     = 1.0        # maximum value of X1
+ix1_bc    = outflow    # inner-X1 boundary flag (FLD operator overrides ghosts itself)
+ox1_bc    = outflow    # outer-X1 boundary flag
+
+nx2       = 1          # Number of zones in X2-direction
+x2min     = -0.5       # minimum value of X2
+x2max     = 0.5        # maximum value of X2
+ix2_bc    = periodic   # inner-X2 boundary flag
+ox2_bc    = periodic   # outer-X2 boundary flag
+
+nx3       = 1          # Number of zones in X3-direction
+x3min     = -0.5       # minimum value of X3
+x3max     = 0.5        # maximum value of X3
+ix3_bc    = periodic   # inner-X3 boundary flag
+ox3_bc    = periodic   # outer-X3 boundary flag
+
+<meshblock>
+nx1       = 256        # Number of cells in each MeshBlock, X1-dir
+nx2       = 1          # Number of cells in each MeshBlock, X2-dir
+nx3       = 1          # Number of cells in each MeshBlock, X3-dir
+
+<time>
+evolution            = dynamic   # dynamic/kinematic/static
+integrator           = rk2       # hyperbolic time integration algorithm
+parabolic_integrator = sts       # operator-split parabolic backend (RKL2 STS)
+cfl_number           = 0.3       # The Courant, Friedrichs, & Lewy (CFL) Number
+nlim                 = 0         # cycle limit (0: do no integration, just run UserProblem)
+tlim                 = 0         # time limit
+ndiag                = 1         # cycles between diagnostic output
+
+<hydro>
+eos          = ideal   # EOS type (only for grid sizing + gamma; no hydro is evolved)
+reconstruct  = plm     # spatial reconstruction method
+rsolver      = llf     # Riemann-solver to be used
+gamma        = 1.66666666666666667   # gamma = C_p/C_v = 5/3
+
+<problem>
+pgen_name = radiation_fld_equilibration  # (ignored: built with -D PROBLEM=...)
+c_light   = 1.0        # code-unit speed of light
+a_rad     = 1.0        # code-unit radiation constant (E_r = a T^4 at equilibrium)
+
+# --- PART 1: uniform matter-radiation equilibration ---
+eq_rho    = 1.0        # matter density => cv = rho/(gamma-1) = 1.5
+eq_chi_a  = 1.0        # Planck absorption coefficient kappa_P*rho [1/length]
+eq_dt     = 0.02       # coupling substep (beta = c*chi_a*dt = 0.02 -> accurate vs RK4)
+eq_nstep  = 300        # number of coupling substeps (t_end = 6 -> well-relaxed)
+eq_tmat_a = 0.5        # case A: cold matter temperature
+eq_trad_a = 1.5        # case A: hot radiation temperature
+eq_tmat_b = 1.5        # case B: hot matter temperature
+eq_trad_b = 0.5        # case B: cold radiation temperature
+
+# --- PART 2: coupled FLD diffusion + matter equilibration (absorption front) ---
+chi       = 1.0e3      # FLD Rosseland extinction kappa_R*rho [1/length] (optically thick)
+chi_a     = 1.0e3      # Planck absorption for coupling (strong -> matter locks to E_r)
+n_larsen  = 2.0        # Larsen flux-limiter exponent
+e_source  = 1.0        # inner-x1 Dirichlet radiation-energy source (hot wall)
+e_floor   = 1.0e-3     # initial/cold radiation energy
+t_floor   = 0.1        # initial/cold matter temperature
+diff_rho  = 1.0e-2     # tenuous matter (cv small => radiation-dominated => E_r ~ erfc)
+tlim_fld  = 50.0       # FLD integration time (front ~ 2 sqrt(D*tlim) ~ 0.26 < domain)
+n_super   = 40         # number of coupled (diffuse + couple) operator-split steps
