@@ -78,7 +78,7 @@ Directories: `unit_tests/`, `cylindrical/`.
 | `test_unit_sesame_eos_cpu.py` | 1 | analytic | SESAME reader (tables 304/305 electron/ion + 601 ionization): (ρ,T) laws, e→T inversion, c_v derivation | closed form (synthetic SESAME table) | self |
 | `test_unit_cons_to_prim_2t_cpu.py` | 1 | analytic | Tabulated 2T EOS inversion (e→T) + pressure composition for distinct γ; edge clamping; ideal-gas limit | closed form | self |
 | `test_unit_three_temp_cpu.py` | 1 | analytic | 3T energy reconciliation: e_tot conservation, PdV split by pressure fraction, shock dissipation to ions, 1T ideal-gas recovery | closed form (energy identities) | self |
-| `test_verify_cyl_aniso_ring_cpu.py` | 2 | self-snapshot | Azimuthal-vs-radial broadening ratio (field alignment), cross-field leakage < tol, Sharma–Hammett monotonicity + harness baseline; **no documented ring-test oracle** | — | `test_unit_aniso_conduction_cpu.py` — **TODO(#81)** |
+| `test_verify_cyl_aniso_ring_cpu.py` | 2 | self-snapshot | Field-aligned conduction reproducing the published ring test: azimuthal-vs-radial broadening ratio, cross-field leakage < tol, Sharma–Hammett monotonicity; harness baseline is the regression guard | Parrish & Stone 2005 (ring test); Sharma & Hammett 2007 (limiter) | `test_unit_aniso_conduction_cpu.py`, `test_unit_parabolic_conduction_cpu.py` |
 
 ## Circuit drive (ADR-0005)
 
@@ -124,13 +124,14 @@ each test also keeps a `harness.verify` regression baseline.
 
 ## Layer-2 self-snapshot gaps (TODO)
 
-The three tests below assert only against a self-captured snapshot (plus qualitative sanity
+The two tests below assert only against a self-captured snapshot (plus qualitative sanity
 properties) and have no documented Layer-1 oracle yet. Each is grounded for now by the listed
 method-correctness anchor and is scheduled to be upgraded to an independent oracle by a follow-up slice
-(per ADR-0008). (Planar `sod` was grounded against the exact Riemann solution in V4 / #79.)
+(per ADR-0008). (Planar `sod` was grounded against the exact Riemann solution in V4 / #79;
+`cyl_aniso_ring` was grounded in V6 / #81 against the published Parrish–Stone ring-test behavior plus
+the analytic `aniso_conduction` + `parabolic_conduction` unit-test method anchors.)
 
 | Test | Method anchor (current) | Grounding slice |
 |------|-------------------------|-----------------|
-| `test_verify_cyl_aniso_ring_cpu.py` | `test_unit_aniso_conduction_cpu.py` (Parrish–Stone ring) | **V6 / #81** — documented ring-test oracle |
 | `test_verify_cyl_blast_cpu.py` | `test_verify_cyl_sod_cpu.py`, `test_verify_cyl_mignone_cpu.py` | **V7 / #82** — documented oracle |
 | `test_verify_cyl_field_loop_cpu.py` | `test_unit_cyl_mhd_ct_divb_cpu.py` (div(B)=0) | **V8 / #83** — documented advected-loop oracle |
