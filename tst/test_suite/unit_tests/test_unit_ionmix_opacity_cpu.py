@@ -15,6 +15,12 @@ the table edges (no out-of-bounds lookups), for the synthetic power-law fixture.
 The fixture path (repo-relative) is resolved to an absolute path here and passed to the
 binary via the `problem/opacity_file=<abspath>` command-line override, because the test
 runs from tst/build*/src where a repo-relative path would not resolve.
+
+Oracle: Layer 1 -- analytic.  Against a synthetic power-law IONMIX fixture, the reader
+reproduces the group structure and the known per-group Planck-absorption / Planck-emission
+/ Rosseland mass opacities, interpolates (rho, T_e) at off-grid reference points, and
+clamps out-of-range queries to the table edges.  References: closed form (log-log bilinear
+on the synthetic table).
 """
 
 # Modules

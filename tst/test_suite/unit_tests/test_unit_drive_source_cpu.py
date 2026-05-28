@@ -15,6 +15,12 @@ is the constant enclosed current) and the nocurrent vacuum extrapolation d_r(r*B
 The fixture path (repo-relative) is resolved to an absolute path here and passed to the
 binary via the `problem/current_file=<abspath>` command-line override, because the test
 runs from tst/build*/src where a repo-relative path would not resolve.
+
+Oracle: Layer 1 -- analytic.  The prescribed-I(t) waveforms (constant / linear_ramp /
+sin_squared) and a file-tabulated (t, I) waveform (piecewise-linear interpolation, end
+clamping) are checked at known sample points, and the driven boundary obeys Ampere's law
+B_phi = mu0*I/(2*pi*r) (r*B_phi = enclosed current) with the nocurrent d_r(r*B_phi)=0
+vacuum extrapolation.  References: closed form (Ampere's law; prescribed waveforms).
 """
 
 # Modules

@@ -17,6 +17,12 @@ per-group conservation by the insulated operator; and a finite, positive explici
 The fixture path (repo-relative) is resolved to an absolute path here and passed to the
 binary via the `problem/opacity_file=<abspath>` command-line override, because the test
 runs from tst/build*/src where a repo-relative path would not resolve.
+
+Oracle: Layer 1 -- analytic.  Per-group analog of the grey operator test: each group's
+action reproduces the discrete diffusion eigenvalue lambda_g*(E_g-E0) with
+D_g = c/(3 chi_g), chi_g = rho*kappa_R,g from the tabulated Rosseland transport opacity,
+on an optically-thick cosine eigenmode (distinct rate per group), plus per-group
+conservation.  References: closed form (per-group eigenmode); Larsen flux limiter.
 """
 
 # Modules

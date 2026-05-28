@@ -21,6 +21,12 @@ into the isolated tst/build_unit directory and exercises the SESAME EOS reader
 The fixture paths (repo-relative) are resolved to absolute paths here and passed to the
 binary via the `problem/eos_file=<abspath>` command-line override, because the test runs
 from tst/build*/src where a repo-relative path would not resolve.
+
+Oracle: Layer 1 -- analytic.  Against a synthetic SESAME fixture (electron table 304 + ion
+table 305 + ionization table 601) the reader reproduces the per-species (rho,T) laws and
+mean ionization, derives c_v = de/dT, round-trips the e->T inversion, and clamps
+out-of-range queries; a 1T-only material (table 301) is rejected nonzero.  References:
+closed form (synthetic SESAME table).
 """
 
 # Modules

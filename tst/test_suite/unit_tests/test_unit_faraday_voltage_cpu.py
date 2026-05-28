@@ -13,6 +13,12 @@ divide-by-(global nphi) per-plane average, with nx2=2 phi-planes); the Faraday l
 voltage V_load = d(Phi)/dt from the FaradayVoltage monitor equals the analytic rate (and
 the first sample, with no prior, returns 0); and FillFaradayHistory exposes the reduced
 flux and voltage as the two history-output columns "Bphi_flux" and "V_load".
+
+Oracle: Layer 1 -- analytic.  The Kokkos-reduced poloidal flux Phi = int int B_phi dr dz
+matches the exact discrete poloidal-plane sum, and the Faraday load voltage
+V_load = d(Phi)/dt matches the analytic rate (first sample returns 0), exposed as the
+history columns Bphi_flux and V_load.  References: closed form (Faraday's law; discrete
+flux quadrature).
 """
 
 # Modules

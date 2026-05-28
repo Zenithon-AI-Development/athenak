@@ -21,6 +21,12 @@ into the isolated tst/build_unit directory and exercises the IONMIX EOS reader
 The fixture paths (repo-relative) are resolved to absolute paths here and passed to the
 binary via the `problem/eos_file=<abspath>` command-line override, because the test runs
 from tst/build*/src where a repo-relative path would not resolve.
+
+Oracle: Layer 1 -- analytic.  Against a synthetic 3T-native IONMIX fixture the reader
+populates the per-species electron/ion specific energies / pressures / heat capacities /
+mean ionization, reproduces the (rho,T) laws under bilinear interpolation, round-trips
+e->T, and clamps out-of-range queries; a 1T-only fixture is rejected nonzero.  References:
+closed form (synthetic IONMIX table).
 """
 
 # Modules

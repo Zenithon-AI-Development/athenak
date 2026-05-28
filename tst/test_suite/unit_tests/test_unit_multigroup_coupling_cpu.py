@@ -15,6 +15,12 @@ radiation groups to the Planck spectrum E_g = a T_e^4 [F(x_{g+1}) - F(x_g)]; exa
 conservation of sum_g E_g + e_ele + e_ion every step; reduction to the grey coupling
 (#23) for a single group spanning the spectrum; electron-ion exchange relaxing T_e and T_i
 to the common temperature; and unconditional stability for stiff absorption.
+
+Oracle: Layer 1 -- analytic.  The fractional Planck function F(x) is checked against an
+independent host-quadrature oracle; the groups relax to the Planck spectrum
+E_g = a T_e^4 [F(x_{g+1}) - F(x_g)] with exact conservation of sum_g E_g + e_ele + e_ion
+each step, reduce to the grey coupling for a single spanning group, and stay stable for
+stiff absorption.  References: closed form (Planck spectrum fraction + conservation).
 """
 
 # Modules

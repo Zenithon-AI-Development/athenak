@@ -13,6 +13,12 @@ MHD); the PdV compression work splits between species by pressure fraction
 dissipation lands entirely on the ions; the 1T limit (T_e = T_i) recovers the
 single-temperature internal energy / pressure and preserves species fractions under PdV;
 and the pressure fraction fed from the tabulated 3T EOS (e -> T -> p, #6) matches it.
+
+Oracle: Layer 1 -- analytic.  3T energy identities: e_ele + ion-by-subtraction
+conserves total energy by construction (hydro and MHD), PdV work splits by pressure
+fraction, irreversible shock dissipation lands on the ions, and the 1T limit (T_e = T_i)
+recovers the single-temperature internal energy / pressure.  References: closed form
+(energy-conservation identities).
 """
 
 # Modules

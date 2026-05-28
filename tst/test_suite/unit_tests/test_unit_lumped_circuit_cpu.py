@@ -11,6 +11,12 @@ and overdamped current, capacitor voltage, and the RL no-capacitor limit); mode 
 a Faraday load voltage (a constant V_load lowers the effective source to V0-V_load) while
 mode B (fixed RLC) ignores it; and the integrated current drives the B_phi boundary via
 BoundaryBphi == mu0*I/(2*pi*r).
+
+Oracle: Layer 1 -- analytic.  The once-per-step RK4 advance of the series-RLC circuit
+reproduces the analytic step response (underdamped/overdamped current, capacitor voltage,
+the RL no-capacitor limit); mode C consumes a Faraday V_load (lowers the effective source
+to V0-V_load) while mode B ignores it; B_phi = mu0*I/(2*pi*r).  References:
+closed form (series-RLC step response).
 """
 
 # Modules

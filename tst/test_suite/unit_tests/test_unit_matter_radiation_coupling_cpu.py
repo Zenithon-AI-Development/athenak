@@ -11,6 +11,12 @@ device kernels. It verifies: single-cell relaxation to radiative equilibrium
 correct exchange direction (hot matter cools / radiation heats and vice versa); and
 unconditional stability for stiff absorption (c chi_a dt >> 1 reaches equilibrium in one
 step without overshoot).
+
+Oracle: Layer 1 -- analytic.  The point-implicit grey coupling relaxes a single cell to
+radiative equilibrium a T^4 = E_r, conserves E_r + e_mat exactly, exchanges energy in the
+correct direction, and is unconditionally stable for stiff absorption (c chi_a dt >> 1
+reaches equilibrium in one step).  References: closed form (equilibrium + conservation
+identities).
 """
 
 # Modules

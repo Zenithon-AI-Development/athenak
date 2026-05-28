@@ -12,6 +12,12 @@ superstep/explicit dt ratio; and remains stable (L2 non-increasing, mean conserv
 decaying) at dt = 256 dt_exp, far beyond the explicit parabolic limit where forward Euler
 would blow up. It also checks the <time> parabolic_integrator selector parses to the sts
 backend.
+
+Oracle: Layer 1 -- analytic/literature.  The RKL2 recursion reproduces the 2nd-order
+amplification factor R_s(z) = 1 + z + z^2/2 + O(z^3), advances a diffusion eigenmode
+with 2nd-order temporal convergence vs exp(lambda t), derives the minimal adaptive
+stage count from the superstep/explicit dt ratio, and stays L2-stable at dt = 256 dt_exp.
+References: Meyer, Balsara & Aslam 2014 (RKL2 super-time-stepping).
 """
 
 # Modules

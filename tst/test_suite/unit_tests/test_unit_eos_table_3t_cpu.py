@@ -10,6 +10,12 @@ mean ionization, heat capacities) under log-log bilinear interpolation; round-tr
 T->e->T; clamps out-of-range (rho, T, e) queries to the table edges (no out-of-bounds
 lookups); and inverts e->T monotonically and convergently over a representative (rho,e)
 sweep for both electrons and ions.
+
+Oracle: Layer 1 -- analytic.  A synthetic ideal-gas 3T table whose analytic energies,
+pressures, heat capacities and mean ionization are reproduced exactly under log-log
+bilinear interpolation (exact for power laws), with a T->e->T round-trip, monotonic
+convergent e->T inversion, and edge-clamped out-of-range queries.  References: closed form
+(ideal-gas table relations).
 """
 
 # Modules

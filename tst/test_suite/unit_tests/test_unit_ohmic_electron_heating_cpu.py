@@ -15,6 +15,12 @@ real device kernels (issue [14c]/#30, ADR-0002/0003):
     point-implicit matter-radiation coupling to the electron T_e (relaxation to
     a T_e^4 = E_r, conservation of E_r + e_ele), including the full Ohmic -> electron ->
     radiation equilibration chain (ions untouched; all Ohmic input accounted for).
+
+Oracle: Layer 1 -- analytic.  The Ohmic (Joule) source deposited on e_ele is consistent
+with the constrained-transport EMF (eta|J|^2 == E_res . J) so the ions stay untouched and
+total energy is conserved; the 2T point-implicit coupling relaxes to a T_e^4 = E_r
+conserving E_r + e_ele; the full Ohmic -> electron -> radiation chain accounts for all
+input.  References: closed form (energy-conservation identities).
 """
 
 # Modules

@@ -14,6 +14,12 @@ the electron/ion internal energy densities (the conserved inputs of the 3T formu
 two-temperature recovery (T_e != T_i) matching the table closed forms; species
 independence (distinct gammas, p_ele uses T_e and p_ion uses T_i); out-of-range edge
 clamping; and the shared-gamma ideal-gas limit p_gas = (gamma-1)(e_ele + e_ion).
+
+Oracle: Layer 1 -- analytic.  The tabulated 2T closure inverts (rho, e_ele, e_ion) to
+T_e/T_i via the table and returns p_gas = p_ele(rho,T_e) + p_ion(rho,T_i): two-temperature
+recovery and species independence (distinct gammas) match the table closed forms, with
+edge clamping and the shared-gamma ideal-gas limit p_gas = (gamma-1)(e_ele + e_ion).
+References: closed form (tabulated EOS inversion).
 """
 
 # Modules
