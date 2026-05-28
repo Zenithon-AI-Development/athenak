@@ -11,6 +11,17 @@ over the well-resolved interior, and checks that the convergence rate matches th
 reference for the 2nd-order PLM reconstruction (error ~ N^-2, i.e. it falls by ~4x per
 doubling).  Plot + golden baseline of the error-vs-resolution curve via the harness.
 
+Oracle: Layer 1 -- analytic.  Closed-form cylindrical radial-advection (geometric
+dilution) solution rho(r,t) = (r0/r) rho_init(r0), r0 = r - v_r t.  It follows from the
+cylindrical continuity equation d_t rho + (1/r) d_r(r rho v_r) = 0 with constant v_r:
+along the characteristics dr/dt = v_r the quantity r*rho is conserved (mass in an
+annulus), giving the (r0/r) dilution factor.  The binding assertion is that the L1 error
+vs this exact solution exhibits 2nd-order (PLM) convergence, error ~ N^-2.  The solution
+was cross-checked by confirming it satisfies the continuity PDE to finite-difference
+truncation and the exact r*rho characteristic invariant (issue #76).  Cf. Mignone (2014)
+/ PLUTO cylindrical-advection test problem.  The harness.verify baseline is a regression
+guard only.
+
 Auto-collected by run_test_suite.py (module name contains ``_cpu``).
 """
 

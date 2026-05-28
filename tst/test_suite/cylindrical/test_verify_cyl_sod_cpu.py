@@ -11,6 +11,17 @@ radial solution must reduce to the exact PLANAR Sod Riemann solution.  The test:
     tolerance ("matches analytic"),
   * plots the profiles and saves/diffs a golden regression baseline via the harness.
 
+Oracle: Layer 1 -- analytic.  Exact Sod (1978) Riemann solution at t=0.2, computed by the
+standard Toro (2009, ch. 4) exact Riemann solver (``_exact_riemann`` below: Newton solve
+for the star-region pressure, then self-similar sampling of the rarefaction/contact/shock
+structure); the binding assertion is that the L1 error of the radial profile vs this exact
+solution is within tolerance.  Running radially at large r (r in [100,101]) keeps the
+cylindrical geometric source <1/r> ~ 1e-2 below the discretization error, so the radial
+problem reduces to the planar Sod problem the exact solver describes.  The solver's star
+state was cross-checked against the published Sod values (p*=0.30313, u*=0.92745) and an
+independent bisection root-find (issue #76).  The harness.verify baseline is a regression
+guard only.
+
 Auto-collected by run_test_suite.py (module name contains ``_cpu``).
 """
 
