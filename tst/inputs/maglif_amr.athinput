@@ -1,0 +1,102 @@
+# AthenaK input: MagLIF liner implosion on an ADAPTIVE (r,phi) grid (issue [19c]/#43).
+#
+# A 2-D r-phi (axisymmetric) driven liner implosion -- the same maglif pgen target as
+# maglif.athinput, run here on an ADAPTIVE mesh that puts the fine resolution only on the
+# dense imploding liner (the FLASH/MagLIF AMR motivation: 5 um where it is needed, vacuum
+# stays coarse).  A `min_max` density criterion refines any MeshBlock containing liner
+# material (rho > value_max) to one extra level, so the refined region tracks the liner as
+# it pinches inward DURING the run -- exercising the AMR-ready operators: the diffusive
+# refinement-boundary flux correction (#33) and the cylindrical Balsara divergence-
+# preserving prolongation for B (#38).
+#
+# The verification test (test_verify_maglif_amr_cpu.py) runs this AND the matched uniform
+# fine grid (maglif_uniform.athinput) and asserts the AMR result matches uniform within
+# tolerance, that div(B) stays at round-off across the dynamic refinement (conservation),
+# and measures the AMR speedup (fewer cells / less wall-clock than uniform).
+#
+# 2-D r-phi (nx3=1): the IC is axisymmetric so phi just replicates the radial state and the
+# axial perturbation auto-disables; the implosion is purely radial.  ADR-0004 fixes
+# (x1,x2,x3)=(r,phi,z).  Built with -D PROBLEM=maglif (a USER pgen).
+
+<comment>
+problem   = MagLIF liner implosion, ADAPTIVE mesh (div-free Balsara prolongation, #38/#43)
+reference = ADR-0004 (AMR note); Balsara, JCP 174, 614 (2001); FLASH MagLIF arXiv:2504.10760
+
+<job>
+basename  = maglif_amr   # distinct basename so the .hst does not collide with the uniform run
+
+<mesh>
+nghost    = 2
+nx1       = 64         # radial zones (root) -> 64/unit; one refined level -> 128/unit
+x1min     = 0.0        # r = 0 axis
+x1max     = 1.0        # outer radius R_out (driven boundary)
+ix1_bc    = axis       # cylindrical r=0 axisymmetric boundary (issue #16)
+ox1_bc    = user       # circuit-driven B_phi boundary (issue #21)
+
+nx2       = 4          # azimuthal (phi) zones (root); refined level -> 8 (matches uniform)
+x2min     = 0.0
+x2max     = 1.0
+ix2_bc    = periodic
+ox2_bc    = periodic
+
+nx3       = 1          # axial (z) zones: 2-D r-phi run (axisymmetric, no axial perturbation)
+x3min     = 0.0
+x3max     = 1.0
+ix3_bc    = periodic
+ox3_bc    = periodic
+
+<coord>
+system    = cylindrical  # (x1,x2,x3) = (r,phi,z)
+
+<meshblock>
+nx1       = 8          # cells per MeshBlock, X1-dir (-> 8 root blocks in r)
+nx2       = 4          # cells per MeshBlock, X2-dir (-> 1 block in phi; 8 root MeshBlocks)
+nx3       = 1
+
+<mesh_refinement>
+refinement       = adaptive  # adaptive mesh refinement
+num_levels       = 2         # root + one refined level (effective 128 radial / 8 azimuthal)
+max_nmb_per_rank = 256       # ceiling on MeshBlocks per rank
+
+<amr_criterion1>
+method      = min_max  # refine a block when it holds dense liner material; derefine vacuum
+variable    = mhd_w_d  # rest-frame density
+value_max   = 0.3      # threshold between fuel/vacuum (<=0.05) and liner (1.0); tracks liner
+
+<time>
+evolution  = dynamic
+integrator = rk2
+cfl_number = 0.3
+nlim       = 2000      # cycle limit (tlim binds first; ample for dynamic re-refinement)
+tlim       = 0.4       # implode the liner partway (clear inward trajectory, not stagnation)
+ndiag      = 200
+
+<mhd>
+eos         = ideal
+reconstruct = plm
+rsolver     = hlld
+gamma       = 1.6666666666666667
+dfloor      = 1.0e-4
+pfloor      = 1.0e-6
+
+<problem>
+current_mode     = driven       # driven (mu0*I/2*pi*r) B_phi outer boundary
+current_waveform = constant     # constant load current -> B_phi nonzero from t=0 (immediate drive)
+i0               = 1.0          # load current (code units)
+t_rise           = 1.0          # ramp time (unused for the constant waveform)
+mu0              = 1.0          # code-unit permeability (Heaviside-Lorentz: 1)
+r_fuel           = 0.4          # fuel/liner interface radius
+r_liner          = 0.6          # liner/vacuum interface (current sheet)
+d_fuel           = 0.05         # fuel (inner gas) density
+d_liner          = 1.0          # liner (dense shell) density
+d_vac            = 0.01         # vacuum (outer gap) density
+p0               = 1.0e-3       # uniform (low) thermal pressure
+bz0              = 0.1          # axial premagnetization field B_z
+perturbation     = none         # clean radial implosion (2-D r-phi; no axial seeding)
+user_hist        = true         # enroll the conservation / div(B) / cell-count history
+
+<output1>
+file_type      = hst   # history (reduction) output: AMR/divergence-safe (unlike a gridded
+variable       = mhd   # derived-variable dump); writes maglif_amr.user.hst
+user_hist_only = true  # only the user conservation columns (time, mass, etot, ..., ncells)
+dt             = 0.02  # frequent rows; the test compares the trajectory + scans div(B)

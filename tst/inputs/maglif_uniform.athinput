@@ -1,0 +1,87 @@
+# AthenaK input: MagLIF liner implosion on a UNIFORM fine grid (issue [19c]/#43).
+#
+# The matched uniform-grid reference for the AMR run (maglif_amr.athinput): the SAME 2-D
+# r-phi (axisymmetric) driven liner implosion, but with a uniform mesh at the AMR run's
+# MAXIMUM (refined) resolution everywhere -- nx1=128 radial (= AMR root 64 x 2) and nx2=8
+# azimuthal (= AMR root 4 x 2).  The two runs therefore resolve the liner identically; the
+# only difference is that AMR keeps the vacuum/fuel coarse, so AMR uses fewer cells.
+#
+# The verification test (test_verify_maglif_amr_cpu.py) compares this uniform result with
+# the AMR result (they must agree within tolerance) and reports the AMR cell-count / wall-
+# clock speedup.  Because the IC is axisymmetric the solution is independent of the phi
+# resolution, so nx2 only sets cost, not the radial physics -- the comparison is fair.
+#
+# Built with -D PROBLEM=maglif (a USER pgen).
+
+<comment>
+problem   = MagLIF liner implosion, UNIFORM fine reference grid (issue [19c]/#43)
+reference = ADR-0004 (AMR note); FLASH MagLIF arXiv:2504.10760
+
+<job>
+basename  = maglif_uniform   # distinct basename so the .hst does not collide with the AMR run
+
+<mesh>
+nghost    = 2
+nx1       = 128        # radial zones (uniform fine = AMR refined resolution everywhere)
+x1min     = 0.0        # r = 0 axis
+x1max     = 1.0        # outer radius R_out (driven boundary)
+ix1_bc    = axis       # cylindrical r=0 axisymmetric boundary (issue #16)
+ox1_bc    = user       # circuit-driven B_phi boundary (issue #21)
+
+nx2       = 8          # azimuthal (phi) zones (= AMR refined azimuthal resolution)
+x2min     = 0.0
+x2max     = 1.0
+ix2_bc    = periodic
+ox2_bc    = periodic
+
+nx3       = 1          # axial (z) zones: 2-D r-phi run (axisymmetric)
+x3min     = 0.0
+x3max     = 1.0
+ix3_bc    = periodic
+ox3_bc    = periodic
+
+<coord>
+system    = cylindrical  # (x1,x2,x3) = (r,phi,z)
+
+<meshblock>
+nx1       = 16         # cells per MeshBlock, X1-dir (-> 8 blocks in r)
+nx2       = 8          # cells per MeshBlock, X2-dir (-> 1 block in phi)
+nx3       = 1
+
+<time>
+evolution  = dynamic
+integrator = rk2
+cfl_number = 0.3
+nlim       = 2000      # cycle limit (tlim binds first) -- identical evolution window to AMR
+tlim       = 0.4       # implode the liner partway (matches maglif_amr.athinput)
+ndiag      = 200
+
+<mhd>
+eos         = ideal
+reconstruct = plm
+rsolver     = hlld
+gamma       = 1.6666666666666667
+dfloor      = 1.0e-4
+pfloor      = 1.0e-6
+
+<problem>
+current_mode     = driven       # driven (mu0*I/2*pi*r) B_phi outer boundary
+current_waveform = constant     # constant load current -> B_phi nonzero from t=0
+i0               = 1.0          # load current (code units)
+t_rise           = 1.0          # ramp time (unused for the constant waveform)
+mu0              = 1.0          # code-unit permeability (Heaviside-Lorentz: 1)
+r_fuel           = 0.4          # fuel/liner interface radius
+r_liner          = 0.6          # liner/vacuum interface (current sheet)
+d_fuel           = 0.05         # fuel (inner gas) density
+d_liner          = 1.0          # liner (dense shell) density
+d_vac            = 0.01         # vacuum (outer gap) density
+p0               = 1.0e-3       # uniform (low) thermal pressure
+bz0              = 0.1          # axial premagnetization field B_z
+perturbation     = none         # clean radial implosion (2-D r-phi; no axial seeding)
+user_hist        = true         # enroll the same conservation / div(B) / cell-count history
+
+<output1>
+file_type      = hst   # history (reduction) output -> writes maglif_uniform.user.hst
+variable       = mhd
+user_hist_only = true  # only the user conservation columns (time, mass, etot, ..., ncells)
+dt             = 0.02  # same cadence as the AMR run -> row-by-row comparable trajectories
