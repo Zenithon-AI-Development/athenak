@@ -13,7 +13,8 @@ Oracle: Layer 1 -- analytic.  The cylindrical constrained-transport curl B = cur
 built with the same r-weighted edge lengths / face areas as mhd_ct.cpp, obeys the
 finite-volume identity div(curl E) = 0 exactly; the test pins the cylindrical div(B) to
 machine precision (closed-form CT identity).  This unit test is the method-correctness
-anchor for the Layer-2 test_verify_cyl_field_loop (advected div(B) snapshot; TODO #83).
+anchor for the Layer-2 test_verify_cyl_field_loop (advected div(B) snapshot; grounded
+in #83).
 """
 
 # Modules
