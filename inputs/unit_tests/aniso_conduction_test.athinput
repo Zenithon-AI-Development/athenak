@@ -1,0 +1,59 @@
+# AthenaK input file for the anisotropic Braginskii conduction unit test
+# (unit_tests/aniso_conduction_test).
+#
+# Minimal harness driver: all checks run in ProblemGenerator::UserProblem and the program
+# exits (nlim = tlim = 0) before any time integration.  A 2D Cartesian [-1,1]^2 mesh gives
+# the Parrish-Stone ring test its azimuthal field geometry; the operator's conserved field
+# and cell-centred B are local work arrays sized from the hydro u0 array, so the <hydro>
+# block here is only for array sizing + the ideal-gas gamma (no <hydro> conductivity used).
+#
+# <time> parabolic_integrator = sts selects the RKL2 super-time-stepping backend (ADR-0001).
+
+<comment>
+problem   = anisotropic Braginskii conduction (AnisotropicConductionOperator + RKL2 STS)
+
+<job>
+basename  = aniso_conduction_test   # problem ID: basename of output filenames
+
+<mesh>
+nghost    = 2          # Number of ghost cells
+nx1       = 40         # Number of zones in X1-direction
+x1min     = -1.0       # minimum value of X1
+x1max     = 1.0        # maximum value of X1
+ix1_bc    = outflow    # inner-X1 boundary flag
+ox1_bc    = outflow    # outer-X1 boundary flag
+
+nx2       = 40         # Number of zones in X2-direction
+x2min     = -1.0       # minimum value of X2
+x2max     = 1.0        # maximum value of X2
+ix2_bc    = outflow    # inner-X2 boundary flag
+ox2_bc    = outflow    # outer-X2 boundary flag
+
+nx3       = 1          # Number of zones in X3-direction
+x3min     = -0.5       # minimum value of X3
+x3max     = 0.5        # maximum value of X3
+ix3_bc    = periodic   # inner-X3 boundary flag
+ox3_bc    = periodic   # outer-X3 boundary flag
+
+<meshblock>
+nx1       = 40         # Number of cells in each MeshBlock, X1-dir
+nx2       = 40         # Number of cells in each MeshBlock, X2-dir
+nx3       = 1          # Number of cells in each MeshBlock, X3-dir
+
+<time>
+evolution            = dynamic   # dynamic/kinematic/static
+integrator           = rk2       # hyperbolic time integration algorithm
+parabolic_integrator = sts       # operator-split parabolic backend (RKL2 STS)
+cfl_number           = 0.3       # The Courant, Friedrichs, & Lewy (CFL) Number
+nlim                 = 0         # cycle limit (0: do no integration, just run UserProblem)
+tlim                 = 0         # time limit
+ndiag                = 1         # cycles between diagnostic output
+
+<hydro>
+eos          = ideal   # EOS type
+reconstruct  = plm     # spatial reconstruction method
+rsolver      = llf     # Riemann-solver to be used
+gamma        = 1.66666666666666667   # gamma = C_p/C_v
+
+<problem>
+pgen_name = aniso_conduction_test  # (ignored: built with -D PROBLEM=unit_tests/...)
