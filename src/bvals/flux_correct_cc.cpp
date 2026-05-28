@@ -296,6 +296,34 @@ TaskStatus MeshBoundaryValuesCC::RecvAndUnpackFluxCC(DvceFaceFld5D<Real> &flx) {
 }
 
 //----------------------------------------------------------------------------------------
+//! \fn TaskStatus MeshBoundaryValuesCC::CorrectFlux()
+//! \brief Synchronous (blocking) bundle of the fine->coarse flux correction for a
+//! cell-centered flux array.  The hydro/MHD modules split this across the driver tasklist
+//! (InitFluxRecv -> SendFlux -> RecvFlux -> ClearFlux*) so async MPI completes between
+//! tasks.  The operator-split parabolic operators (FLD #17, anisotropic conduction #18,
+//! resistive B_phi #27) instead recompute their flux EVERY RKL2 substep INSIDE
+//! OperatorAction, so they need the correction to complete in one call: this posts the
+//! receives, restricts+sends the fine fluxes, busy-waits the receives to completion, then
+//! waits the sends.  On a single rank (serial / the CPU regression gate) the MPI sections
+//! compile out, PackAndSendFluxCC copies the restricted fine fluxes directly into the
+//! coarser neighbor's recv buffer, and RecvAndUnpackFluxCC overwrites the coarse-side
+//! boundary face flux with that restricted value in one pass -- so the coarse cell update
+//! sees the same flux as the sum of the fine faces and the diffused quantity is conserved
+//! across the refinement boundary to round-off.  No-op when the mesh is single-level
+//! (no fine/coarse faces), so a uniform-grid run is byte-identical.
+
+TaskStatus MeshBoundaryValuesCC::CorrectFlux(DvceFaceFld5D<Real> &flx) {
+  int nvar = flx.x1f.extent_int(1);
+  InitFluxRecv(nvar);
+  PackAndSendFluxCC(flx);
+  // busy-wait the (non-blocking, under MPI) receives to complete; serial finishes at once
+  while (RecvAndUnpackFluxCC(flx) == TaskStatus::incomplete) {}
+  ClearFluxRecv();
+  ClearFluxSend();
+  return TaskStatus::complete;
+}
+
+//----------------------------------------------------------------------------------------
 //! \fn  void BoundaryValuesCC::InitRecvFlux
 //! \brief Posts non-blocking receives (with MPI) for boundary communication of fluxes of
 //! cell-centered variables, which are communicated at FACES of MeshBlocks at the SAME

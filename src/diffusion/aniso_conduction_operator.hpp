@@ -67,6 +67,7 @@
 
 // forward declarations
 class MeshBlockPack;
+class MeshBoundaryValuesCC;
 
 namespace anisocond {
 
@@ -173,7 +174,7 @@ class AnisotropicConductionOperator : public parabolic::ParabolicOperator {
   AnisotropicConductionOperator(MeshBlockPack *pp, const DvceArray5D<Real> &cons,
                                 const DvceArray5D<Real> &bcc, Real gamma,
                                 const anisocond::AnisoCondParams &par);
-  ~AnisotropicConductionOperator() = default;
+  ~AnisotropicConductionOperator();
 
   //! \brief M(u): anisotropic heat-flux divergence into rhs_out(IEN); 0 in all other
   //! conserved components (frozen background).  Reads ghost zones of u_in and bcc.
@@ -194,6 +195,9 @@ class AnisotropicConductionOperator : public parabolic::ParabolicOperator {
   Real gamma_;                   // adiabatic index, for T = (gamma-1) eint/rho
   anisocond::AnisoCondParams par_;  // physical + unit-conversion parameters
   DvceFaceFld5D<Real> hflx_;     // scratch face-centred heat flux
+  // conservative fine->coarse flux correction at AMR/SMR level boundaries (#33); built
+  // only on a multilevel mesh, nullptr otherwise -> no-op on a uniform grid.
+  MeshBoundaryValuesCC *pbval_flux_;
 };
 
 #endif  // DIFFUSION_ANISO_CONDUCTION_OPERATOR_HPP_

@@ -18,6 +18,7 @@
 #include "coordinates/coordinates.hpp"
 #include "coordinates/coord_geometry.hpp"
 #include "coordinates/cell_locations.hpp"
+#include "bvals/bvals.hpp"
 #include "diffusion/aniso_conduction_operator.hpp"
 
 //----------------------------------------------------------------------------------------
@@ -46,7 +47,22 @@ AnisotropicConductionOperator::AnisotropicConductionOperator(MeshBlockPack *pp,
   gamma_(gamma),
   par_(par),
   hflx_("aniso_cond_hflx", cons.extent_int(0), cons.extent_int(1),
-        cons.extent_int(2), cons.extent_int(3), cons.extent_int(4)) {
+        cons.extent_int(2), cons.extent_int(3), cons.extent_int(4)),
+  pbval_flux_(nullptr) {
+  // On a multilevel (SMR/AMR) mesh, register the heat flux for the conservative
+  // fine->coarse flux correction (#33), so conducted energy conserves across refinement
+  // boundaries.  (pin is unused by the boundary-values constructor.)
+  if (pp->pmesh->multilevel) {
+    pbval_flux_ = new MeshBoundaryValuesCC(pp, nullptr, false);
+    pbval_flux_->InitializeBuffers(hflx_.x1f.extent_int(1));
+  }
+}
+
+//----------------------------------------------------------------------------------------
+//! \brief AnisotropicConductionOperator destructor.
+
+AnisotropicConductionOperator::~AnisotropicConductionOperator() {
+  if (pbval_flux_ != nullptr) { delete pbval_flux_; }
 }
 
 //----------------------------------------------------------------------------------------
@@ -245,6 +261,11 @@ void AnisotropicConductionOperator::OperatorAction(const DvceArray5D<Real> &u_in
       flx3(m,IEN,ke+1,j,i) = 0.0;
     });
   }
+
+  // conservative fine->coarse flux correction at SMR/AMR level boundaries (#33): replace
+  // the coarse-side boundary face flux with the restricted (area-averaged) fine flux.
+  // No-op on a uniform mesh.
+  if (pbval_flux_ != nullptr) { pbval_flux_->CorrectFlux(hflx_); }
 
   // dE/dt = -div(F): difference the face heat fluxes through the geometry accessors,
   // exactly as the hydro/MHD RKUpdate and ConductionOperator do.
