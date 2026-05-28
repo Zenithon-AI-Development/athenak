@@ -80,6 +80,14 @@ class Coordinates {
   // hydro variables (uflx.x1f), used for the angular-momentum-conserving azimuthal term.
   void CoordSrcTermsHydroCyl(const DvceArray5D<Real> &w0, const DvceArray5D<Real> &flx1,
                              const EOS_Data &eos, const Real dt, DvceArray5D<Real> &u0);
+  // cylindrical (curvilinear) MHD geometric source terms (ADR-0004, issue #16): the
+  // radial centrifugal+pressure source augmented with the magnetic stress
+  // 1/2(B_r^2 - B_phi^2 + B_z^2) (the -B_phi^2 hoop stress), and the angular-momentum-
+  // conserving azimuthal source.  `bcc` is the cell-centered field; `flx1` is the x1-flux
+  // of the conserved MHD variables (uflx.x1f); its IM2 entry carries the Maxwell stress.
+  void CoordSrcTermsMHDCyl(const DvceArray5D<Real> &w0, const DvceArray5D<Real> &bcc,
+                           const DvceArray5D<Real> &flx1, const EOS_Data &eos,
+                           const Real dt, DvceArray5D<Real> &u0);
   void SetExcisionMasks(DvceArray4D<bool> &floor, DvceArray4D<bool> &flux);
 
   void UpdateExcisionMasks();
