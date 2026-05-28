@@ -20,6 +20,7 @@
 #include "parameter_input.hpp"
 #include "coordinates/cartesian_ks.hpp"
 #include "coordinates/cell_locations.hpp"
+#include "coordinates/coord_geometry.hpp"
 #include "geodesic-grid/geodesic_grid.hpp"
 #include "mesh/mesh.hpp"
 #include "eos/eos.hpp"
@@ -1047,14 +1048,44 @@ void BaseTypeOutput::ComputeDerivedVariable(std::string name, Mesh *pm) {
 
     auto dv = derived_var;
     auto b0 = pm->pmb_pack->pmhd->b0;
+    auto csys = pm->pmb_pack->pcoord->coord_system;
+    int nx1 = indcs.nx1;
     par_for("divb", DevExeSpace(), 0, (nmb-1), kl, ku, jl, ju, (is-ng), (ie+ng),
     KOKKOS_LAMBDA(int m, int k, int j, int i) {
-      Real divb = (b0.x1f(m,k,j,i+1) - b0.x1f(m,k,j,i))/size.d_view(m).dx1;
-      if (multi_d) {
-        divb += (b0.x2f(m,k,j+1,i) - b0.x2f(m,k,j,i))/size.d_view(m).dx2;
-      }
-      if (three_d) {
-        divb += (b0.x3f(m,k+1,j,i) - b0.x3f(m,k,j,i))/size.d_view(m).dx3;
+      Real divb;
+      if (csys == CoordSystem::cartesian) {
+        divb = (b0.x1f(m,k,j,i+1) - b0.x1f(m,k,j,i))/size.d_view(m).dx1;
+        if (multi_d) {
+          divb += (b0.x2f(m,k,j+1,i) - b0.x2f(m,k,j,i))/size.d_view(m).dx2;
+        }
+        if (three_d) {
+          divb += (b0.x3f(m,k+1,j,i) - b0.x3f(m,k,j,i))/size.d_view(m).dx3;
+        }
+      } else {
+        // Curvilinear (e.g. cylindrical, ADR-0004): the finite-volume divergence
+        // (1/V)[A_{i+1/2}B_{i+1/2} - A_{i-1/2}B_{i-1/2} + ...], i.e. the quantity that
+        // constrained transport preserves to round-off.  The Cartesian face areas all
+        // cancel the volume back to the plain (B_{i+1}-B_i)/dx form above, but in
+        // cylindrical the r-weighting of the radial/axial faces does not -- so the
+        // legacy Cartesian formula would report a spurious O(B/r) "divergence".
+        Real dx1 = size.d_view(m).dx1;
+        Real dx2 = size.d_view(m).dx2;
+        Real dx3 = size.d_view(m).dx3;
+        Real x1min = size.d_view(m).x1min;
+        Real x1max = size.d_view(m).x1max;
+        Real rm = LeftEdgeX(i  -is, nx1, x1min, x1max);
+        Real rp = LeftEdgeX(i+1-is, nx1, x1min, x1max);
+        Real vol = CellVolume(csys, dx1, dx2, dx3, rm, rp);
+        divb = (Face1Area(csys, dx2, dx3, rp)*b0.x1f(m,k,j,i+1)
+              - Face1Area(csys, dx2, dx3, rm)*b0.x1f(m,k,j,i))/vol;
+        if (multi_d) {
+          divb += Face2Area(csys, dx1, dx3)
+                  *(b0.x2f(m,k,j+1,i) - b0.x2f(m,k,j,i))/vol;
+        }
+        if (three_d) {
+          divb += Face3Area(csys, dx1, dx2, rm, rp)
+                  *(b0.x3f(m,k+1,j,i) - b0.x3f(m,k,j,i))/vol;
+        }
       }
       dv(m,i_dv,k,j,i) = divb;
     });

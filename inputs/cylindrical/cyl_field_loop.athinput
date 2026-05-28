@@ -1,0 +1,80 @@
+# AthenaK input: advected cylindrical (r,phi) field loop (ADR-0004 verification, #22).
+#
+# A weak magnetic field loop -- a circle in PHYSICAL (x,y) space centred off the axis at
+# (r,phi)=(1,0) -- is laid down from a z-directed vector potential and advected by a rigid
+# azimuthal rotation v_phi = omega*r on a full-annulus 2D (r,phi) polar grid.  This is the
+# field-loop div(B) verification slice: the cylindrical constrained-transport / r-weighted
+# EMF (issue #16) must keep div(B) at round-off as the loop is advected.  The verification
+# test (test_verify_cyl_field_loop_cpu.py) outputs the cylindrical finite-volume div(B)
+# derived variable, asserts it stays at round-off, and saves a regression baseline.
+
+<comment>
+problem   = advected cylindrical (r,phi) field loop (div-free CT)
+reference = Gardiner & Stone, JCP 205, 509 (2005); ADR-0004 (cylindrical MHD)
+
+<job>
+basename  = cyl_field_loop  # problem ID: basename of output filenames
+
+<mesh>
+nghost    = 2          # Number of ghost cells
+nx1       = 64         # radial zones
+x1min     = 0.5        # r_min (off-axis; loop stays interior under rotation)
+x1max     = 1.5        # r_max
+ix1_bc    = outflow    # inner radial boundary
+ox1_bc    = outflow    # outer radial boundary
+
+nx2       = 128        # azimuthal (phi) zones (full annulus)
+x2min     = -3.14159265358979  # phi_min = -pi
+x2max     =  3.14159265358979  # phi_max = +pi
+ix2_bc    = periodic   # phi boundary (full circle)
+ox2_bc    = periodic   # phi boundary
+
+nx3       = 1          # axial (z) zones (2D r-phi run)
+x3min     = -0.5       # z_min
+x3max     = 0.5        # z_max
+ix3_bc    = periodic   # z boundary
+ox3_bc    = periodic   # z boundary
+
+<coord>
+system    = cylindrical  # (x1,x2,x3) = (r,phi,z)
+
+<meshblock>
+nx1       = 32         # cells per MeshBlock, X1-dir (-> 2x2 = 4 blocks)
+nx2       = 64         # cells per MeshBlock, X2-dir
+nx3       = 1          # cells per MeshBlock, X3-dir
+
+<time>
+evolution  = dynamic   # dynamic/kinematic/static
+integrator = rk2       # time integration algorithm
+cfl_number = 0.3       # CFL number
+nlim       = -1        # cycle limit
+tlim       = 0.5       # time limit (loop advects azimuthally, stays interior)
+ndiag      = 200       # cycles between diagnostic output
+
+<mhd>
+eos         = ideal    # EOS type
+reconstruct = plm      # spatial reconstruction method
+rsolver     = hlld     # Riemann solver
+gamma       = 1.666666666666667  # gamma = C_p/C_v
+
+<problem>
+pgen_name = cyl_field_loop  # (informational; user pgen selected at build via -D PROBLEM)
+d0    = 1.0            # uniform density
+press = 1.0            # uniform gas pressure
+amp   = 1.0e-3         # vector-potential amplitude (weak field)
+rad   = 0.3            # loop radius (physical)
+rc    = 1.0            # loop centre radius
+phic  = 0.0            # loop centre azimuth
+omega = 0.5            # rigid azimuthal rotation rate (subsonic)
+
+<output1>
+file_type = bin        # binary dump (full 2D field)
+variable  = mhd_divb   # cylindrical finite-volume divergence of B
+id        = divb       # file id -> bin/cyl_field_loop.divb.XXXXX.bin
+dt        = 0.5        # output at t=0 (00000) and t=tlim (00001)
+
+<output2>
+file_type = bin        # binary dump
+variable  = mhd_bcc    # cell-centred magnetic field (for the loop plot/baseline)
+id        = bcc        # file id -> bin/cyl_field_loop.bcc.XXXXX.bin
+dt        = 0.5        # output at t=0 (00000) and t=tlim (00001)

@@ -1,0 +1,78 @@
+# AthenaK input: MHD cylindrical linear-wave convergence (ADR-0004 verification, #22).
+#
+# A fast magnetosonic wave propagating RADIALLY at LARGE radius (r in [1e4, 1e4+1]) in
+# cylindrical coordinates.  The background is uniform rho, p, and a PERPENDICULAR axial
+# field B_z (bx0=by0=0): this is an exact cylindrical equilibrium (B_r=B_phi=0, so the
+# radial geometric source vanishes) and is divergence-free for any B_z(r) (dB_z/dz=0 in a
+# 1-D radial run), so the wave is not contaminated by a spurious background drift or a
+# div(B) error.  At large r the geometric source <1/r> ~ 1e-4 acts on the 1e-6 wave only at
+# the ~1e-10 level -- far below the discretization error -- so the radial solution reduces
+# to a planar linear wave and the L1 error must converge at the scheme's 2nd-order rate.
+# The verification test (test_verify_cyl_lwave_cpu.py) runs two resolutions, asserts the
+# convergence ratio matches 2nd order, and saves a regression baseline.
+
+<comment>
+problem   = MHD cylindrical fast-wave convergence
+reference = Stone et al, ApJS 178, 137 (2008), sect 8.2; ADR-0004 (cylindrical MHD)
+
+<job>
+basename  = cyl_lwave_mhd  # problem ID: basename of output filenames
+
+<mesh>
+nghost    = 3          # Number of ghost cells
+nx1       = 64         # radial zones (overridden by the convergence test)
+x1min     = 10000.0    # r_min (large radius -> planar; FP-safe)
+x1max     = 10001.0    # r_max (one wavelength wide)
+ix1_bc    = periodic   # inner-X1 boundary flag
+ox1_bc    = periodic   # outer-X1 boundary flag
+
+nx2       = 1          # azimuthal (phi) zones
+x2min     = 0.0        # minimum value of X2
+x2max     = 1.0        # maximum value of X2
+ix2_bc    = periodic   # inner-X2 boundary flag
+ox2_bc    = periodic   # outer-X2 boundary flag
+
+nx3       = 1          # axial (z) zones
+x3min     = 0.0        # minimum value of X3
+x3max     = 1.0        # maximum value of X3
+ix3_bc    = periodic   # inner-X3 boundary flag
+ox3_bc    = periodic   # outer-X3 boundary flag
+
+<coord>
+system    = cylindrical  # (x1,x2,x3) = (r,phi,z)
+
+<meshblock>
+nx1       = 64         # cells per MeshBlock, X1-dir (overridden by the test)
+nx2       = 1          # cells per MeshBlock, X2-dir
+nx3       = 1          # cells per MeshBlock, X3-dir
+
+<mesh_refinement>
+refinement = none      # no AMR for the convergence test
+
+<time>
+evolution  = dynamic   # dynamic/kinematic/static
+integrator = rk2       # time integration algorithm
+cfl_number = 0.3       # CFL number
+nlim       = -1        # cycle limit
+tlim       = 1.0       # number of wave periods (the pgen rescales to crossing time)
+ndiag      = -1        # cycles between diagnostic output
+
+<mhd>
+eos         = ideal    # EOS type
+reconstruct = plm      # spatial reconstruction method
+rsolver     = hlld     # Riemann-solver to be used
+gamma       = 1.666666666666667  # gamma = C_p/C_v
+
+<problem>
+pgen_name = linear_wave # problem generator name (built-in)
+wave_flag = 0           # fast magnetosonic wave
+amp       = 1.0e-6      # wave amplitude (linear)
+dens      = 1.0         # density in background state
+pgas      = 0.6         # pressure in background state
+vx0       = 0.0         # background velocity
+vy0       = 0.0
+vz0       = 0.0
+bx0       = 0.0         # NO radial field (div-free + radial equilibrium)
+by0       = 0.0         # NO azimuthal field
+bz0       = 1.0         # perpendicular axial field (the only background field)
+along_x1  = true        # wave propagates along x1 (radial)

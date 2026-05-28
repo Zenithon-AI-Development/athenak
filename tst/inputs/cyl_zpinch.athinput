@@ -1,0 +1,75 @@
+# AthenaK input: static cylindrical Z-pinch equilibrium (ADR-0004 verification, issue #22).
+#
+# A purely azimuthal field B_phi(r) = b0 (r/a) exp(-(r/a)^2/2) confined by a gas-pressure
+# gradient in radial force balance, i.e. a magnetohydrostatic Z-pinch.  This is the
+# "magnoh / Z-pinch equilibrium" verification slice: it is the discriminating test of the
+# B_phi^2/r magnetic HOOP STRESS source term added in issue #16 -- a correct cylindrical
+# MHD update holds the column static (only small truncation-level radial drift), whereas a
+# wrong-sign or missing hoop stress makes it implode/explode at O(1).  Run 1-D radial; the
+# r=0 axis uses the `axis` BC, the outer radius is far enough out (B_phi ~ 0 there) for an
+# outflow BC.  See tst/test_suite/cylindrical/test_verify_cyl_zpinch_cpu.py.
+
+<comment>
+problem   = static cylindrical Z-pinch magnetohydrostatic equilibrium
+reference = Z-pinch / Bennett equilibrium; ADR-0004 (cylindrical MHD)
+
+<job>
+basename  = cyl_zpinch   # problem ID: basename of output filenames
+
+<mesh>
+nghost    = 2          # Number of ghost cells
+nx1       = 256        # radial zones
+x1min     = 0.0        # r_min (the axis)
+x1max     = 5.0        # r_max (>> a, so B_phi ~ 0 at the outer boundary)
+ix1_bc    = axis       # r=0 axisymmetric boundary
+ox1_bc    = outflow    # outer radial boundary
+
+nx2       = 1          # azimuthal (phi) zones (1 -> axisymmetric)
+x2min     = -0.5       # phi_min
+x2max     = 0.5        # phi_max
+ix2_bc    = periodic   # phi boundary
+ox2_bc    = periodic   # phi boundary
+
+nx3       = 1          # axial (z) zones
+x3min     = -0.5       # z_min
+x3max     = 0.5        # z_max
+ix3_bc    = periodic   # z boundary
+ox3_bc    = periodic   # z boundary
+
+<coord>
+system    = cylindrical  # (x1,x2,x3) = (r,phi,z)
+
+<meshblock>
+nx1       = 256        # cells per MeshBlock, X1-dir
+nx2       = 1          # cells per MeshBlock, X2-dir
+nx3       = 1          # cells per MeshBlock, X3-dir
+
+<time>
+evolution  = dynamic   # dynamic/kinematic/static
+integrator = rk2       # time integration algorithm
+cfl_number = 0.3       # CFL number
+nlim       = -1        # cycle limit
+tlim       = 0.5       # time limit (~0.65 sound-crossing of the channel scale a)
+ndiag      = 100       # cycles between diagnostic output
+
+<mhd>
+eos         = ideal    # EOS type
+reconstruct = plm      # spatial reconstruction method
+rsolver     = hlld     # Riemann solver
+gamma       = 1.666666666666667  # gamma = C_p/C_v
+
+<problem>
+pgen_name = cyl_zpinch  # (informational; user pgen selected at build via -D PROBLEM)
+d0   = 1.0             # uniform density
+p0   = 1.0             # on-axis reference pressure
+b0   = 1.0             # peak B_phi scale
+a    = 1.0             # radial scale of the current channel
+bz0  = 0.0             # uniform axial seed field
+
+<output1>
+file_type   = tab       # tabular data dump
+variable    = mhd_w_bcc # primitive variables + cell-centred B
+data_format = %24.16e   # full double precision
+dt          = 0.5       # output at t=0 (00000) and t=tlim (00001)
+slice_x2    = 0.0       # slice in x2 (phi)
+slice_x3    = 0.0       # slice in x3 (z)
