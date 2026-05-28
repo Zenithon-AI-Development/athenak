@@ -262,6 +262,13 @@ TaskStatus Hydro::HydroSrcTerms(Driver *pdrive, int stage) {
     pmy_pack->pcoord->CoordSrcTerms(w0, peos->eos_data, beta_dt, u0);
   }
 
+  // Add curvilinear (cylindrical) geometric source terms (ADR-0004, issue #14): the
+  // radial centrifugal+pressure source and the angular-momentum-conserving azimuthal
+  // source, using the x1-flux computed in the Fluxes task above.
+  if (pmy_pack->pcoord->coord_system != CoordSystem::cartesian) {
+    pmy_pack->pcoord->CoordSrcTermsHydroCyl(w0, uflx.x1f, peos->eos_data, beta_dt, u0);
+  }
+
   // Add user source terms
   if (pmy_pack->pmesh->pgen->user_srcs) {
     (pmy_pack->pmesh->pgen->user_srcs_func)(pmy_pack->pmesh, beta_dt);

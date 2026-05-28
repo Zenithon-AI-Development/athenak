@@ -29,11 +29,38 @@ Coordinates::Coordinates(ParameterInput *pin, MeshBlockPack *ppack) :
   std::string csys = pin->GetOrAddString("coord","system","cartesian");
   if (csys.compare("cartesian") == 0) {
     coord_system = CoordSystem::cartesian;
+  } else if (csys.compare("cylindrical") == 0) {
+    coord_system = CoordSystem::cylindrical;
+    // Cylindrical (ADR-0004, issue #14) currently supports Newtonian HYDRO only: the
+    // curvilinear MHD constrained-transport/hoop-stress path is issue #16, and the
+    // relativistic metric machinery is Cartesian-only.  Guard unsupported combinations
+    // rather than silently produce wrong results.
+    if (pin->DoesBlockExist("mhd")) {
+      std::cout << "### FATAL ERROR in "<< __FILE__ <<" at line " << __LINE__ << std::endl
+                << "<coord> system = 'cylindrical' with an <mhd> block is not yet "
+                << "implemented (cylindrical MHD is issue #16)." << std::endl;
+      std::exit(EXIT_FAILURE);
+    }
+    if (pin->GetOrAddBoolean("coord","special_rel",false) ||
+        pin->GetOrAddBoolean("coord","general_rel",false) ||
+        pin->DoesBlockExist("adm") || pin->DoesBlockExist("z4c")) {
+      std::cout << "### FATAL ERROR in "<< __FILE__ <<" at line " << __LINE__ << std::endl
+                << "<coord> system = 'cylindrical' is implemented for Newtonian dynamics "
+                << "only (no SR/GR)." << std::endl;
+      std::exit(EXIT_FAILURE);
+    }
+    // The radial coordinate must be non-negative (r >= 0).
+    if (pin->GetReal("mesh","x1min") < 0.0) {
+      std::cout << "### FATAL ERROR in "<< __FILE__ <<" at line " << __LINE__ << std::endl
+                << "<coord> system = 'cylindrical' requires x1min >= 0 (x1 = radius)."
+                << std::endl;
+      std::exit(EXIT_FAILURE);
+    }
   } else {
     std::cout << "### FATAL ERROR in "<< __FILE__ <<" at line " << __LINE__ << std::endl
-              << "Unsupported <coord> system = '" << csys << "'. Only 'cartesian' is "
-              << "currently implemented (cylindrical/spherical added in later issues)."
-              << std::endl;
+              << "Unsupported <coord> system = '" << csys << "'. Only 'cartesian' and "
+              << "'cylindrical' are currently implemented (spherical added in a later "
+              << "issue)." << std::endl;
     std::exit(EXIT_FAILURE);
   }
 
@@ -362,6 +389,61 @@ void Coordinates::CoordSrcTerms(const DvceArray5D<Real> &prim,
     cons(m,IM1,k,j,i) += dt * s_1;
     cons(m,IM2,k,j,i) += dt * s_2;
     cons(m,IM3,k,j,i) += dt * s_3;
+  });
+
+  return;
+}
+
+//----------------------------------------------------------------------------------------
+//! \fn Coordinates::CoordSrcTermsHydroCyl()
+//! \brief Cylindrical (curvilinear) geometric source terms for Newtonian hydro
+//! (ADR-0004, issue #14).  Added to the partially-updated conserved variables, computed
+//! from primitives `w0` and the x1-flux `flx1` of the conserved variables:
+//!
+//!   radial:    S_1 = <1/r>(rho v_phi^2 + p)            [centrifugal + pressure]
+//!   azimuthal: S_2 = -CoordSrc2Coeff*(rm*F_l + rp*F_r) [re-symmetrized, F = x1-flux of
+//!                                                        rho v_phi (=IM2)]
+//!
+//! <1/r> = CoordSrc1Coeff uses the SAME 1/2(rp^2-rm^2) denominator as FluxDivX1, so a
+//! uniform-pressure static state is held to round-off.  The azimuthal form conserves the
+//! angular momentum r*(rho v_phi) to machine precision (Athena++/Skinner-Ostriker).
+
+void Coordinates::CoordSrcTermsHydroCyl(const DvceArray5D<Real> &w0,
+                                        const DvceArray5D<Real> &flx1,
+                                        const EOS_Data &eos, const Real dt,
+                                        DvceArray5D<Real> &cons) {
+  auto &indcs = pmy_pack->pmesh->mb_indcs;
+  int is = indcs.is, ie = indcs.ie;
+  int js = indcs.js, je = indcs.je;
+  int ks = indcs.ks, ke = indcs.ke;
+  int nx1 = indcs.nx1;
+  auto &size = pmy_pack->pmb->mb_size;
+  auto csys = coord_system;
+  bool is_ideal = eos.is_ideal;
+  Real gm1 = eos.gamma - 1.0;
+  Real iso_cs = eos.iso_cs;
+  int nmb1 = pmy_pack->nmb_thispack - 1;
+
+  par_for("coord_src_cyl", DevExeSpace(), 0, nmb1, ks, ke, js, je, is, ie,
+  KOKKOS_LAMBDA(const int m, const int k, const int j, const int i) {
+    Real x1min = size.d_view(m).x1min;
+    Real x1max = size.d_view(m).x1max;
+    Real rm = LeftEdgeX(i-is,   nx1, x1min, x1max);  // r at i-1/2 face
+    Real rp = LeftEdgeX(i+1-is, nx1, x1min, x1max);  // r at i+1/2 face
+
+    Real rho  = w0(m,IDN,k,j,i);
+    Real vphi = w0(m,IVY,k,j,i);
+    Real pgas = (is_ideal) ? gm1*w0(m,IEN,k,j,i) : iso_cs*iso_cs*rho;
+
+    // radial centrifugal + pressure source
+    Real src1 = CoordSrc1Coeff(csys, rm, rp)*(rho*vphi*vphi + pgas);
+    cons(m,IM1,k,j,i) += dt*src1;
+
+    // azimuthal source (angular-momentum-conserving, re-symmetrized x1-flux of rho v_phi)
+    Real fl = flx1(m,IM2,k,j,i);
+    Real fr = flx1(m,IM2,k,j,i+1);
+    Real src2 = CoordSrc2Coeff(csys, rm, rp)*(rm*fl + rp*fr);
+    cons(m,IM2,k,j,i) -= dt*src2;
   });
 
   return;

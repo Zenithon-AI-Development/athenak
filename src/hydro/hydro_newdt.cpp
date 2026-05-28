@@ -18,6 +18,7 @@
 #include "eos/eos.hpp"
 #include "coordinates/coordinates.hpp"
 #include "coordinates/coord_geometry.hpp"
+#include "coordinates/cell_locations.hpp"
 #include "hydro.hpp"
 #include "diffusion/conduction.hpp"
 #include "srcterms/srcterms.hpp"
@@ -66,10 +67,14 @@ TaskStatus Hydro::NewTimeStep(Driver *pdrive, int stage) {
       k += ks;
       j += js;
 
+      Real x1v = 0.0;  // cell-center radius; only needed off the Cartesian path
+      if (csys != CoordSystem::cartesian) {
+        x1v = CellCenterX(i-is, nx1, mbsize.d_view(m).x1min, mbsize.d_view(m).x1max);
+      }
       min_dt1 = fmin((CenterWidth1(csys, mbsize.d_view(m).dx1)/fabs(w0_(m,IVX,k,j,i))),
                      min_dt1);
-      min_dt2 = fmin((CenterWidth2(csys, mbsize.d_view(m).dx2)/fabs(w0_(m,IVY,k,j,i))),
-                     min_dt2);
+      min_dt2 = fmin((CenterWidth2(csys, mbsize.d_view(m).dx2, x1v)
+                      /fabs(w0_(m,IVY,k,j,i))), min_dt2);
       min_dt3 = fmin((CenterWidth3(csys, mbsize.d_view(m).dx3)/fabs(w0_(m,IVZ,k,j,i))),
                      min_dt3);
     }, Kokkos::Min<Real>(dt1), Kokkos::Min<Real>(dt2),Kokkos::Min<Real>(dt3));
@@ -118,8 +123,12 @@ TaskStatus Hydro::NewTimeStep(Driver *pdrive, int stage) {
         max_dv2 = fabs(w0_(m,IVY,k,j,i)) + cs;
         max_dv3 = fabs(w0_(m,IVZ,k,j,i)) + cs;
       }
+      Real x1v = 0.0;  // cell-center radius; only needed off the Cartesian path
+      if (csys != CoordSystem::cartesian) {
+        x1v = CellCenterX(i-is, nx1, mbsize.d_view(m).x1min, mbsize.d_view(m).x1max);
+      }
       min_dt1 = fmin((CenterWidth1(csys, mbsize.d_view(m).dx1)/max_dv1), min_dt1);
-      min_dt2 = fmin((CenterWidth2(csys, mbsize.d_view(m).dx2)/max_dv2), min_dt2);
+      min_dt2 = fmin((CenterWidth2(csys, mbsize.d_view(m).dx2, x1v)/max_dv2), min_dt2);
       min_dt3 = fmin((CenterWidth3(csys, mbsize.d_view(m).dx3)/max_dv3), min_dt3);
     }, Kokkos::Min<Real>(dt1), Kokkos::Min<Real>(dt2),Kokkos::Min<Real>(dt3));
   }

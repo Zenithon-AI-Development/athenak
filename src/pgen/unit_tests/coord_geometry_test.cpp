@@ -110,6 +110,71 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   test.CheckNear(h_vals(ID2), (f2r-f2l)/dx2, 0.0, 0.0, "FluxDivX2 == legacy (Fr-Fl)/dx2");
   test.CheckNear(h_vals(ID3), (f3r-f3l)/dx3, 0.0, 0.0, "FluxDivX3 == legacy (Fr-Fl)/dx3");
 
+  // ======================================================================================
+  // CYLINDRICAL accessors (issue #14): coordinates (x1,x2,x3)=(r,phi,z).  Evaluated with
+  // explicit face radii rm,rp and cell-center radius x1v; the analytic factors checked
+  // directly (the literal CoordSystem::cylindrical is passed -- no cylindrical mesh).
+  const CoordSystem cyl = CoordSystem::cylindrical;
+  const Real rm = 2.0, rp = 2.5;            // left/right radial face radii (dr=dx1=0.5)
+  const Real x1v = 0.5*(rm + rp);           // arithmetic-mean cell-center radius = 2.25
+  const Real half_dr2 = 0.5*(rp*rp - rm*rm);  // 1/2(rp^2-rm^2), the radial volume factor
+
+  enum {CVOL=0, CA1, CA2, CA3, CL2, CCW2, CS1, CS2, CD1, CD2, CDBAL, NCVAL};
+  DvceArray1D<Real> d_cvals("coord_geom_cyl_vals", NCVAL);
+  auto h_cvals = Kokkos::create_mirror_view(d_cvals);
+
+  // A uniform radial flux F=Cuni on both faces: its conservative divergence must equal
+  // Cuni*<1/r> (= Cuni*CoordSrc1Coeff).  This is the static-equilibrium balance property
+  // that keeps a uniform-pressure cylindrical state from drifting (issue #14 criterion).
+  const Real Cuni = 5.0;
+
+  par_for("coord_geom_cyl_fill", DevExeSpace(), 0, 0, KOKKOS_LAMBDA(const int) {
+    d_cvals(CVOL) = CellVolume(cyl, dx1, dx2, dx3, rm, rp);
+    d_cvals(CA1)  = Face1Area(cyl, dx2, dx3, rp);
+    d_cvals(CA2)  = Face2Area(cyl, dx1, dx3);
+    d_cvals(CA3)  = Face3Area(cyl, dx1, dx2, rm, rp);
+    d_cvals(CL2)  = Edge2Length(cyl, dx2, rp);
+    d_cvals(CCW2) = CenterWidth2(cyl, dx2, x1v);
+    d_cvals(CS1)  = CoordSrc1Coeff(cyl, rm, rp);
+    d_cvals(CS2)  = CoordSrc2Coeff(cyl, rm, rp);
+    d_cvals(CD1)  = FluxDivX1(cyl, f1l, f1r, dx1, rm, rp);
+    d_cvals(CD2)  = FluxDivX2(cyl, f2l, f2r, dx2, x1v);
+    // uniform-flux radial divergence == Cuni*<1/r>
+    d_cvals(CDBAL) = FluxDivX1(cyl, Cuni, Cuni, dx1, rm, rp)
+                     - Cuni*CoordSrc1Coeff(cyl, rm, rp);
+  });
+  Kokkos::deep_copy(h_cvals, d_cvals);
+
+  // (6) Cylindrical cell volume / face areas are the annular metric factors.
+  test.CheckNear(h_cvals(CVOL), half_dr2*dx2*dx3, 1.0e-14, 0.0,
+                 "cyl CellVolume == 1/2(rp^2-rm^2)*dx2*dx3");
+  test.CheckNear(h_cvals(CA1), rp*dx2*dx3, 1.0e-14, 0.0, "cyl Face1Area == rp*dx2*dx3");
+  test.CheckNear(h_cvals(CA2), dx1*dx3, 0.0, 0.0, "cyl Face2Area == dx1*dx3");
+  test.CheckNear(h_cvals(CA3), half_dr2*dx2, 1.0e-14, 0.0,
+                 "cyl Face3Area == 1/2(rp^2-rm^2)*dx2");
+
+  // (7) Azimuthal edge length r*dphi and the near-axis CFL width x1v*dphi.
+  test.CheckNear(h_cvals(CL2), rp*dx2, 1.0e-14, 0.0, "cyl Edge2Length == rp*dx2");
+  test.CheckNear(h_cvals(CCW2), x1v*dx2, 1.0e-14, 0.0, "cyl CenterWidth2 == x1v*dx2");
+
+  // (8) Geometric source coefficients: volume-averaged <1/r> and the angular-momentum
+  // re-symmetrization factor 2/(rp+rm)^2.
+  test.CheckNear(h_cvals(CS1), (rp-rm)/half_dr2, 1.0e-14, 0.0,
+                 "cyl CoordSrc1Coeff == (rp-rm)/[1/2(rp^2-rm^2)]");
+  test.CheckNear(h_cvals(CS2), 2.0/((rp+rm)*(rp+rm)), 1.0e-14, 0.0,
+                 "cyl CoordSrc2Coeff == 2/(rp+rm)^2");
+
+  // (9) Cylindrical flux divergences match the analytic curvilinear forms.
+  test.CheckNear(h_cvals(CD1), (rp*f1r - rm*f1l)/half_dr2, 1.0e-13, 0.0,
+                 "cyl FluxDivX1 == (rp*Fr-rm*Fl)/[1/2(rp^2-rm^2)]");
+  test.CheckNear(h_cvals(CD2), (f2r-f2l)/(x1v*dx2), 1.0e-13, 0.0,
+                 "cyl FluxDivX2 == (Fr-Fl)/(x1v*dx2)");
+
+  // (10) Static-equilibrium balance: a uniform radial flux gives divergence = flux*<1/r>,
+  // so the pressure flux divergence is cancelled by the radial geometric source.
+  test.CheckNear(h_cvals(CDBAL), 0.0, 1.0e-13, 0.0,
+                 "cyl uniform-flux FluxDivX1 balances Cuni*CoordSrc1Coeff");
+
   // Print the summary and exit nonzero if any check failed.
   test.Finish();
   return;
