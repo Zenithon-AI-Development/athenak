@@ -1,0 +1,84 @@
+# AthenaK input file: static cylindrical equilibrium (ADR-0004, issue #14).
+#
+# A uniform medium (rho=1, p=1, v=0) on a 1D radial grid r in [0,1] is an exact static
+# equilibrium in cylindrical coordinates: there is no body force, so the only thing that
+# could move the gas is a discretization error.  The radial flux divergence carries a
+# spurious outward "geometric pressure" (the r-face areas grow with r); the radial
+# geometric source term S_1 = <1/r> p cancels it exactly to round-off.  A correct
+# implementation therefore shows NO spurious radial drift (v_r ~ 0) after many cycles.
+#
+# Reuses the shock_tube pgen with EQUAL left/right states to lay down the uniform medium.
+# Inner-x1 (r=0) uses the axisymmetric `axis` boundary (v_r odd, all else even).
+
+<comment>
+problem   = static cylindrical equilibrium
+
+<job>
+basename  = cyl_equilibrium    # problem ID: basename of output filenames
+
+<mesh>
+nghost    = 2          # Number of ghost cells
+nx1       = 64         # radial zones
+x1min     = 0.0        # r_min (the axis)
+x1max     = 1.0        # r_max
+ix1_bc    = axis       # cylindrical r=0 axisymmetric boundary (issue #14)
+ox1_bc    = outflow    # outer radial boundary
+
+nx2       = 1          # azimuthal (phi) zones (1 -> axisymmetric)
+x2min     = -0.5       # phi_min
+x2max     = 0.5        # phi_max
+ix2_bc    = periodic   # phi boundary
+ox2_bc    = periodic   # phi boundary
+
+nx3       = 1          # axial (z) zones
+x3min     = -0.5       # z_min
+x3max     = 0.5        # z_max
+ix3_bc    = periodic   # z boundary
+ox3_bc    = periodic   # z boundary
+
+<coord>
+system    = cylindrical  # (x1,x2,x3) = (r,phi,z)
+
+<meshblock>
+nx1       = 64         # cells per MeshBlock, X1-dir
+nx2       = 1          # cells per MeshBlock, X2-dir
+nx3       = 1          # cells per MeshBlock, X3-dir
+
+<time>
+evolution  = dynamic   # dynamic/kinematic/static
+integrator = rk2       # time integration algorithm
+cfl_number = 0.4       # CFL number
+nlim       = -1        # cycle limit
+tlim       = 0.5       # time limit (many cycles)
+ndiag      = 100       # cycles between diagnostic output
+
+<hydro>
+eos         = ideal    # EOS type
+reconstruct = plm      # spatial reconstruction method
+rsolver     = hllc     # Riemann solver
+gamma       = 1.6666666666666667  # gamma = C_p/C_v = 5/3
+
+<problem>
+pgen_name = shock_tube  # problem generator name
+shock_dir = 1           # shock direction (unused: L/R states are equal)
+xshock    = 0.5         # interface position (inside [0,1]); L=R so it is uniform
+
+dl = 2.0               # density (left)
+pl = 1.5               # pressure (left); non-unit so the source/flux cancellation is a
+ul = 0.0               # v_r (left)    genuine round-off balance, not a degenerate p=1 case
+vl = 0.0               # v_phi (left)
+wl = 0.0               # v_z (left)
+
+dr = 2.0               # density (right) == left -> uniform medium
+pr = 1.5               # pressure (right)
+ur = 0.0               # v_r (right)
+vr = 0.0               # v_phi (right)
+wr = 0.0               # v_z (right)
+
+<output1>
+file_type   = tab       # tabular data dump
+variable    = hydro_w   # primitive variables
+data_format = %24.16e   # full double precision (drift is tiny)
+dt          = 0.5       # output at t=0 (00000) and t=tlim (00001)
+slice_x2    = 0.0       # slice in x2 (phi)
+slice_x3    = 0.0       # slice in x3 (z)

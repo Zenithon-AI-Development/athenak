@@ -16,8 +16,12 @@
 enum BoundaryFace {undef=-1, inner_x1, outer_x1, inner_x2, outer_x2, inner_x3, outer_x3};
 
 // identifiers for boundary conditions
+// `axis` is the cylindrical r=0 axisymmetric boundary (ADR-0004, issue #14): for hydro it
+// behaves like `reflect` (the radial velocity v_r is odd across the axis, all other
+// fields are even); cylindrical MHD (issue #16) extends it with the B_phi antisymmetric
+// ghost.
 enum class BoundaryFlag {undef=-1,block, reflect, inflow, outflow, diode, user, periodic,
-                         shear_periodic, vacuum};
+                         shear_periodic, vacuum, axis};
 
 #include <algorithm>
 #include <vector>

@@ -43,6 +43,7 @@ void MeshBoundaryValues::HydroBCs(MeshBlockPack *ppack, DualArray2D<Real> u_in,
       // apply physical boundaries to inner_x1
       switch (mb_bcs.d_view(m,BoundaryFace::inner_x1)) {
         case BoundaryFlag::reflect:
+        case BoundaryFlag::axis:  // cylindrical r=0 axis: v_r odd, others even (hydro)
           for (int i=0; i<ng; ++i) {
             if (n==(IVX)) {
               u0(m,n,k,j,is-i-1) = -u0(m,n,k,j,is+i);
@@ -82,6 +83,7 @@ void MeshBoundaryValues::HydroBCs(MeshBlockPack *ppack, DualArray2D<Real> u_in,
       // apply physical boundaries to outer_x1
       switch (mb_bcs.d_view(m,BoundaryFace::outer_x1)) {
         case BoundaryFlag::reflect:
+        case BoundaryFlag::axis:
           for (int i=0; i<ng; ++i) {
             if (n==(IVX)) {  // reflect 1-velocity
               u0(m,n,k,j,ie+i+1) = -u0(m,n,k,j,ie-i);
@@ -131,6 +133,7 @@ void MeshBoundaryValues::HydroBCs(MeshBlockPack *ppack, DualArray2D<Real> u_in,
       // apply physical boundaries to inner_x2
       switch (mb_bcs.d_view(m,BoundaryFace::inner_x2)) {
         case BoundaryFlag::reflect:
+        case BoundaryFlag::axis:
           for (int j=0; j<ng; ++j) {
             if (n==(IVY)) {  // reflect 2-velocity
               u0(m,n,k,js-j-1,i) = -u0(m,n,k,js+j,i);
@@ -170,6 +173,7 @@ void MeshBoundaryValues::HydroBCs(MeshBlockPack *ppack, DualArray2D<Real> u_in,
       // apply physical boundaries to outer_x2
       switch (mb_bcs.d_view(m,BoundaryFace::outer_x2)) {
         case BoundaryFlag::reflect:
+        case BoundaryFlag::axis:
           for (int j=0; j<ng; ++j) {
             if (n==(IVY)) {  // reflect 2-velocity
               u0(m,n,k,je+j+1,i) = -u0(m,n,k,je-j,i);
@@ -218,6 +222,7 @@ void MeshBoundaryValues::HydroBCs(MeshBlockPack *ppack, DualArray2D<Real> u_in,
     // apply physical boundaries to inner_x3
     switch (mb_bcs.d_view(m,BoundaryFace::inner_x3)) {
       case BoundaryFlag::reflect:
+      case BoundaryFlag::axis:
         for (int k=0; k<ng; ++k) {
           if (n==(IVZ)) {  // reflect 3-velocity
             u0(m,n,ks-k-1,j,i) = -u0(m,n,ks+k,j,i);
@@ -257,6 +262,7 @@ void MeshBoundaryValues::HydroBCs(MeshBlockPack *ppack, DualArray2D<Real> u_in,
     // apply physical boundaries to outer_x3
     switch (mb_bcs.d_view(m,BoundaryFace::outer_x3)) {
       case BoundaryFlag::reflect:
+      case BoundaryFlag::axis:
         for (int k=0; k<ng; ++k) {
           if (n==(IVZ)) {  // reflect 3-velocity
             u0(m,n,ke+k+1,j,i) = -u0(m,n,ke-k,j,i);
