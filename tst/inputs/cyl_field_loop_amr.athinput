@@ -1,0 +1,92 @@
+# AthenaK input: cylindrical (r,phi) field loop with ADAPTIVE MESH REFINEMENT (issue #38).
+#
+# Same divergence-free field loop as cyl_field_loop.athinput (a circle in PHYSICAL (x,y)
+# centred at (r,phi)=(1,0), laid down from a z-directed vector potential via the cylindrical
+# discrete curl), but on an ADAPTIVE 2D (r,phi) polar grid: a `location` refinement
+# criterion refines the single root MeshBlock that straddles the loop, so a fine block is
+# created from its coarse parent DURING the run by RefineFC's face-B prolongation.
+#
+# This is the issue-#38 acceptance test: the cylindrical Balsara (divergence-preserving)
+# prolongation must keep the finite-volume div(B) at ROUND-OFF across the new fine/coarse
+# refinement boundary.  With the legacy Cartesian internal-face prolongation the prolonged
+# fine field is NOT div-free under the cylindrical div(B) operator (an O(B*dr/r) residual);
+# the cylindrical flux-form prolongation makes it div-free to round-off.  The verification
+# test (test_verify_cyl_field_loop_amr_cpu.py) reads the mhd_divb derived variable and
+# asserts max|div(B)| < round-off AFTER a fine block has been created.
+
+<comment>
+problem   = cylindrical (r,phi) field loop with AMR (div-free Balsara prolongation, #38)
+reference = Balsara, JCP 174, 614 (2001); Toth & Roe, JCP 180, 736 (2002); ADR-0004
+
+<job>
+basename  = cyl_field_loop_amr  # problem ID: basename of output filenames
+
+<mesh>
+nghost    = 2          # Number of ghost cells
+nx1       = 32         # radial zones (root)
+x1min     = 0.5        # r_min (off-axis; loop stays interior)
+x1max     = 1.5        # r_max
+ix1_bc    = outflow    # inner radial boundary
+ox1_bc    = outflow    # outer radial boundary
+
+nx2       = 64         # azimuthal (phi) zones (full annulus, root)
+x2min     = -3.14159265358979  # phi_min = -pi
+x2max     =  3.14159265358979  # phi_max = +pi
+ix2_bc    = periodic   # phi boundary (full circle)
+ox2_bc    = periodic   # phi boundary
+
+nx3       = 1          # axial (z) zones (2D r-phi run)
+x3min     = -0.5       # z_min
+x3max     = 0.5        # z_max
+ix3_bc    = periodic   # z boundary
+ox3_bc    = periodic   # z boundary
+
+<coord>
+system    = cylindrical  # (x1,x2,x3) = (r,phi,z)
+
+<meshblock>
+nx1       = 16         # cells per MeshBlock, X1-dir (-> 2 blocks in r)
+nx2       = 32         # cells per MeshBlock, X2-dir (-> 2 blocks in phi; 2x2 = 4 root MBs)
+nx3       = 1          # cells per MeshBlock, X3-dir
+
+<mesh_refinement>
+refinement       = adaptive  # adaptive mesh refinement
+num_levels       = 2         # root + one refined level
+max_nmb_per_rank = 128       # ceiling on MeshBlocks per rank
+
+<amr_criterion1>
+method      = location  # refine MeshBlocks straddling a fixed position (geometric trigger)
+location_x1 = 1.2       # r of the target point (in the outer-r, phi>0 root block)
+location_x2 = 0.1       # phi of the target point (inside the loop, near its centre)
+location_rad = 0.05     # only the block overlapping [loc +/- rad] refines
+
+<time>
+evolution  = dynamic   # dynamic time evolution (needed for the AMR check to run)
+integrator = rk2       # time integration algorithm
+cfl_number = 0.3       # CFL number
+nlim       = 30        # cycle limit (enough for the location criterion to refine)
+tlim       = 1.0       # time limit (not reached; nlim binds)
+ndiag      = 100       # cycles between diagnostic output
+
+<mhd>
+eos         = ideal    # EOS type
+reconstruct = plm      # spatial reconstruction method
+rsolver     = hlld     # Riemann solver
+gamma       = 1.666666666666667  # gamma = C_p/C_v
+
+<problem>
+pgen_name = cyl_field_loop  # (informational; user pgen selected at build via -D PROBLEM)
+d0    = 1.0            # uniform density
+press = 1.0            # uniform gas pressure
+amp   = 1.0e-3         # vector-potential amplitude (weak field)
+rad   = 0.3            # loop radius (physical)
+rc    = 1.0            # loop centre radius
+phic  = 0.0            # loop centre azimuth
+omega = 0.0            # static loop (no rotation): isolates the prolongation div(B) check
+hist_divb = true       # enroll the max|div(B)| + MeshBlock-count user history output
+
+<output1>
+file_type      = hst   # history (reduction) output -> AMR/divergence-safe (unlike a
+variable       = mhd   # gridded derived-variable dump); writes cyl_field_loop_amr.user.hst
+user_hist_only = true  # only the user div(B) history columns (time, max-divb, nmb)
+dt             = 0.005  # frequent rows; the test scans them for the post-refinement state

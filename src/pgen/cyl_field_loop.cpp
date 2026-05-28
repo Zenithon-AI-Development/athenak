@@ -38,7 +38,80 @@
 #include "coordinates/coord_geometry.hpp"
 #include "eos/eos.hpp"
 #include "mhd/mhd.hpp"
+#include "outputs/outputs.hpp"
 #include "pgen.hpp"
+
+//----------------------------------------------------------------------------------------
+//! \fn void CylFieldLoopDivBHistory()
+//! \brief User history output: max|div(B)| (cylindrical finite-volume divergence) over
+//! all ACTIVE cells of all local MeshBlocks, plus the local MeshBlock count.  Enrolled
+//! only when <problem> hist_divb=true (the AMR run inputs/cyl_field_loop_amr.athinput);
+//! the plain advected-loop input leaves it off, so the #22 verification is unchanged.
+//!
+//! This is the AMR div(B) probe for issue #38: history output is divergence/AMR-safe (a
+//! reduction, unlike the gridded derived-variable dump), so it reports div(B) cleanly
+//! after AMR creates a fine block via RefineFC's prolongation.  In a serial (_cpu) run
+//! the rank reduction in history.cpp returns these unchanged -- "max-divb" is a global
+//! maximum and "nmb" the total block count.  The div(B) formula mirrors the cyl mhd_divb
+//! derived variable (src/outputs/derived_variables.cpp), an independent oracle.
+
+void CylFieldLoopDivBHistory(HistoryData *pdata, Mesh *pm) {
+  pdata->nhist = 2;
+  pdata->label[0] = "max-divb";
+  pdata->label[1] = "nmb";
+
+  MeshBlockPack *pmbp = pm->pmb_pack;
+  auto &indcs = pm->mb_indcs;
+  int is = indcs.is, ie = indcs.ie;
+  int js = indcs.js, je = indcs.je;
+  int ks = indcs.ks, ke = indcs.ke;
+  int nx1 = indcs.nx1;
+  bool multi_d = pm->multi_d;
+  bool three_d = pm->three_d;
+  int nmb = pmbp->nmb_thispack;
+  auto &size = pmbp->pmb->mb_size;
+  auto b0 = pmbp->pmhd->b0;
+  auto csys = pmbp->pcoord->coord_system;
+
+  const int ni  = (ie - is + 1);
+  const int nji = (je - js + 1)*ni;
+  const int nkji = (ke - ks + 1)*nji;
+  Real maxdivb = 0.0;
+  Kokkos::parallel_reduce("cylfl_divb_hist",
+  Kokkos::RangePolicy<>(DevExeSpace(), 0, nmb*nkji),
+  KOKKOS_LAMBDA(const int idx, Real &lmax) {
+    int m = idx/nkji;
+    int kji = idx - m*nkji;
+    int k = kji/nji;
+    int ji = kji - k*nji;
+    int j = ji/ni;
+    int i = (ji - j*ni) + is;
+    j += js;
+    k += ks;
+    Real dx1 = size.d_view(m).dx1;
+    Real dx2 = size.d_view(m).dx2;
+    Real dx3 = size.d_view(m).dx3;
+    Real x1min = size.d_view(m).x1min;
+    Real x1max = size.d_view(m).x1max;
+    Real rm = LeftEdgeX(i  -is, nx1, x1min, x1max);
+    Real rp = LeftEdgeX(i+1-is, nx1, x1min, x1max);
+    Real vol = CellVolume(csys, dx1, dx2, dx3, rm, rp);
+    Real divb = (Face1Area(csys, dx2, dx3, rp)*b0.x1f(m,k,j,i+1)
+               - Face1Area(csys, dx2, dx3, rm)*b0.x1f(m,k,j,i))/vol;
+    if (multi_d) {
+      divb += Face2Area(csys, dx1, dx3)*(b0.x2f(m,k,j+1,i) - b0.x2f(m,k,j,i))/vol;
+    }
+    if (three_d) {
+      divb += Face3Area(csys, dx1, dx2, rm, rp)
+              *(b0.x3f(m,k+1,j,i) - b0.x3f(m,k,j,i))/vol;
+    }
+    lmax = fmax(lmax, fabs(divb));
+  }, Kokkos::Max<Real>(maxdivb));
+
+  pdata->hdata[0] = maxdivb;
+  pdata->hdata[1] = static_cast<Real>(nmb);
+  for (int n=pdata->nhist; n<NHISTORY_VARIABLES; ++n) { pdata->hdata[n] = 0.0; }
+}
 
 //----------------------------------------------------------------------------------------
 //! \fn void ProblemGenerator::UserProblem()
@@ -57,6 +130,13 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
     std::cout << "### FATAL ERROR in " << __FILE__ << " at line " << __LINE__ << std::endl
               << "cyl_field_loop requires <coord> system = cylindrical" << std::endl;
     exit(EXIT_FAILURE);
+  }
+
+  // Optional: enroll the div(B) history output (used by the AMR verification, issue #38).
+  // Default off, so the plain advected-loop run (#22) is unchanged.
+  if (pin->GetOrAddBoolean("problem", "hist_divb", false)) {
+    user_hist = true;
+    user_hist_func = CylFieldLoopDivBHistory;
   }
 
   // problem parameters (<problem> block)

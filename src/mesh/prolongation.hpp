@@ -10,6 +10,7 @@
 //! implemented as inline functions so they can be used both in Bval and AMR functions.
 
 #include "z4c/z4c.hpp"
+#include "coordinates/coord_geometry.hpp"
 
 //----------------------------------------------------------------------------------------
 //! \fn ProlongCC()
@@ -160,10 +161,24 @@ void ProlongFCSharedX3Face(const int m, const int k, const int j, const int i,
 //! \brief 2nd-order prolongation operator for face-centered variables on internal edges
 //! of new fine cells within one coarse cell using divergence-preserving interpolation
 //! scheme of Toth & Roe, JCP 180, 736 (2002).
+//!
+//! In cylindrical (r,phi) geometry (issue #38, ADR-0004) the divergence-preserving
+//! construction is carried out on the magnetic FLUXES (Phi = Area*B) rather than the bare
+//! face fields: the finite-volume div(B) constraint Sum(Phi)=0 and the Toth & Roe
+//! interpolation are metric-agnostic in flux variables; the geometry enters only via
+//! the radial face area A1(r)=r*dphi*dz (Balsara, divergence-free AMR for MHD, JCP 174,
+//! 614 (2001)).  Pass `csys=cylindrical` and the inner/mid/outer fine radial face radii
+//! (rm,rmid,rp) and fine cell widths (dx1f=dr, dx2f=dphi) to select the cylindrical 2D
+//! branch.  The Cartesian path (default args) is byte-identical to the original scheme.
+//! Only the 2D (r,phi) cylindrical case is implemented; 3D/1D cylindrical SMR/AMR is
+//! gated off in the Coordinates constructor.
 
 KOKKOS_INLINE_FUNCTION
 void ProlongFCInternal(const int m, const int fk, const int fj, const int fi,
-                       const bool three_d, const DvceFaceFld4D<Real> &b) {
+                       const bool three_d, const DvceFaceFld4D<Real> &b,
+                       const CoordSystem csys=CoordSystem::cartesian,
+                       const Real rm=0.0, const Real rmid=0.0, const Real rp=0.0,
+                       const Real dx1f=0.0, const Real dx2f=0.0) {
   // Prolongate internal fields in 3D
   if (three_d) {
     Real Uxx  = 0.0, Vyy  = 0.0, Wzz  = 0.0;
@@ -217,7 +232,7 @@ void ProlongFCInternal(const int m, const int fk, const int fj, const int fi,
                             + Wzz + Uxyz + Vxyz;
 
   // Prolongate internal fields in 2D
-  } else {
+  } else if (csys == CoordSystem::cartesian) {
     Real tmp1 = 0.25*(b.x2f(m,fk,fj+2,fi+1) - b.x2f(m,fk,fj,  fi+1)
                     - b.x2f(m,fk,fj+2,fi  ) + b.x2f(m,fk,fj,  fi  ));
     Real tmp2 = 0.25*(b.x1f(m,fk,fj,  fi  ) - b.x1f(m,fk,fj,  fi+2)
@@ -226,6 +241,31 @@ void ProlongFCInternal(const int m, const int fk, const int fj, const int fi,
     b.x1f(m,fk,fj+1,fi+1) = 0.5*(b.x1f(m,fk,fj+1,fi  ) + b.x1f(m,fk,fj+1,fi+2)) + tmp1;
     b.x2f(m,fk,fj+1,fi  ) = 0.5*(b.x2f(m,fk,fj,  fi  ) + b.x2f(m,fk,fj+2,fi  )) + tmp2;
     b.x2f(m,fk,fj+1,fi+1) = 0.5*(b.x2f(m,fk,fj,  fi+1) + b.x2f(m,fk,fj+2,fi+1)) + tmp2;
+
+  // Prolongate internal fields in 2D cylindrical (r,phi): divergence-preserving Balsara
+  // prolongation in flux variables.  The radial face flux is Phi1 = r*dphi*B_r, so the
+  // bounding radial fields are r-weighted before the Toth & Roe combination and the
+  // internal radial field is recovered by dividing the prolonged flux by the mid radius
+  // rmid.  This reduces to the Cartesian branch when rm=rmid=rp and dx1f=dx2f, and (given
+  // a finite-volume div-free coarse cell) makes each of the 4 fine cells div-free to
+  // round-off under the cylindrical div(B) operator.
+  } else {
+    Real bxA  = b.x1f(m,fk,fj,  fi  );  // B_r at inner radius rm, lower-phi row
+    Real bxA2 = b.x1f(m,fk,fj,  fi+2);  // B_r at outer radius rp, lower-phi row
+    Real bxB1 = b.x1f(m,fk,fj+1,fi  );  // B_r at inner radius rm, upper-phi row
+    Real bxB2 = b.x1f(m,fk,fj+1,fi+2);  // B_r at outer radius rp, upper-phi row
+    Real byC  = b.x2f(m,fk,fj,  fi  );  // B_phi lower face, inner-r cell
+    Real byC2 = b.x2f(m,fk,fj,  fi+1);  // B_phi lower face, outer-r cell
+    Real byD1 = b.x2f(m,fk,fj+2,fi  );  // B_phi upper face, inner-r cell
+    Real byD2 = b.x2f(m,fk,fj+2,fi+1);  // B_phi upper face, outer-r cell
+    Real rr = dx1f/dx2f;                // dr/dphi (radial-face flux <-> azimuthal-face)
+    Real ri = dx2f/dx1f;                // dphi/dr
+    Real t1 = 0.25*rr*(byD2 - byC2 - byD1 + byC);
+    Real t2 = 0.25*ri*(rm*bxA - rp*bxA2 - rm*bxB1 + rp*bxB2);
+    b.x1f(m,fk,fj  ,fi+1) = (0.5*(rm*bxA  + rp*bxA2) + t1)/rmid;
+    b.x1f(m,fk,fj+1,fi+1) = (0.5*(rm*bxB1 + rp*bxB2) + t1)/rmid;
+    b.x2f(m,fk,fj+1,fi  ) = 0.5*(byC  + byD1) + t2;
+    b.x2f(m,fk,fj+1,fi+1) = 0.5*(byC2 + byD2) + t2;
   }
   return;
 }
