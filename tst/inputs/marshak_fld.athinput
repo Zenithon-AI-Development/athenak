@@ -1,0 +1,63 @@
+# AthenaK input file for the grey FLD Marshak-wave verification (radiation_fld_marshak).
+#
+# Drives the grey flux-limited radiation diffusion operator (FLDGreyOperator, Larsen
+# limiter) with the RKL2 super-time-stepping integrator (issue [8a]/#17, ADR-0001).  The
+# operator is advanced operator-split entirely inside ProblemGenerator::UserProblem (it is
+# not yet wired into the driver tasklist), so a tiny <z4c> block satisfies AddPhysics and
+# nlim = tlim = 0 means the driver does no hyperbolic integration.
+#
+# PART 1: an optically-thick (chi large => Larsen limiter in its diffusion limit) cold slab
+# heated from the inner-x1 Dirichlet source reproduces the analytic erfc Marshak wave with
+# D = c/(3 chi).  PART 2: a substage-count sweep over per-cell optical depth (thick->thin).
+
+<comment>
+problem   = grey FLD Marshak wave verification + STS substage sweep
+
+<job>
+basename  = marshak_fld     # problem ID: basename of output filenames
+
+<mesh>
+nghost    = 2          # Number of ghost cells
+nx1       = 256        # Number of zones in X1-direction
+x1min     = 0.0        # minimum value of X1
+x1max     = 1.0        # maximum value of X1
+ix1_bc    = outflow    # inner-X1 boundary flag (FLD operator overrides ghosts itself)
+ox1_bc    = outflow    # outer-X1 boundary flag
+
+nx2       = 1          # Number of zones in X2-direction
+x2min     = -0.5       # minimum value of X2
+x2max     = 0.5        # maximum value of X2
+ix2_bc    = periodic   # inner-X2 boundary flag
+ox2_bc    = periodic   # outer-X2 boundary flag
+
+nx3       = 1          # Number of zones in X3-direction
+x3min     = -0.5       # minimum value of X3
+x3max     = 0.5        # maximum value of X3
+ix3_bc    = periodic   # inner-X3 boundary flag
+ox3_bc    = periodic   # outer-X3 boundary flag
+
+<meshblock>
+nx1       = 256        # Number of cells in each MeshBlock, X1-dir
+nx2       = 1          # Number of cells in each MeshBlock, X2-dir
+nx3       = 1          # Number of cells in each MeshBlock, X3-dir
+
+<time>
+evolution            = dynamic   # dynamic/kinematic/static
+integrator           = rk2       # hyperbolic time integration algorithm
+parabolic_integrator = sts       # operator-split parabolic backend (RKL2 STS)
+cfl_number           = 0.3       # The Courant, Friedrichs, & Lewy (CFL) Number
+nlim                 = 0         # cycle limit (0: do no integration, just run UserProblem)
+tlim                 = 0         # time limit
+ndiag                = 1         # cycles between diagnostic output
+
+<problem>
+c_light   = 1.0        # code-unit speed of light
+chi       = 1.0e3      # extinction coefficient kappa_R*rho [1/length] (optically thick)
+n_larsen  = 2.0        # Larsen flux-limiter exponent
+e_source  = 1.0        # inner-x1 Dirichlet radiation-energy source (hot wall)
+e_floor   = 0.1        # initial/cold radiation energy
+tlim_fld  = 50.0       # FLD integration time (front ~ 2 sqrt(D*tlim) ~ 0.26 < domain)
+n_super   = 20         # number of operator-split RKL2 supersteps
+w_front   = 0.1        # half-width of the fixed front used in the substage sweep
+
+<z4c>
