@@ -1,0 +1,16 @@
+{
+  "name": "cyl_lwave_mhd",
+  "coord_label": "nx1",
+  "coord": [
+    64.0,
+    128.0
+  ],
+  "fields": {
+    "L1_RMS": [
+      2.129014e-08,
+      5.376677e-09
+    ]
+  },
+  "rtol": 0.02,
+  "atol": 1e-12
+}
