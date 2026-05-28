@@ -19,6 +19,15 @@ i.e. the antinode amplitude decays at the analytic rate eta k^2.  The test:
      harmonics);
   3. baselines the t=tlim B_y profile through the shared verification harness.
 
+Oracle: Layer 1 -- analytic.  B_y(x,t) = b0 sin(k x) exp(-eta k^2 t) is the exact decaying
+Fourier mode of the induction-equation diffusion dB/dt = eta d^2B/dx^2.  The diffusivity
+is the Spitzer/Braginskii Z=1 parallel resistivity eta = alpha0 * m_e/(n_e e^2 tau_e) with
+alpha0 = 0.5129, reproducing the NRL/Spitzer reference
+eta_par[Ohm m] = 0.5129 * 1.03e-4 * Z lnLambda / T[eV]^1.5 (and the collision time
+tau_e = 3.44e5 T[eV]^1.5/(n_e Z lnLambda)) to < 0.2%.  References: Spitzer 1962 (Physics
+of Fully Ionized Gases, 2nd ed.); Braginskii 1965 (Reviews of Plasma Physics 1, 205).  The
+harness.verify baseline is a regression guard only.
+
 Auto-collected by run_test_suite.py (module name contains ``_cpu``).
 """
 

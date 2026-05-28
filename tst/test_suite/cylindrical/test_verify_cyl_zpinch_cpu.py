@@ -14,6 +14,14 @@ makes the pinch implode/explode at O(1).  The test:
   * asserts the density / B_phi / pressure profiles barely move from their initial state,
   * plots B_phi, pressure, density vs r and saves/diffs a golden regression baseline.
 
+Oracle: Layer 1 -- analytic.  The Gaussian-current Z-pinch field
+B_phi(r) = b0 (r/a) exp(-(r/a)^2/2) has the closed-form magnetohydrostatic pressure
+p(r) = p0 - B_phi^2/2 + (b0^2/2)(e^{-(r/a)^2} - e^{-(rmax/a)^2}), which satisfies the
+radial force balance dp/dr = -(B_phi/r) d(r B_phi)/dr exactly (mu0=1; round-off residual),
+with peak B_phi = b0 exp(-1/2) = 0.6065 at r = a.  Reference: standard screw-/Z-pinch
+magnetohydrostatic equilibrium (Freidberg, Ideal Magnetohydrodynamics 2014).  The
+harness.verify baseline is a regression guard only.
+
 Auto-collected by run_test_suite.py (module name contains ``_cpu``).
 """
 

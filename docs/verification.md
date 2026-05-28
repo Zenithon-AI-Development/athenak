@@ -39,10 +39,10 @@ Directories: `cylindrical/`, `verification/`, `unit_tests/`.
 
 | Test | Layer | Oracle type | Ground-truth oracle | Citation | Method anchor |
 |------|-------|-------------|---------------------|----------|---------------|
-| `test_verify_cyl_lwave_cpu.py` | 1 | analytic | Fast-magnetosonic linear wave on a div-free B_z equilibrium; 2nd-order convergence (L1 ratio → ¼ per doubling) | closed form (linear MHD wave) | self |
-| `test_verify_cyl_zpinch_cpu.py` | 1 | analytic | Gaussian-current Z-pinch magnetohydrostatic equilibrium with closed-form p(r) balancing the −B_φ²/r hoop stress; max\|v_r\| at truncation | closed form (MHS) | self |
-| `test_verify_cyl_bphi_diffuse_cpu.py` | 1 | analytic | Bessel-J₁ resistive eigenmode decay B_φ(r,t)=A·J₁(kr)·exp(−η k² t) | closed form (resistive eigenmode) | self |
-| `test_verify_resistive_decay_cpu.py` | 1 | analytic | Transverse Fourier mode B_y(x,t)=b₀ sin(kx)·exp(−η k² t) with analytic Spitzer η(ρ,T_e); measured decay rate vs analytic | closed form; Spitzer 1962 | self |
+| `test_verify_cyl_lwave_cpu.py` | 1 | analytic | Fast-magnetosonic linear wave on a div-free B_z equilibrium; 2nd-order convergence (L1 ratio → ¼ per doubling) | closed form; Stone et al. 2008 (convergence) | self |
+| `test_verify_cyl_zpinch_cpu.py` | 1 | analytic | Gaussian-current Z-pinch magnetohydrostatic equilibrium with closed-form p(r) balancing the −B_φ²/r hoop stress; max\|v_r\| at truncation | closed form; Freidberg 2014 (Z-pinch MHS) | self |
+| `test_verify_cyl_bphi_diffuse_cpu.py` | 1 | analytic | Bessel-J₁ resistive eigenmode decay B_φ(r,t)=A·J₁(kr)·exp(−η k² t) | closed form (Bessel-J₁ eigenmode); Abramowitz & Stegun 1972 | self |
+| `test_verify_resistive_decay_cpu.py` | 1 | analytic | Transverse Fourier mode B_y(x,t)=b₀ sin(kx)·exp(−η k² t) with analytic Spitzer η(ρ,T_e); measured decay rate vs analytic | closed form; Spitzer 1962, Braginskii 1965 | self |
 | `test_unit_cyl_mhd_ct_divb_cpu.py` | 1 | analytic | Cylindrical constrained-transport curl-B divergence vanishes to machine precision (div(B)=0) | closed form (CT identity) | self |
 | `test_verify_cyl_field_loop_cpu.py` | 2 | self-snapshot | max\|div(B)\| at round-off (initial + advected) + harness baseline; **no advected-loop shape oracle** | — | `test_unit_cyl_mhd_ct_divb_cpu.py` — **TODO(#83)** |
 

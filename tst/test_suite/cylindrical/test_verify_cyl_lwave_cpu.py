@@ -14,6 +14,13 @@ rate.  The test:
     2nd-order reference (halving dx -> error x ~1/4),
   * plots the L1 error vs resolution and saves/diffs a golden regression baseline.
 
+Oracle: Layer 1 -- analytic.  A linear MHD eigenmode is dispersionless and exact at
+infinitesimal amplitude, so the L1 error of a finite-volume solver is pure truncation
+error ~ C dx^2; halving dx must drop the L1 norm to ~1/4 (the scheme's 2nd-order
+convergence rate).  Reference: standard finite-volume convergence analysis (LeVeque 2002;
+Stone et al. 2008, ApJS 178, 137 -- the Athena linear-wave convergence test).  The
+harness.verify baseline is a regression guard only.
+
 Auto-collected by run_test_suite.py (module name contains ``_cpu``).
 """
 
