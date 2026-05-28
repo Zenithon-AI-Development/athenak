@@ -1,0 +1,100 @@
+# AthenaK input file for the coupled MULTIGROUP radiation-hydro verification
+# (radiation_fld_multigroup_equilibration) -- ADR-0001 verification, issue [17c]/#41.
+#
+# Drives the N-group flux-limited radiation diffusion operator (FLDMultigroupOperator, #24)
+# together with the per-cell point-implicit MULTIGROUP matter-radiation coupling
+# (radiationfld::MultigroupArrowheadCoupling, #35).  Neither is wired into the driver
+# tasklist yet, so both are advanced operator-split entirely inside
+# ProblemGenerator::UserProblem; the <hydro> block supplies only the ideal-gas gamma (=>
+# electron/ion heat capacities cv = rho/(gamma-1)) and local array sizing, and
+# nlim = tlim = 0 means the driver does no hyperbolic integration.  It is the multigroup
+# analogue of rad_equilibration.athinput (#28).
+#
+# PART 1: a spatially-uniform box relaxes from a NON-Planck spectrum + thermal
+# non-equilibrium to the Planck spectrum at a common temperature by the multigroup
+# point-implicit coupling alone (FLD a no-op on a flat field) -- the spectral relaxation.
+# PART 2: a cold absorbing slab heated from an inner-x1 Dirichlet radiation source; each
+# group diffuses (FLD) while the strong coupling thermalises the spectrum to the local
+# Planck spectrum at the matter temperature -- the coupled "multigroup Marshak front".
+#
+# <problem>/opacity_file defaults to a repo-relative path; the Python verification wrapper
+# overrides it with an absolute path (problem/opacity_file=<abspath>) since the run executes
+# from tst/build_pgen/<problem>/src.
+
+<comment>
+problem   = coupled multigroup radiation-hydro: spectral relaxation + Marshak front
+
+<job>
+basename  = multigroup_rad_equil   # problem ID: basename of output filenames
+
+<mesh>
+nghost    = 2          # Number of ghost cells
+nx1       = 256        # Number of zones in X1-direction
+x1min     = 0.0        # minimum value of X1
+x1max     = 1.0        # maximum value of X1
+ix1_bc    = outflow    # inner-X1 boundary flag (FLD operator overrides ghosts itself)
+ox1_bc    = outflow    # outer-X1 boundary flag
+
+nx2       = 1          # Number of zones in X2-direction
+x2min     = -0.5       # minimum value of X2
+x2max     = 0.5        # maximum value of X2
+ix2_bc    = periodic   # inner-X2 boundary flag
+ox2_bc    = periodic   # outer-X2 boundary flag
+
+nx3       = 1          # Number of zones in X3-direction
+x3min     = -0.5       # minimum value of X3
+x3max     = 0.5        # maximum value of X3
+ix3_bc    = periodic   # inner-X3 boundary flag
+ox3_bc    = periodic   # outer-X3 boundary flag
+
+<meshblock>
+nx1       = 256        # Number of cells in each MeshBlock, X1-dir
+nx2       = 1          # Number of cells in each MeshBlock, X2-dir
+nx3       = 1          # Number of cells in each MeshBlock, X3-dir
+
+<time>
+evolution            = dynamic   # dynamic/kinematic/static
+integrator           = rk2       # hyperbolic time integration algorithm
+parabolic_integrator = sts       # operator-split parabolic backend (RKL2 STS)
+cfl_number           = 0.3       # The Courant, Friedrichs, & Lewy (CFL) Number
+nlim                 = 0         # cycle limit (0: do no integration, just run UserProblem)
+tlim                 = 0         # time limit
+ndiag                = 1         # cycles between diagnostic output
+
+<hydro>
+eos          = ideal   # EOS type (only for grid sizing + gamma; no hydro is evolved)
+reconstruct  = plm     # spatial reconstruction method
+rsolver      = llf     # Riemann-solver to be used
+gamma        = 2.0     # gamma = C_p/C_v => cv = rho/(gamma-1) = rho
+
+<problem>
+pgen_name = radiation_fld_multigroup_equilibration  # (ignored: built with -D PROBLEM=...)
+opacity_file = inputs/radiation_fld/multigroup_rad_hydro_opacity.cn4  # opacity fixture
+c_light   = 1.0        # code-unit speed of light
+a_rad     = 1.0        # code-unit radiation constant (sum_g E_g = a T^4 at equilibrium)
+kboltz    = 30.0       # Boltzmann constant: x = eps[eV]/(kboltz*Te) places the spectrum
+rho_ele   = 1.0        # electron "density" => cv_ele = rho_ele/(gamma-1) = 1.0
+rho_ion   = 1.0        # ion      "density" => cv_ion = rho_ion/(gamma-1) = 1.0
+
+# --- PART 1: uniform multigroup non-equilibrium spectral relaxation ---
+eq_rho    = 1.0e-2     # coupling-background density for the chi_P,g lookup (thin: smooth)
+eq_te     = 1.0e3      # coupling-background temperature => chi_P,g ~ {5,4,3} 1/length
+c_ei      = 2.0        # electron-ion exchange coefficient (de_ele/dt += c_ei (Ti - Te))
+eq_dt     = 0.01       # coupling substep (radiation beta = c*chi_P*dt ~ 0.05 -> vs RK4)
+eq_nstep  = 400        # number of coupling substeps (t_end = 4 -> well-relaxed)
+eq_te_a   = 0.3        # case A: cold electron temperature
+eq_ti_a   = 0.8        # case A: hot ion temperature
+eq_erad_a = 1.0        # case A: hot radiation energy, ALL in the lowest group (non-Planck)
+eq_te_b   = 1.5        # case B: hot electron temperature
+eq_ti_b   = 0.5        # case B: cold ion temperature
+eq_erad_floor = 1.0e-3 # cold/initial radiation energy floor (all groups, case B + A>0)
+
+# --- PART 2: coupled multigroup FLD diffusion + matter coupling (Marshak front) ---
+diff_rho  = 1.0e-2     # PART2 background density: chi_R,g ~ {300,200,150}, chi_P,g ~ {500,400,300}
+te_bg     = 1.0e2      # PART2 background temperature (opacity reference node)
+n_larsen  = 2.0        # Larsen flux-limiter exponent
+e_source  = 1.0        # inner-x1 Dirichlet radiation-energy source (hot wall, all groups)
+e_floor   = 1.0e-3     # initial/cold radiation energy
+t_floor   = 0.1        # initial/cold matter temperature
+tlim_fld  = 20.0       # FLD integration time (group fronts ~ 2 sqrt(D_g*tlim) ~ 0.15-0.21)
+n_super   = 40         # number of coupled (diffuse + couple) operator-split steps
