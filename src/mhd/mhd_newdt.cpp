@@ -21,6 +21,7 @@
 #include "coordinates/cell_locations.hpp"
 #include "mhd.hpp"
 #include "diffusion/conduction.hpp"
+#include "diffusion/resistivity.hpp"
 #include "srcterms/srcterms.hpp"
 
 namespace mhd {
@@ -171,6 +172,11 @@ TaskStatus MHD::NewTimeStep(Driver *pdriver, int stage) {
   // compute timestep for diffusion
   if (pcond != nullptr) {
     pcond->NewTimeStep(w0, peos->eos_data);
+  }
+  // variable Spitzer/Braginskii resistivity: dt from the current max(eta) (ADR-0003);
+  // the constant-eta path keeps its ctor dt and this is a no-op
+  if (presist != nullptr) {
+    presist->NewTimeStep();
   }
   // compute source terms timestep
   if (psrc != nullptr) {

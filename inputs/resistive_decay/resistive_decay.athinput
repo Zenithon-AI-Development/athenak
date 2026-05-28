@@ -1,0 +1,81 @@
+# AthenaK input file for the resistive magnetic-field-decay verification (issue [7a]).
+#
+# 1-D periodic box, uniform static medium (rho=1, p=1, v=0), threaded by a small single-
+# mode transverse field B_y(x) = by0 sin(k x).  With the variable Spitzer/Braginskii
+# resistivity the magnetic diffusivity eta = eta(rho,T_e) is uniform, so B_y diffuses as
+#   B_y(x,t) = by0 sin(k x) exp(-eta k^2 t).
+# tst/test_suite/verification/test_verify_resistive_decay_cpu.py measures the decay rate
+# and checks it against the analytic Spitzer eta.  Built with -D PROBLEM=resistive_decay.
+
+<comment>
+problem   = resistive decay of a single-mode B_y(x) with Spitzer resistivity
+
+<job>
+basename  = resistive_decay
+
+<mesh>
+nghost    = 2
+nx1       = 64         # zones in X1
+x1min     = 0.0
+x1max     = 1.0
+ix1_bc    = periodic
+ox1_bc    = periodic
+
+nx2       = 1          # 1-D run
+x2min     = 0.0
+x2max     = 1.0
+ix2_bc    = periodic
+ox2_bc    = periodic
+
+nx3       = 1
+x3min     = 0.0
+x3max     = 1.0
+ix3_bc    = periodic
+ox3_bc    = periodic
+
+<meshblock>
+nx1       = 64
+nx2       = 1
+nx3       = 1
+
+<time>
+evolution  = dynamic
+integrator = rk2
+cfl_number = 0.3
+nlim       = -1
+tlim       = 1.0
+ndiag      = 100
+
+<mhd>
+eos          = ideal
+reconstruct  = plm
+rsolver      = hlld
+gamma        = 1.66666666667
+
+# variable Spitzer/Braginskii resistivity eta(rho,T_e) (ADR-0003).  Linear code<->SI
+# conversions chosen so n_e ~ 1e26 m^-3, T_e ~ 100 eV; eta_si scales the magnetic
+# diffusivity into code units (eta ~ 0.021 here -> a measurable decay over tlim).
+resistivity      = spitzer
+resist_dens_si   = 0.167          # code density -> SI [kg m^-3]  (n_e ~ 1e26 m^-3)
+resist_temp_si   = 1.160451e6     # code temperature -> K         (T_e = 100 eV at T=1)
+resist_bmag_si   = 1.0            # code |B| -> Tesla
+resist_eta_si    = 0.1            # SI magnetic diffusivity [m^2/s] -> code
+resist_zbar      = 1.0
+resist_lnlambda  = 5.0            # fixed Coulomb log
+resist_anisotropic = false
+
+<problem>
+pgen_name = resistive_decay
+d0        = 1.0        # background density (-> code temperature T = p0/d0 = 1)
+p0        = 1.0        # background pressure
+by0       = 1.0e-2     # transverse-field amplitude (linear perturbation)
+bx0       = 0.0        # guide field along x
+bz0       = 0.0
+nwave     = 1.0        # mode number (k = 2 pi nwave / Lx)
+
+<output1>
+file_type   = tab
+variable    = mhd_w_bcc
+id          = bcc      # file basename token -> resistive_decay.bcc.NNNNN.tab
+data_format = %24.16e
+dt          = 1.0      # output at t=0 (00000) and t=tlim (00001)
