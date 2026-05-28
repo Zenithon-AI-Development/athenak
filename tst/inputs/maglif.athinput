@@ -1,0 +1,88 @@
+# AthenaK input file for the MagLIF / Z-pinch problem generator (issue [10a]/#32).
+#
+# 3-D cylindrical MHD (x1,x2,x3)=(r,phi,z): a fuel | liner | vacuum target premagnetized by
+# a uniform axial B_z, with a single-mode axial (z) perturbation seeding the liner interface
+# and the prescribed-I(t) circuit drive setting the azimuthal field at the outer radius.
+# ADR-0004 fixes the axial direction to x3, and AthenaK forbids the (nx2=1, nx3>1) topology,
+# so an axially-resolved MagLIF run uses a thin azimuthal (phi) wedge -- the axisymmetric IC
+# simply replicates the r-z state across phi.  This is the integrated Phase-1 setup; the MRT
+# / RM / ICF benchmarks (#39/#42/#36/#37) reuse this pgen with their own perturbation knobs.
+#
+# Built with -D PROBLEM=maglif (a USER pgen; not in the default suite binary).
+
+<comment>
+problem   = MagLIF/Z-pinch liner implosion (premagnetized, single-mode seeded)
+
+<job>
+basename  = maglif
+
+<mesh>
+nghost    = 2
+nx1       = 64         # radial zones
+x1min     = 0.0        # r = 0 axis
+x1max     = 1.0        # outer radius R_out (driven boundary)
+ix1_bc    = axis       # cylindrical r=0 axisymmetric boundary (issue #16)
+ox1_bc    = user       # circuit-driven B_phi boundary (issue #21)
+
+nx2       = 4          # thin azimuthal (phi) wedge (axisymmetric IC)
+x2min     = 0.0
+x2max     = 1.0
+ix2_bc    = periodic
+ox2_bc    = periodic
+
+nx3       = 16         # axial (z) zones -- resolves the single-mode perturbation
+x3min     = 0.0
+x3max     = 1.0
+ix3_bc    = periodic
+ox3_bc    = periodic
+
+<meshblock>
+nx1       = 64
+nx2       = 4
+nx3       = 16
+
+<coord>
+system    = cylindrical  # (x1,x2,x3) = (r,phi,z)
+
+<time>
+evolution  = dynamic
+integrator = rk2
+cfl_number = 0.3
+nlim       = 200
+tlim       = 0.1
+ndiag      = 50
+
+<mhd>
+eos         = ideal
+reconstruct = plm
+rsolver     = hlld
+gamma       = 1.6666666666666667
+dfloor      = 1.0e-4
+pfloor      = 1.0e-6
+
+<problem>
+current_mode     = driven       # driven (mu0*I/2*pi*r) B_phi outer boundary
+current_waveform = constant     # prescribed I(t): constant load current
+i0               = 0.5          # load current (code units)
+t_rise           = 1.0          # ramp time (unused for the constant waveform)
+mu0              = 1.0          # code-unit permeability (Heaviside-Lorentz: 1)
+r_fuel           = 0.4          # fuel/liner interface radius
+r_liner          = 0.6          # liner/vacuum interface (current sheet)
+d_fuel           = 0.05         # fuel (inner gas) density
+d_liner          = 1.0          # liner (dense shell) density
+d_vac            = 0.01         # vacuum (outer gap) density
+p0               = 1.0e-3       # uniform (low) thermal pressure
+bz0              = 0.1          # axial premagnetization field B_z
+perturbation     = single_mode  # none | single_mode | roughness
+pert_amp         = 0.05         # radial interface perturbation amplitude
+pert_mode        = 1            # single_mode: axial mode number (wavelength = Lz/pert_mode)
+pert_phase       = 0.0          # single_mode: axial phase offset
+pert_nmin        = 2            # roughness: lowest axial mode in the band
+pert_nmax        = 6            # roughness: highest axial mode in the band
+pert_seed        = 12345        # roughness: RNG seed for the (deterministic) mode phases
+
+<output1>
+file_type   = bin
+variable    = mhd_w_bcc
+id          = prim
+dt          = 0.05
