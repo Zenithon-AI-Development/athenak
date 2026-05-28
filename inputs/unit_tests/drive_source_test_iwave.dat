@@ -1,0 +1,15 @@
+# Tabulated current waveform fixture for the circuit drive-source unit test
+# (unit_tests/drive_source_test), issue [9a]/#21, ADR-0005.
+#
+# Format (whitespace-delimited ASCII; '#' comment lines skipped):
+#   npts
+#   t_0   I_0          (time and load current, code units; time strictly ascending)
+#   ...
+# Piecewise-linear segments with simple slopes so the interpolation/clamping checks have
+# exact closed-form expected values:
+#   I(0)=0, I(1)=10, I(2)=30, I(4)=30  ->  I(0.5)=5, I(1.5)=20, clamp(<0)=0, clamp(>4)=30.
+4
+0.0   0.0
+1.0   10.0
+2.0   30.0
+4.0   30.0

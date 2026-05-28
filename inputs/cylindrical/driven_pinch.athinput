@@ -1,0 +1,75 @@
+# AthenaK input file for the current-driven cylindrical Z-pinch (issue [9a]/#21, ADR-0005).
+#
+# 1-D radial cylindrical MHD column (x1=r in [0, R_out]) with the r=0 `axis` BC (issue #16)
+# and the new circuit-driven `user` B_phi boundary at the outer radius.  A pulsed-power
+# drive source supplies the load current I(t) (here a linear ramp); the enrolled user BC
+# sets the ghost azimuthal field to mu0*I(t)/(2*pi*r) each step.  Switch the boundary to
+# the nocurrent (1/r vacuum) mode with problem/current_mode=nocurrent.
+# Built with -D PROBLEM=driven_pinch (a USER pgen; not in the default suite binary).
+
+<comment>
+problem   = current-driven cylindrical Z-pinch (prescribed I(t) B_phi boundary)
+
+<job>
+basename  = driven_pinch
+
+<mesh>
+nghost    = 2
+nx1       = 64         # radial zones
+x1min     = 0.0        # r = 0 axis
+x1max     = 1.0        # outer radius R_out (driven boundary)
+ix1_bc    = axis       # cylindrical r=0 axisymmetric boundary (issue #16)
+ox1_bc    = user       # circuit-driven B_phi boundary (this issue)
+
+nx2       = 1          # 1-D radial (phi trivial)
+x2min     = 0.0
+x2max     = 1.0
+ix2_bc    = periodic
+ox2_bc    = periodic
+
+nx3       = 1          # z trivial
+x3min     = 0.0
+x3max     = 1.0
+ix3_bc    = periodic
+ox3_bc    = periodic
+
+<meshblock>
+nx1       = 64
+nx2       = 1
+nx3       = 1
+
+<coord>
+system    = cylindrical  # (x1,x2,x3) = (r,phi,z)
+
+<time>
+evolution  = dynamic
+integrator = rk2
+cfl_number = 0.3
+nlim       = -1
+tlim       = 0.2
+ndiag      = 50
+
+<mhd>
+eos         = ideal
+reconstruct = plm
+rsolver     = hlld
+gamma       = 1.6666666666666667
+
+<problem>
+current_mode     = driven       # driven (mu0*I/2*pi*r) | nocurrent (1/r vacuum decay)
+current_waveform = linear_ramp  # constant | linear_ramp | sin_squared | tabulated
+i0               = 0.5          # peak load current (code units)
+t_rise           = 0.2          # ramp time
+mu0              = 1.0          # code-unit permeability (Heaviside-Lorentz: 1)
+d0               = 1.0          # background density
+p0               = 1.0          # background pressure
+bz0              = 0.1          # axial seed field (premagnetization)
+
+<output1>
+file_type   = tab
+variable    = mhd_w_bcc
+id          = bcc
+data_format = %24.16e
+dt          = 0.2              # output at t=0 (00000) and t=tlim (00001)
+slice_x2    = 0.5
+slice_x3    = 0.5
