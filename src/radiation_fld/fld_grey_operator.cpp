@@ -16,6 +16,7 @@
 #include "mesh/meshblock_pack.hpp"
 #include "coordinates/coordinates.hpp"
 #include "coordinates/coord_geometry.hpp"
+#include "bvals/bvals.hpp"
 #include "radiation_fld/fld_grey_operator.hpp"
 
 using radiationfld::LarsenLimiter;
@@ -33,7 +34,22 @@ FLDGreyOperator::FLDGreyOperator(MeshBlockPack *pp, const DvceArray5D<Real> &era
   esrc_(e_source),
   irad_(0),
   rflx_("fld_op_rflx", erad.extent_int(0), erad.extent_int(1),
-        erad.extent_int(2), erad.extent_int(3), erad.extent_int(4)) {
+        erad.extent_int(2), erad.extent_int(3), erad.extent_int(4)),
+  pbval_flux_(nullptr) {
+  // On a multilevel (SMR/AMR) mesh, register the radiative flux for the conservative
+  // fine->coarse flux correction (#33), so the diffused radiation energy is conserved
+  // across refinement boundaries.  (pin is unused by the boundary-values constructor.)
+  if (pp->pmesh->multilevel) {
+    pbval_flux_ = new MeshBoundaryValuesCC(pp, nullptr, false);
+    pbval_flux_->InitializeBuffers(rflx_.x1f.extent_int(1));
+  }
+}
+
+//----------------------------------------------------------------------------------------
+//! \brief FLDGreyOperator destructor.
+
+FLDGreyOperator::~FLDGreyOperator() {
+  if (pbval_flux_ != nullptr) { delete pbval_flux_; }
 }
 
 //----------------------------------------------------------------------------------------
@@ -102,6 +118,11 @@ void FLDGreyOperator::OperatorAction(const DvceArray5D<Real> &u_in,
       flx3(m,irad,k,j,i) = -D*dedx;
     });
   }
+
+  // conservative fine->coarse flux correction at SMR/AMR level boundaries (#33): replace
+  // the coarse-side boundary face flux with the restricted (area-averaged) fine flux so
+  // the coarse divergence matches the sum of the fine faces.  No-op on a uniform mesh.
+  if (pbval_flux_ != nullptr) { pbval_flux_->CorrectFlux(rflx_); }
 
   // dE/dt = -div(F): difference the face fluxes through the geometry accessors, exactly
   // as the hydro/MHD RKUpdate and ConductionOperator do.

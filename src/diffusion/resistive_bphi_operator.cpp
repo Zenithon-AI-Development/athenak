@@ -19,6 +19,7 @@
 #include "coordinates/coordinates.hpp"
 #include "coordinates/coord_geometry.hpp"
 #include "coordinates/cell_locations.hpp"
+#include "bvals/bvals.hpp"
 #include "diffusion/resistive_bphi_operator.hpp"
 
 //----------------------------------------------------------------------------------------
@@ -30,7 +31,23 @@ ResistiveBphiOperator::ResistiveBphiOperator(MeshBlockPack *pp,
   bphi_(bphi),
   eta_(eta),
   bflx_("resb_bflx", bphi.extent_int(0), bphi.extent_int(1),
-        bphi.extent_int(2), bphi.extent_int(3), bphi.extent_int(4)) {
+        bphi.extent_int(2), bphi.extent_int(3), bphi.extent_int(4)),
+  pbval_flux_(nullptr) {
+  // On a multilevel (SMR/AMR) mesh, register the resistive flux for the conservative
+  // fine->coarse flux correction (#33), so the diffused B_phi (and the area-weighted
+  // poloidal flux it carries) is conserved across refinement boundaries.  (pin is unused
+  // by the boundary-values constructor.)
+  if (pp->pmesh->multilevel) {
+    pbval_flux_ = new MeshBoundaryValuesCC(pp, nullptr, false);
+    pbval_flux_->InitializeBuffers(bflx_.x1f.extent_int(1));
+  }
+}
+
+//----------------------------------------------------------------------------------------
+//! \brief ResistiveBphiOperator destructor.
+
+ResistiveBphiOperator::~ResistiveBphiOperator() {
+  if (pbval_flux_ != nullptr) { delete pbval_flux_; }
 }
 
 //----------------------------------------------------------------------------------------
@@ -96,6 +113,14 @@ void ResistiveBphiOperator::OperatorAction(const DvceArray5D<Real> &u_in,
       flx3(m,ib,k,j,i) = -eta_f*dbdx3;
     });
   }
+
+  // conservative fine->coarse flux correction at SMR/AMR level boundaries (#33): replace
+  // the coarse-side boundary face flux with the restricted (area-averaged) fine flux.
+  // No-op on a uniform mesh.  A radial (x1) refinement face sits at a fixed radius, so
+  // the coarse and fine faces share rface and the bare-flux average matches the r-weight
+  // area ratio FluxDivX1 applies below; full curvilinear-face refinement (Balsara
+  // prolongation) is ADR-0004's deferred #38.
+  if (pbval_flux_ != nullptr) { pbval_flux_->CorrectFlux(bflx_); }
 
   // dB_phi/dt = -div(F) + the curl-curl -eta B_phi/r^2 term.  The radial divergence is
   // the conservative (1/r)d_r(r F) form (FluxDivX1 with the face radii rm/rp); the rm=0

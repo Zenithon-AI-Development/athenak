@@ -51,6 +51,7 @@
 
 // forward declarations
 class MeshBlockPack;
+class MeshBoundaryValuesCC;
 
 //----------------------------------------------------------------------------------------
 //! \class ResistiveBphiOperator
@@ -66,7 +67,7 @@ class ResistiveBphiOperator : public parabolic::ParabolicOperator {
   //! fill for the verification oracle).
   ResistiveBphiOperator(MeshBlockPack *pp, const DvceArray5D<Real> &bphi,
                         const DvceArray4D<Real> &eta);
-  ~ResistiveBphiOperator() = default;
+  ~ResistiveBphiOperator();
 
   //! \brief M(u): cylindrical resistive B_phi diffusion into rhs_out(0); 0 in any other
   //! component (frozen background).  Reads ghost zones of u_in.
@@ -89,6 +90,9 @@ class ResistiveBphiOperator : public parabolic::ParabolicOperator {
   DvceArray5D<Real> bphi_;      // the live B_phi field (for the explicit-dt loop)
   DvceArray4D<Real> eta_;       // cell-centred magnetic diffusivity (SIM-76 / #20)
   DvceFaceFld5D<Real> bflx_;    // scratch face-centred resistive B_phi flux
+  // conservative fine->coarse flux correction at AMR/SMR level boundaries (#33); built
+  // only on a multilevel mesh, nullptr otherwise -> no-op on a uniform grid.
+  MeshBoundaryValuesCC *pbval_flux_;
 };
 
 #endif  // DIFFUSION_RESISTIVE_BPHI_OPERATOR_HPP_

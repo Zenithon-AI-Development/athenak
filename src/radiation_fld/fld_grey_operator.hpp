@@ -53,6 +53,7 @@
 
 // forward declarations
 class MeshBlockPack;
+class MeshBoundaryValuesCC;
 
 namespace radiationfld {
 
@@ -87,7 +88,7 @@ class FLDGreyOperator : public parabolic::ParabolicOperator {
   //! inner-x1 is zero-gradient too).
   FLDGreyOperator(MeshBlockPack *pp, const DvceArray5D<Real> &erad,
                   Real c_light, Real chi, Real n_larsen, Real e_source);
-  ~FLDGreyOperator() = default;
+  ~FLDGreyOperator();
 
   //! \brief M(u): grey FLD flux divergence div(D grad E_r) into rhs_out(irad); 0 in all
   //! other components (frozen background).  Reads ghost zones of u_in.
@@ -114,6 +115,9 @@ class FLDGreyOperator : public parabolic::ParabolicOperator {
   Real esrc_;                   // inner-x1 Dirichlet source value (<0 => zero-gradient)
   int irad_;                    // evolved radiation-energy component (default 0)
   DvceFaceFld5D<Real> rflx_;    // scratch face-centred radiative flux
+  // conservative fine->coarse flux correction at AMR/SMR level boundaries (#33); built
+  // only on a multilevel mesh, nullptr otherwise -> no-op on a uniform grid.
+  MeshBoundaryValuesCC *pbval_flux_;
 };
 
 #endif  // RADIATION_FLD_FLD_GREY_OPERATOR_HPP_

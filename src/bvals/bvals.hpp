@@ -113,7 +113,9 @@ class MeshBlockPack;
 class MeshBoundaryValues {
  public:
   MeshBoundaryValues(MeshBlockPack *ppack, ParameterInput *pin, bool z4c);
-  ~MeshBoundaryValues();
+  // virtual: the class is polymorphic (virtual InitSendIndices/InitRecvIndices/InitFluxRecv)
+  // and derived MeshBoundaryValuesCC objects are deleted through their own pointers.
+  virtual ~MeshBoundaryValues();
 
   // data for all 56 buffers in most general 3D case. Not all elements used in most cases.
   // However each MeshBoundaryBuffer is lightweight, so the convenience of fixed array
@@ -173,6 +175,8 @@ class MeshBoundaryValuesCC : public MeshBoundaryValues {
   // functions to communicate fluxes of CC data
   TaskStatus PackAndSendFluxCC(DvceFaceFld5D<Real> &flx);
   TaskStatus RecvAndUnpackFluxCC(DvceFaceFld5D<Real> &flx);
+  // synchronous (blocking) bundle of the above for callers outside the driver tasklist
+  TaskStatus CorrectFlux(DvceFaceFld5D<Real> &flx);
 
   // functions to prolongate conserved and primitive CC variables
   void FillCoarseInBndryCC(DvceArray5D<Real> &a, DvceArray5D<Real> &ca,
