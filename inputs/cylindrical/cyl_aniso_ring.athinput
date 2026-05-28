@@ -1,0 +1,79 @@
+# AthenaK input file: cylindrical anisotropic-conduction field-aligned ring test
+# (cyl_aniso_ring) -- ADR-0006/ADR-0004 verification, issue [6b]/#25.
+#
+# Verifies the anisotropic (magnetized) Braginskii conduction operator
+# (AnisotropicConductionOperator) under the CYLINDRICAL (r,phi) metric: a 2D r-phi annulus
+# with a PURELY AZIMUTHAL frozen field B = b0 e_phi (field lines = concentric circles) and
+# a smooth Gaussian temperature blob on the mid-annulus ring at (r0, phi=0).  With the
+# strongly magnetized Braginskii coefficients (kappa_par >> kappa_perp) heat conducts
+# AZIMUTHALLY around the ring (along the field, at constant r) while cross-field RADIAL
+# leakage stays a tiny fraction -- heat follows field lines under the cylindrical metric.
+#
+# The operator is advanced operator-split by the RKL2 STS integrator entirely inside
+# ProblemGenerator::UserProblem (it is not yet wired into the driver tasklist), so the
+# <hydro> block is only for local array sizing + the ideal-gas gamma; nlim = tlim = 0 means
+# the driver does no time integration.  The pgen writes T vs phi (ring radius) and T vs r
+# (phi=0) profiles the verification test (test_verify_cyl_aniso_ring_cpu.py) reads.
+
+<comment>
+problem   = cylindrical anisotropic Braginskii conduction ring test
+
+<job>
+basename  = cyl_aniso_ring   # problem ID: basename of output filenames
+
+<mesh>
+nghost    = 2          # Number of ghost cells
+nx1       = 128        # radial zones
+x1min     = 0.5        # r_min (off-axis annulus; no axis BC needed)
+x1max     = 1.5        # r_max
+ix1_bc    = outflow    # inner radial boundary (operator sets its own insulated ghosts)
+ox1_bc    = outflow    # outer radial boundary
+
+nx2       = 128        # azimuthal (phi) zones
+x2min     = -1.5707963267948966   # phi_min = -pi/2 (radians)
+x2max     =  1.5707963267948966   # phi_max =  pi/2
+ix2_bc    = outflow    # phi boundary (wedge, not full circle; blob never reaches it)
+ox2_bc    = outflow    # phi boundary
+
+nx3       = 1          # axial (z) zones (2D r-phi run)
+x3min     = -0.5       # z_min
+x3max     = 0.5        # z_max
+ix3_bc    = periodic   # z boundary
+ox3_bc    = periodic   # z boundary
+
+<coord>
+system    = cylindrical  # (x1,x2,x3) = (r,phi,z)
+
+<meshblock>
+nx1       = 128        # cells per MeshBlock, X1-dir
+nx2       = 128        # cells per MeshBlock, X2-dir
+nx3       = 1          # cells per MeshBlock, X3-dir
+
+<time>
+evolution            = dynamic   # dynamic/kinematic/static
+integrator           = rk2       # hyperbolic time integration algorithm
+parabolic_integrator = sts       # operator-split parabolic backend (RKL2 STS)
+cfl_number           = 0.3       # The Courant, Friedrichs, & Lewy (CFL) Number
+nlim                 = 0         # cycle limit (0: do no integration, just run UserProblem)
+tlim                 = 0         # time limit
+ndiag                = 1         # cycles between diagnostic output
+
+<hydro>
+eos          = ideal   # EOS type
+reconstruct  = plm     # spatial reconstruction method
+rsolver      = llf     # Riemann-solver to be used
+gamma        = 1.66666666666666667   # gamma = C_p/C_v
+
+<problem>
+pgen_name = cyl_aniso_ring  # (ignored: built with -D PROBLEM=cyl_aniso_ring)
+t_cold    = 1.0        # cold background temperature (code units)
+dt_peak   = 0.1        # peak temperature perturbation of the ring blob
+r0        = 1.0        # ring radius (mid-annulus)
+sigma_r   = 0.05       # radial Gaussian width of the blob
+sigma_phi = 0.19634954 # azimuthal Gaussian width of the blob (pi/16)
+b0        = 0.6        # azimuthal field magnitude (strongly magnetized HED plasma)
+rho0      = 1.0        # uniform background density
+n_super   = 80         # number of operator-split RKL2 supersteps
+dt_fac    = 50.0       # superstep size in units of the explicit stable dt
+n_larsen  = 2.0        # Larsen flux-limiter exponent (cap disabled; vfs<=0)
+vfs       = -1.0       # free-streaming speed for the Larsen cap (<=0 disables)

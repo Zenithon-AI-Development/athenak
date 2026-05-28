@@ -17,6 +17,7 @@
 #include "mesh/meshblock_pack.hpp"
 #include "coordinates/coordinates.hpp"
 #include "coordinates/coord_geometry.hpp"
+#include "coordinates/cell_locations.hpp"
 #include "diffusion/aniso_conduction_operator.hpp"
 
 //----------------------------------------------------------------------------------------
@@ -62,6 +63,7 @@ void AnisotropicConductionOperator::OperatorAction(const DvceArray5D<Real> &u_in
   int js = indcs.js, je = indcs.je;
   int ks = indcs.ks, ke = indcs.ke;
   int nmb1 = pmy_pack->nmb_thispack - 1;
+  int nx1 = indcs.nx1;
   auto size = pmy_pack->pmb->mb_size;
   auto csys = pmy_pack->pcoord->coord_system;
   Real gm1 = gamma_ - 1.0;
@@ -85,6 +87,12 @@ void AnisotropicConductionOperator::OperatorAction(const DvceArray5D<Real> &u_in
   // x1 heat flux on the i-face.
   par_for("aniso_flx1", DevExeSpace(), 0, nmb1, ks, ke, js, je, is, ie+1,
   KOKKOS_LAMBDA(const int m, const int k, const int j, const int i) {
+    // physical phi-gradient at the i-face uses the arc length at the FACE radius rface
+    // (Edge2Length = rface*dx2 in cylindrical; = dx2 in Cartesian -> byte-identical).
+    Real rface = 0.0;
+    if (csys != CoordSystem::cartesian) {
+      rface = LeftEdgeX(i-is, nx1, size.d_view(m).x1min, size.d_view(m).x1max);
+    }
     Real tl = TempMHD(u_in, bcc, gm1, m, k, j, i-1);
     Real tr = TempMHD(u_in, bcc, gm1, m, k, j, i);
     Real dtdx1 = (tr - tl)/size.d_view(m).dx1;
@@ -94,7 +102,7 @@ void AnisotropicConductionOperator::OperatorAction(const DvceArray5D<Real> &u_in
       Real br = tr - TempMHD(u_in,bcc,gm1,m,k,j-1,i);
       Real fl = TempMHD(u_in,bcc,gm1,m,k,j+1,i-1) - tl;
       Real bl = tl - TempMHD(u_in,bcc,gm1,m,k,j-1,i-1);
-      dtdx2 = anisocond::VL4(fr, br, fl, bl)/size.d_view(m).dx2;
+      dtdx2 = anisocond::VL4(fr, br, fl, bl)/Edge2Length(csys, size.d_view(m).dx2, rface);
     }
     if (!one_d && !two_d) {
       Real fr = TempMHD(u_in,bcc,gm1,m,k+1,j,i)   - tr;
@@ -125,9 +133,15 @@ void AnisotropicConductionOperator::OperatorAction(const DvceArray5D<Real> &u_in
   if (!one_d) {
     par_for("aniso_flx2", DevExeSpace(), 0, nmb1, ks, ke, js, je+1, is, ie,
     KOKKOS_LAMBDA(const int m, const int k, const int j, const int i) {
+      // physical phi-gradient on the j-face uses the arc length at the cell-center radius
+      // x1v (CenterWidth2 = x1v*dx2 in cylindrical; = dx2 in Cartesian -> bit-identical).
+      Real x1v = 0.0;
+      if (csys != CoordSystem::cartesian) {
+        x1v = CellCenterX(i-is, nx1, size.d_view(m).x1min, size.d_view(m).x1max);
+      }
       Real tl = TempMHD(u_in, bcc, gm1, m, k, j-1, i);
       Real tr = TempMHD(u_in, bcc, gm1, m, k, j, i);
-      Real dtdx2 = (tr - tl)/size.d_view(m).dx2;
+      Real dtdx2 = (tr - tl)/CenterWidth2(csys, size.d_view(m).dx2, x1v);
       Real fr = TempMHD(u_in,bcc,gm1,m,k,j,i+1)   - tr;
       Real br = tr - TempMHD(u_in,bcc,gm1,m,k,j,i-1);
       Real fl = TempMHD(u_in,bcc,gm1,m,k,j-1,i+1) - tl;
@@ -163,6 +177,12 @@ void AnisotropicConductionOperator::OperatorAction(const DvceArray5D<Real> &u_in
   if (!one_d && !two_d) {
     par_for("aniso_flx3", DevExeSpace(), 0, nmb1, ks, ke+1, js, je, is, ie,
     KOKKOS_LAMBDA(const int m, const int k, const int j, const int i) {
+      // physical phi-gradient on the k-face uses the arc length at the cell-center radius
+      // x1v (CenterWidth2 = x1v*dx2 in cylindrical; = dx2 in Cartesian -> bit-identical).
+      Real x1v = 0.0;
+      if (csys != CoordSystem::cartesian) {
+        x1v = CellCenterX(i-is, nx1, size.d_view(m).x1min, size.d_view(m).x1max);
+      }
       Real tl = TempMHD(u_in, bcc, gm1, m, k-1, j, i);
       Real tr = TempMHD(u_in, bcc, gm1, m, k, j, i);
       Real dtdx3 = (tr - tl)/size.d_view(m).dx3;
@@ -175,7 +195,8 @@ void AnisotropicConductionOperator::OperatorAction(const DvceArray5D<Real> &u_in
       Real br2 = tr - TempMHD(u_in,bcc,gm1,m,k,j-1,i);
       Real fl2 = TempMHD(u_in,bcc,gm1,m,k-1,j+1,i) - tl;
       Real bl2 = tl - TempMHD(u_in,bcc,gm1,m,k-1,j-1,i);
-      Real dtdx2 = anisocond::VL4(fr2, br2, fl2, bl2)/size.d_view(m).dx2;
+      Real dtdx2 = anisocond::VL4(fr2, br2, fl2, bl2)
+                 /CenterWidth2(csys, size.d_view(m).dx2, x1v);
       Real bx = 0.5*(bcc(m,IBX,k-1,j,i) + bcc(m,IBX,k,j,i));
       Real by = 0.5*(bcc(m,IBY,k-1,j,i) + bcc(m,IBY,k,j,i));
       Real bz = 0.5*(bcc(m,IBZ,k-1,j,i) + bcc(m,IBZ,k,j,i));
@@ -229,11 +250,20 @@ void AnisotropicConductionOperator::OperatorAction(const DvceArray5D<Real> &u_in
   // exactly as the hydro/MHD RKUpdate and ConductionOperator do.
   par_for("aniso_div", DevExeSpace(), 0, nmb1, ks, ke, js, je, is, ie,
   KOKKOS_LAMBDA(const int m, const int k, const int j, const int i) {
+    // cylindrical radial face radii / cell-center radius weight the conservative flux
+    // divergence; computed off the Cartesian path so Cartesian stays byte-identical.
+    Real rm = 0.0, rp = 0.0, x1v = 0.0;
+    if (csys != CoordSystem::cartesian) {
+      Real x1min = size.d_view(m).x1min, x1max = size.d_view(m).x1max;
+      rm  = LeftEdgeX(i-is,   nx1, x1min, x1max);
+      rp  = LeftEdgeX(i+1-is, nx1, x1min, x1max);
+      x1v = CellCenterX(i-is,  nx1, x1min, x1max);
+    }
     Real divf = FluxDivX1(csys, flx1(m,IEN,k,j,i), flx1(m,IEN,k,j,i+1),
-                          size.d_view(m).dx1);
+                          size.d_view(m).dx1, rm, rp);
     if (!one_d) {
       divf += FluxDivX2(csys, flx2(m,IEN,k,j,i), flx2(m,IEN,k,j+1,i),
-                        size.d_view(m).dx2);
+                        size.d_view(m).dx2, x1v);
     }
     if (!one_d && !two_d) {
       divf += FluxDivX3(csys, flx3(m,IEN,k,j,i), flx3(m,IEN,k+1,j,i),
@@ -259,6 +289,7 @@ Real AnisotropicConductionOperator::ExplicitStableDt() {
   auto &multi_d = pmy_pack->pmesh->multi_d;
   auto &three_d = pmy_pack->pmesh->three_d;
   auto size = pmy_pack->pmb->mb_size;
+  auto csys = pmy_pack->pcoord->coord_system;
   auto &u = cons_;
   auto bcc = bcc_;
   auto par = par_;
@@ -282,12 +313,21 @@ Real AnisotropicConductionOperator::ExplicitStableDt() {
     Real kpar, kperp;
     anisocond::Conductivities(par, rho, tcode, bmag, kpar, kperp);
     Real kuse = Kokkos::fmax(kpar, tiny);
-    min_dt = fmin(min_dt, SQR(size.d_view(m).dx1)*rho/(kuse*gm1));
+    // physical cell-center widths (cylindrical x2 width = x1v*dx2); reduce to dx in
+    // Cartesian -> byte-identical there.
+    Real x1v = 0.0;
+    if (csys != CoordSystem::cartesian) {
+      x1v = CellCenterX(i-is, nx1, size.d_view(m).x1min, size.d_view(m).x1max);
+    }
+    Real w1 = CenterWidth1(csys, size.d_view(m).dx1);
+    Real w2 = CenterWidth2(csys, size.d_view(m).dx2, x1v);
+    Real w3 = CenterWidth3(csys, size.d_view(m).dx3);
+    min_dt = fmin(min_dt, SQR(w1)*rho/(kuse*gm1));
     if (multi_d) {
-      min_dt = fmin(min_dt, SQR(size.d_view(m).dx2)*rho/(kuse*gm1));
+      min_dt = fmin(min_dt, SQR(w2)*rho/(kuse*gm1));
     }
     if (three_d) {
-      min_dt = fmin(min_dt, SQR(size.d_view(m).dx3)*rho/(kuse*gm1));
+      min_dt = fmin(min_dt, SQR(w3)*rho/(kuse*gm1));
     }
   }, Kokkos::Min<Real>(dtnew));
 
