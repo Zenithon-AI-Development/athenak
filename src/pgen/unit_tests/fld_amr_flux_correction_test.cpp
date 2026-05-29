@@ -107,7 +107,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   // correction) and evaluate M(E) = div(D grad E) directly (no ApplyBoundary: keep the
   // analytic cross-block ghosts).  The CorrectFlux call inside OperatorAction overwrites
   // the coarse-side refinement-boundary face flux with the restricted fine flux.
-  FLDGreyOperator op(pmbp, erad, c_light, chi, nl, -1.0);
+  FLDGreyOperator op(pmbp, pin, erad, c_light, chi, nl, -1.0);
   op.OperatorAction(erad, rhs);
 
   // Conservation residual SUM(dV*M) and its scale SUM|dV*M| over the ACTIVE cells of all

@@ -12,6 +12,7 @@
 #include <limits>
 
 #include "athena.hpp"
+#include "parameter_input.hpp"
 #include "mesh/mesh.hpp"
 #include "mesh/meshblock_pack.hpp"
 #include "coordinates/coordinates.hpp"
@@ -22,9 +23,14 @@
 using radiationfld::LarsenLimiter;
 
 //----------------------------------------------------------------------------------------
-//! \brief FLDGreyOperator constructor.
+//! \brief FLDGreyOperator constructor.  Allocates the operator's own cell-centered
+//! boundary-values object (its per-substage multi-block/MPI ghost exchange) sized to the
+//! diffused radiation field's variable width, plus a coarse-mesh scratch array for the
+//! restriction/prolongation done at fine/coarse boundaries under SMR/AMR (#108/[A1],
+//! #110/[A3]) -- mirrors ConductionOperator.
 
-FLDGreyOperator::FLDGreyOperator(MeshBlockPack *pp, const DvceArray5D<Real> &erad,
+FLDGreyOperator::FLDGreyOperator(MeshBlockPack *pp, ParameterInput *pin,
+  const DvceArray5D<Real> &erad,
   Real c_light, Real chi, Real n_larsen, Real e_source) :
   pmy_pack(pp),
   erad_(erad),
@@ -35,21 +41,36 @@ FLDGreyOperator::FLDGreyOperator(MeshBlockPack *pp, const DvceArray5D<Real> &era
   irad_(0),
   rflx_("fld_op_rflx", erad.extent_int(0), erad.extent_int(1),
         erad.extent_int(2), erad.extent_int(3), erad.extent_int(4)),
-  pbval_flux_(nullptr) {
-  // On a multilevel (SMR/AMR) mesh, register the radiative flux for the conservative
-  // fine->coarse flux correction (#33), so the diffused radiation energy is conserved
-  // across refinement boundaries.  (pin is unused by the boundary-values constructor.)
+  pbval_flux_(nullptr),
+  pbval_(nullptr),
+  coarse_("fld_op_coarse", 1, 1, 1, 1, 1) {
+  const int nvar = erad.extent_int(1);
+  // own boundary-values object for the per-substage neighbor ghost exchange: a unique MPI
+  // communicator for this operator's exchange, buffers sized to the diffused field's
+  // variable width (the multigroup operator widens this to batch all groups).
+  pbval_ = new MeshBoundaryValuesCC(pp, pin, false);
+  pbval_->InitializeBuffers(nvar);
+  // coarse-mesh scratch (only meaningful with SMR/AMR; left 1^5 on a uniform grid, where
+  // SyncParabolicGhosts never touches it)
   if (pp->pmesh->multilevel) {
+    auto &indcs = pp->pmesh->mb_indcs;
+    int n_ccells1 = indcs.cnx1 + 2*(indcs.ng);
+    int n_ccells2 = (indcs.cnx2 > 1) ? (indcs.cnx2 + 2*(indcs.ng)) : 1;
+    int n_ccells3 = (indcs.cnx3 > 1) ? (indcs.cnx3 + 2*(indcs.ng)) : 1;
+    Kokkos::realloc(coarse_, erad.extent_int(0), nvar, n_ccells3, n_ccells2, n_ccells1);
+    // also register the radiative flux for the conservative fine->coarse flux correction
+    // (#33), so the diffused radiation energy is conserved across refinement boundaries.
     pbval_flux_ = new MeshBoundaryValuesCC(pp, nullptr, false);
     pbval_flux_->InitializeBuffers(rflx_.x1f.extent_int(1));
   }
 }
 
 //----------------------------------------------------------------------------------------
-//! \brief FLDGreyOperator destructor.
+//! \brief FLDGreyOperator destructor: free the owned boundary-values objects.
 
 FLDGreyOperator::~FLDGreyOperator() {
   if (pbval_flux_ != nullptr) { delete pbval_flux_; }
+  if (pbval_ != nullptr) { delete pbval_; }
 }
 
 //----------------------------------------------------------------------------------------
@@ -201,11 +222,19 @@ Real FLDGreyOperator::ExplicitStableDt() {
 
 //----------------------------------------------------------------------------------------
 //! \fn void FLDGreyOperator::ApplyBoundary()
-//! \brief Refresh ghost zones: DIRICHLET radiation source at the inner-x1 face
-//! (E_r(x1min) = esrc_ via linear extrapolation ghost = 2 esrc - E[is], so the FACE value
-//! is esrc), and ZERO-GRADIENT (insulated/outflow) everywhere else.  With esrc_ < 0 the
-//! inner-x1 face is zero-gradient too (an insulated box).  Called before every M(.) so
-//! the RKL2 substeps see boundary-consistent ghosts.
+//! \brief Refresh the trial state's ghost zones before every M(.) evaluation.  Two steps,
+//! in order (mirrors ConductionOperator, #108/[A1]):
+//!  (1) PHYSICAL-BC fill of ALL ghost zones: DIRICHLET radiation source at the inner-x1
+//!      face (E_r(x1min) = esrc_ via ghost = 2 esrc - E[is], so the FACE value is esrc),
+//!      and ZERO-GRADIENT (insulated/outflow) everywhere else.  With esrc_ < 0 the
+//!      inner-x1 face is zero-gradient too (an insulated box).
+//!  (2) The shared multi-block/MPI/AMR neighbor exchange (SyncParabolicGhosts) then
+//!      OVERWRITES the ghosts on every INTERNAL block (and coarse/fine) face with the
+//!      neighbor's real data, leaving only the true domain-boundary ghosts at their
+//!      physical value.  This is what makes the inner-x1 Dirichlet source apply only at
+//!      the GLOBAL x1min face -- not at every block's left edge -- so a block-decomposed
+//!      run reproduces the single global Marshak wave.  On a single block with no
+//!      neighbors step (2) is a no-op and the behaviour is the original fill.
 
 void FLDGreyOperator::ApplyBoundary(DvceArray5D<Real> &u) {
   auto &indcs = pmy_pack->pmesh->mb_indcs;
@@ -250,4 +279,9 @@ void FLDGreyOperator::ApplyBoundary(DvceArray5D<Real> &u) {
       u(m,n,ke+1+g,j,i) = u(m,n,ke,j,i);
     });
   }
+
+  // (2) overwrite internal block-face ghosts (and coarse/fine boundary ghosts under
+  // SMR/AMR) with neighbor data via the shared synchronous exchange.  Untouched at true
+  // physical boundaries (no neighbor), so those keep the physical fill from step (1).
+  pbval_->SyncParabolicGhosts(u, coarse_);
 }

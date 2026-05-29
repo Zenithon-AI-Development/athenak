@@ -29,6 +29,7 @@ class OrbitalAdvectionFC;
 class ShearingBoxCC;
 class ShearingBoxFC;
 class Driver;
+class FLDGreyOperator;
 
 // function ptr for user-defined MHD boundary functions enrolled in problem generator
 namespace mhd {
@@ -46,6 +47,7 @@ enum class MHD_RSolver {advect, llf, hlle, hlld, roe,   // non-relativistic
 
 struct MHDTaskIDs {
   TaskID savest;
+  TaskID opsfld;
   TaskID irecv;
   TaskID copyu;
   TaskID flux;
@@ -123,6 +125,15 @@ class MHD {
   Conduction *pcond = nullptr;
   SourceTerms *psrc = nullptr;
 
+  // Grey flux-limited radiation diffusion (FLD), advanced operator-split (RKL2 STS) in
+  // the MHD once-per-step slot (#110/[A3], ADR-0001).  `erad` is the standalone radiation
+  // energy density E_r the operator diffuses; `pfld_op` is non-null only when grey FLD is
+  // on AND operator-split is enabled, so default runs allocate nothing and stay
+  // byte-identical (mirrors hydro's operator-split conduction).
+  bool fld_operator_split = false;
+  DvceArray5D<Real> erad;
+  FLDGreyOperator *pfld_op = nullptr;
+
   // following only used for time-evolving flow
   DvceArray5D<Real> u1;       // conserved variables, second register
   DvceFaceFld4D<Real> b1;     // face-centered magnetic fields, second register
@@ -151,6 +162,8 @@ class MHD {
   void AssembleMHDTasks(std::map<std::string, std::shared_ptr<TaskList>> tl);
   // ...in "before_timeintegrator" task list
   TaskStatus SaveMHDState(Driver *d, int stage);
+  // ...in "before_timeintegrator" list (operator-split grey FLD radiation, #110/[A3])
+  TaskStatus OperatorSplitFLD(Driver *d, int stage);
   // ...in "before_stagen_tl" task list
   TaskStatus InitRecv(Driver *d, int stage);
   // ...in "stagen_tl" task list

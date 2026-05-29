@@ -25,6 +25,9 @@
 #include "bvals/bvals.hpp"
 #include "shearing_box/shearing_box.hpp"
 #include "shearing_box/orbital_advection.hpp"
+#include "driver/driver.hpp"
+#include "driver/parabolic_integrator.hpp"
+#include "radiation_fld/fld_grey_operator.hpp"
 #include "mhd/mhd.hpp"
 #include "dyn_grmhd/dyn_grmhd.hpp"
 
@@ -40,6 +43,14 @@ void MHD::AssembleMHDTasks(std::map<std::string, std::shared_ptr<TaskList>> tl) 
 
   // assemble "before_timeintegrator" task list
   id.savest = tl["before_timeintegrator"]->AddTask(&MHD::SaveMHDState, this, none);
+
+  // operator-split grey FLD radiation (RKL2 STS), once per step.  pfld_op is built in the
+  // MHD constructor (it needs `pin` for its own ghost-exchange boundary object, #108); it
+  // is non-null only when grey FLD is on AND operator-split is enabled, so default runs
+  // add no task and are byte-identical (ADR-0001, #110/[A3]).
+  if (pfld_op != nullptr) {
+    id.opsfld = tl["before_timeintegrator"]->AddTask(&MHD::OperatorSplitFLD, this, none);
+  }
 
   // assemble "before_stagen" task list
   id.irecv = tl["before_stagen"]->AddTask(&MHD::InitRecv, this, none);
@@ -94,6 +105,23 @@ TaskStatus MHD::SaveMHDState(Driver *pdrive, int stage) {
     Kokkos::deep_copy(DevExeSpace(), wsaved, w0);
     Kokkos::deep_copy(DevExeSpace(), bccsaved, bcc0);
   }
+  return TaskStatus::complete;
+}
+
+//----------------------------------------------------------------------------------------
+//! \fn TaskStatus MHD::OperatorSplitFLD
+//! \brief Advance the grey FLD radiation energy `erad` one operator-split RKL2 super-step
+//! over the full hyperbolic dt (#110/[A3]).  This is the radiation analog of hydro's
+//! OperatorSplitConduction: parabolic::OperatorSplitStep wraps the FLDGreyOperator, whose
+//! per-substage ApplyBoundary delegates the cross-block/rank (and AMR coarse/fine) ghost
+//! refresh to MeshBoundaryValuesCC::SyncParabolicGhosts (#108/[A1]), so it runs on >1
+//! MeshBlock, >1 MPI rank, and under block-AMR.  Registered once per step in the
+//! "before_timeintegrator" list, so it runs coupled with the hyperbolic MHD update.
+
+TaskStatus MHD::OperatorSplitFLD(Driver *pdrive, int stage) {
+  if (pfld_op == nullptr) { return TaskStatus::complete; }
+  parabolic::OperatorSplitStep(pdrive->pparabolic, *pfld_op, erad,
+                               pmy_pack->pmesh->dt);
   return TaskStatus::complete;
 }
 

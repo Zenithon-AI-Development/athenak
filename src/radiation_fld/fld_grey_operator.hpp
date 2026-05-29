@@ -45,8 +45,13 @@
 // inner-x1 face (the hot wall E_r(x1min) = e_source) and ZERO-GRADIENT (insulated /
 // outflow) elsewhere.  With e_source < 0 the inner-x1 face is also zero-gradient (an
 // insulated box, used by the operator unit test's conserving cosine-eigenmode oracle).
-// Multi-block / MPI ghost exchange between substeps is left to the consuming issues
-// (#23 coupling, #24 multigroup), as in ConductionOperator.
+// The PHYSICAL-BC fill above is followed by the shared multi-block/MPI/AMR neighbor ghost
+// exchange MeshBoundaryValuesCC::SyncParabolicGhosts (#108/[A1]), which OVERWRITES the
+// ghosts on every internal block (and coarse/fine) face with the neighbor's real data,
+// leaving only true domain-boundary ghosts at their physical value -- exactly as
+// ConductionOperator does.  So the operator runs operator-split across >1 MeshBlock, >1
+// MPI rank, and under block-AMR (the radiation FLD wiring of #110/[A3]).  On a single
+// block with no neighbors the exchange is a no-op and the behaviour is the original fill.
 
 #include "athena.hpp"
 #include "driver/parabolic_operator.hpp"
@@ -54,6 +59,7 @@
 // forward declarations
 class MeshBlockPack;
 class MeshBoundaryValuesCC;
+class ParameterInput;
 
 namespace radiationfld {
 
@@ -85,8 +91,11 @@ class FLDGreyOperator : public parabolic::ParabolicOperator {
   //! diffuses (read for the flux-limited explicit-dt), with code-unit light speed
   //! `c_light`, constant extinction coefficient `chi` [1/length], Larsen exponent
   //! `n_larsen`, and inner-x1 Dirichlet source value `e_source` (e_source < 0 =>
-  //! inner-x1 is zero-gradient too).
-  FLDGreyOperator(MeshBlockPack *pp, const DvceArray5D<Real> &erad,
+  //! inner-x1 is zero-gradient too).  `pin` is needed to construct the operator's own
+  //! cell-centered boundary-values object for the per-substage multi-block/MPI/AMR ghost
+  //! exchange (#108/[A1], #110/[A3]).
+  FLDGreyOperator(MeshBlockPack *pp, ParameterInput *pin,
+                  const DvceArray5D<Real> &erad,
                   Real c_light, Real chi, Real n_larsen, Real e_source);
   ~FLDGreyOperator();
 
@@ -118,6 +127,11 @@ class FLDGreyOperator : public parabolic::ParabolicOperator {
   // conservative fine->coarse flux correction at AMR/SMR level boundaries (#33); built
   // only on a multilevel mesh, nullptr otherwise -> no-op on a uniform grid.
   MeshBoundaryValuesCC *pbval_flux_;
+  // per-substage multi-block/MPI/AMR neighbor ghost exchange for the diffused field
+  // (#108/[A1] SyncParabolicGhosts), with a coarse-mesh scratch for the SMR/AMR
+  // restriction/prolongation at fine/coarse boundaries (#110/[A3]).
+  MeshBoundaryValuesCC *pbval_;
+  DvceArray5D<Real> coarse_;
 };
 
 #endif  // RADIATION_FLD_FLD_GREY_OPERATOR_HPP_

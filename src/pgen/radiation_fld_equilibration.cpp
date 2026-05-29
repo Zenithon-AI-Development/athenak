@@ -184,7 +184,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   Kokkos::deep_copy(emat, cv_diff*t_floor);
 
   // Dirichlet inner-x1 source = e_source, zero-gradient elsewhere.
-  FLDGreyOperator op(pmbp, erad, c_light, chi, nl, e_source);
+  FLDGreyOperator op(pmbp, pin, erad, c_light, chi, nl, e_source);
   const Real dt_super = tlim_fld/static_cast<Real>(n_super);
   for (int s = 0; s < n_super; ++s) {
     // 1) FLD spatial diffusion of the radiation energy (operator-split RKL2 superstep).
