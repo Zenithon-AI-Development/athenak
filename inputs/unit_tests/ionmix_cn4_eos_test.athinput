@@ -1,0 +1,81 @@
+# AthenaK input file for the real-material IONMIX cn4 EOS ingestion unit test
+# (unit_tests/ionmix_cn4_eos_test).
+#
+# Minimal harness driver: all checks run in ProblemGenerator::UserProblem and the program
+# exits before any time integration (nlim = tlim = 0).  A single physics block is required
+# by MeshBlockPack::AddPhysics; we use a tiny <z4c> setup (matching the other unit tests)
+# because the EOS reader + representation is built and exercised entirely inside
+# UserProblem and needs no matter initial conditions, no field EOS, and no mesh data.
+#
+# <problem>/eos_file is the path to the IONMIX-style fixture table.  The default below is
+# repo-relative; the auto-collected Python wrapper overrides it on the command line with an
+# absolute path (problem/eos_file=<abspath>) since the test runs from tst/build*/src.
+
+<comment>
+problem   = real-material IONMIX cn4 EOS ingestion unit test
+
+<job>
+basename  = ionmix_cn4_eos_test   # problem ID: basename of output filenames
+
+<problem>
+eos_file = inputs/ionmix/DD-006-imx.cn4   # real IONMIX cn4 EOS table path
+# Reference values + probe-node indices below are PLACEHOLDERS: the Python wrapper
+# (test_unit_ionmix_cn4_eos_cpu.py) overrides every one on the command line with the value
+# its independent cn4 decode produces for the material under test.  They must be declared
+# here because AthenaK's command-line override only *replaces* an existing parameter.
+exp_ntemp = 21
+exp_ndens = 21
+exp_zsum  = 1.0
+pit0 = 1
+pid0 = 1
+pit1 = 2
+pid1 = 2
+exp_eele0 = 1.0
+exp_eion0 = 1.0
+exp_pele0 = 1.0
+exp_pion0 = 1.0
+exp_zbar0 = 1.0
+exp_cvele0 = 1.0
+exp_cvion0 = 1.0
+exp_eele1 = 1.0
+exp_eion1 = 1.0
+exp_pele1 = 1.0
+exp_pion1 = 1.0
+exp_zbar1 = 1.0
+exp_cvele1 = 1.0
+exp_cvion1 = 1.0
+
+<mesh>
+nghost    = 2          # Number of ghost cells
+nx1       = 8          # Number of zones in X1-direction
+x1min     = -1.0       # minimum value of X1
+x1max     = 1.0        # maximum value of X1
+ix1_bc    = outflow    # inner-X1 boundary flag
+ox1_bc    = outflow    # outer-X1 boundary flag
+
+nx2       = 8          # Number of zones in X2-direction
+x2min     = -1.0       # minimum value of X2
+x2max     = 1.0        # maximum value of X2
+ix2_bc    = outflow    # inner-X2 boundary flag
+ox2_bc    = outflow    # outer-X2 boundary flag
+
+nx3       = 8          # Number of zones in X3-direction
+x3min     = -1.0       # minimum value of X3
+x3max     = 1.0        # maximum value of X3
+ix3_bc    = outflow    # inner-X3 boundary flag
+ox3_bc    = outflow    # outer-X3 boundary flag
+
+<meshblock>
+nx1       = 8          # Number of cells in each MeshBlock, X1-dir
+nx2       = 8          # Number of cells in each MeshBlock, X2-dir
+nx3       = 8          # Number of cells in each MeshBlock, X3-dir
+
+<time>
+evolution  = dynamic   # dynamic/kinematic/static
+integrator = rk3       # time integration algorithm
+cfl_number = 0.1       # The Courant, Friedrichs, & Lewy (CFL) Number
+nlim       = 0         # cycle limit (0: do no integration, just run UserProblem)
+tlim       = 0         # time limit
+ndiag      = 1         # cycles between diagnostic output
+
+<z4c>

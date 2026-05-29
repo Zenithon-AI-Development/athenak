@@ -45,6 +45,7 @@
 
 #include "athena.hpp"
 #include "opacity/multigroup_opacity.hpp"
+#include "utils/ionmix_cn4_format.hpp"
 
 namespace opacity {
 
@@ -63,8 +64,11 @@ inline void IonmixFatal(const std::string &fname, const std::string &msg) {
 //! \brief Verify `nodes` is strictly increasing and log-uniform (constant ratio); the
 //!  representation stores only (min, spacing) so a non-log-uniform grid would be
 //!  misinterpreted.  Returns nothing; FATALs with a helpful message on violation.
+//! \param rtol relative-to-spacing tolerance (default 1e-6 for synthetic fixtures; the
+//!  cn4 reader passes a looser value because the real FLASH tables store the grid to ~6
+//!  significant figures).
 inline void CheckLogUniform(const std::string &fname, const std::string &axis,
-                            const std::vector<Real> &nodes) {
+                            const std::vector<Real> &nodes, Real rtol = 1.0e-6) {
   const int n = static_cast<int>(nodes.size());
   for (int i = 0; i < n; ++i) {
     if (!(nodes[i] > 0.0)) {
@@ -74,7 +78,7 @@ inline void CheckLogUniform(const std::string &fname, const std::string &axis,
   Real dlog = (std::log10(nodes[n-1]) - std::log10(nodes[0]))/static_cast<Real>(n - 1);
   for (int i = 0; i < n; ++i) {
     Real expect = std::log10(nodes[0]) + i*dlog;
-    if (std::fabs(std::log10(nodes[i]) - expect) > 1.0e-6*std::fabs(dlog) + 1.0e-12) {
+    if (std::fabs(std::log10(nodes[i]) - expect) > rtol*std::fabs(dlog) + 1.0e-12) {
       IonmixFatal(fname, axis + " grid is not log-uniform (node " + std::to_string(i)
                   + "); the opacity representation requires a log-spaced grid.");
     }
@@ -164,6 +168,80 @@ inline void ReadIonmixOpacity(const std::string &fname, MultigroupOpacity &table
   read_block(h_pa, "Planck absorption opacity");
   read_block(h_pe, "Planck emission opacity");
   read_block(h_ro, "Rosseland transport opacity");
+
+  Kokkos::deep_copy(table.planck_absorb, h_pa);
+  Kokkos::deep_copy(table.planck_emiss, h_pe);
+  Kokkos::deep_copy(table.rosseland, h_ro);
+}
+
+//----------------------------------------------------------------------------------------
+//! \fn ReadIonmixCn4Opacity
+//! \brief Parse a *real* FLASH IONMIX `.cn4` multigroup-opacity table (e.g. aluminum /
+//!  beryllium / deuterium) into `table` (host I/O + device copy).  Unlike
+//!  `ReadIonmixOpacity` (which reads the whitespace synthetic fixtures), this walks the
+//!  packed fixed-width cn4 record stream (utils/ionmix_cn4_format.hpp): it skips the EOS
+//!  records that precede the opacity data in the combined cn4 file (those are the EOS
+//!  reader's job), then reads the `ngroups+1` photon-energy group boundaries [eV] and the
+//!  three opacity arrays in the FLASH order **Rosseland, Planck absorption, Planck
+//!  emission** (note: the synthetic fixture's order is absorption/emission/Rosseland; the
+//!  real cn4 order differs, and we map each to the right field here).  Opacities load
+//!  faithfully in their native mass-opacity units [cm^2/g].  `mass_per_ion` (grams/ion)
+//!  optionally rescales the density axis from ion number density [cm^-3] to mass density
+//!  [g/cc], matching `ReadIonmixCn4Eos`; the default leaves it as number density.
+inline void ReadIonmixCn4Opacity(const std::string &fname, MultigroupOpacity &table,
+                                 Real mass_per_ion = 1.0) {
+  ionmix_cn4::Cn4Reader r(fname);
+  const int ntemp = r.ntemp, ndens = r.ndens, ngroups = r.ngroups;
+
+  // --- grids: temperatures [eV] then ion number densities [cm^-3] ---
+  std::vector<Real> temps, ndense;
+  r.ReadVec(temps, ntemp);
+  r.ReadVec(ndense, ndens);
+  CheckLogUniform(fname, "temperature", temps, 1.0e-4);
+  CheckLogUniform(fname, "number density", ndense, 1.0e-4);
+
+  // --- skip the 12 EOS records (zbar..deedn), each ndens*ntemp, that precede opacity ---
+  r.Skip(12 * ndens * ntemp);
+
+  // --- group boundaries [eV], ascending ---
+  std::vector<Real> bounds;
+  r.ReadVec(bounds, ngroups + 1);
+  for (int ig = 0; ig < ngroups; ++ig) {
+    if (!(bounds[ig+1] > bounds[ig])) {
+      IonmixFatal(fname, "group energy boundaries must be strictly ascending.");
+    }
+  }
+
+  const Real dscale = (mass_per_ion > 0.0) ? mass_per_ion : 1.0;
+  table.Allocate(ngroups, ntemp, ndens, temps.front(), temps.back(),
+                 ndense.front()*dscale, ndense.back()*dscale);
+
+  auto h_bounds = Kokkos::create_mirror_view(table.group_bounds);
+  for (int ig = 0; ig <= ngroups; ++ig) { h_bounds(ig) = bounds[ig]; }
+  Kokkos::deep_copy(table.group_bounds, h_bounds);
+
+  // 3-D cn4 opacity blocks are group-major, then density, then temperature (flat index
+  // ((ig*ndens + id)*ntemp + it)); MultigroupOpacity stores (ig, it, id), so the inner
+  // loop runs over `it`.  All real opacities are strictly positive (log-interpolated).
+  auto h_pa = Kokkos::create_mirror_view(table.planck_absorb);
+  auto h_pe = Kokkos::create_mirror_view(table.planck_emiss);
+  auto h_ro = Kokkos::create_mirror_view(table.rosseland);
+  auto read_block = [&](decltype(h_pa) &h, const std::string &what) {
+    for (int ig = 0; ig < ngroups; ++ig) {
+      for (int id = 0; id < ndens; ++id) {
+        for (int it = 0; it < ntemp; ++it) {
+          Real v = r.Next();
+          if (!(v > 0.0)) {
+            IonmixFatal(fname, what + " must be positive (log-interpolated opacity).");
+          }
+          h(ig, it, id) = v;
+        }
+      }
+    }
+  };
+  read_block(h_ro, "Rosseland transport opacity");   // cn4 order: Rosseland first
+  read_block(h_pa, "Planck absorption opacity");
+  read_block(h_pe, "Planck emission opacity");
 
   Kokkos::deep_copy(table.planck_absorb, h_pa);
   Kokkos::deep_copy(table.planck_emiss, h_pe);

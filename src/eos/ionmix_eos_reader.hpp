@@ -51,6 +51,7 @@
 
 #include "athena.hpp"
 #include "eos/eos_table_3t.hpp"
+#include "utils/ionmix_cn4_format.hpp"
 
 namespace eos_table_3t {
 
@@ -69,8 +70,12 @@ inline void IonmixEosFatal(const std::string &fname, const std::string &msg) {
 //! \brief Verify `nodes` is strictly increasing and log-uniform (constant ratio); the
 //!  representation stores only (min, spacing) so a non-log-uniform grid would be
 //!  misinterpreted.  FATALs with a helpful message on violation.
+//! \param rtol relative-to-spacing tolerance for the log-uniformity test.  The default
+//!  (1e-6) suits the high-precision synthetic fixtures; the cn4 readers pass a looser
+//!  value because the FLASH tables store the grid to only ~6 significant figures, whose
+//!  rounding (~1e-6 of the spacing) would otherwise trip the strict default.
 inline void CheckEosLogUniform(const std::string &fname, const std::string &axis,
-                               const std::vector<Real> &nodes) {
+                               const std::vector<Real> &nodes, Real rtol = 1.0e-6) {
   const int n = static_cast<int>(nodes.size());
   for (int i = 0; i < n; ++i) {
     if (!(nodes[i] > 0.0)) {
@@ -80,7 +85,7 @@ inline void CheckEosLogUniform(const std::string &fname, const std::string &axis
   Real dlog = (std::log10(nodes[n-1]) - std::log10(nodes[0]))/static_cast<Real>(n - 1);
   for (int i = 0; i < n; ++i) {
     Real expect = std::log10(nodes[0]) + i*dlog;
-    if (std::fabs(std::log10(nodes[i]) - expect) > 1.0e-6*std::fabs(dlog) + 1.0e-12) {
+    if (std::fabs(std::log10(nodes[i]) - expect) > rtol*std::fabs(dlog) + 1.0e-12) {
       IonmixEosFatal(fname, axis + " grid is not log-uniform (node " + std::to_string(i)
                      + "); the EOS representation requires a log-spaced grid.");
     }
@@ -180,6 +185,92 @@ inline void ReadIonmixEos(const std::string &fname, EosTable3T &table) {
   read_block(h_p_ion,  "ion pressure",                  true);
   read_block(h_cv_ele, "electron specific heat",        true);
   read_block(h_cv_ion, "ion specific heat",             true);
+
+  Kokkos::deep_copy(table.zbar,   h_zbar);
+  Kokkos::deep_copy(table.e_ele,  h_e_ele);
+  Kokkos::deep_copy(table.e_ion,  h_e_ion);
+  Kokkos::deep_copy(table.p_ele,  h_p_ele);
+  Kokkos::deep_copy(table.p_ion,  h_p_ion);
+  Kokkos::deep_copy(table.cv_ele, h_cv_ele);
+  Kokkos::deep_copy(table.cv_ion, h_cv_ion);
+}
+
+//----------------------------------------------------------------------------------------
+//! \var kCn4LogFloor
+//! \brief Positive floor applied to the log-interpolated EOS fields (e, p, c_v) when
+//!  ingesting a real IONMIX cn4 table.  The synthetic fixtures are strictly positive, but
+//!  real tables carry a few cold/low-density-corner electron entries that underflow to 0
+//!  (or to tiny negative numerical noise, e.g. c_v,e ~ -1e-9 in the deuterium table).
+//!  Those would make `log10()` non-finite in the log-log interpolation, so they are
+//!  clamped up to this floor — far below every physical entry (energies ~1e4..1e16,
+//!  pressures, heat capacities), so legitimate values and T-monotonicity are untouched.
+constexpr Real kCn4LogFloor = 1.0e-30;
+
+//----------------------------------------------------------------------------------------
+//! \fn ReadIonmixCn4Eos
+//! \brief Parse a *real* FLASH IONMIX `.cn4` EOS table (e.g. aluminum / beryllium /
+//!  deuterium) into `table` (host I/O + device copy).  Unlike
+//!  `ReadIonmixEos` (which reads the whitespace-delimited synthetic fixtures), this walks
+//!  the packed fixed-width cn4 record stream (utils/ionmix_cn4_format.hpp) in the FLASH
+//!  record order, extracting the natively-3T per-species data the common representation
+//!  needs: mean ionization `Zbar`, ion/electron specific energies, pressures and heat
+//!  capacities.  The intermediate cn4 records this 2T/3T path does not use (the
+//!  temperature/density derivatives dZdT, dP/dT, dE/dN) are skipped.
+//!
+//!  Values are loaded faithfully in the table's native units (energies/pressures as
+//!  stored, eV temperatures); the only transform is the optional `mass_per_ion`
+//!  (grams/ion): IONMIX tabulates the density axis as ion number density [cm^-3], so
+//!  when `mass_per_ion > 0` the axis is rescaled to mass density [g/cc] (= n_ion*m_ion)
+//!  for the mass-density consumers.  The default (`mass_per_ion = 1`) keeps the axis as
+//!  number density, which is what the ingestion-verification test queries.
+inline void ReadIonmixCn4Eos(const std::string &fname, EosTable3T &table,
+                             Real mass_per_ion = 1.0) {
+  ionmix_cn4::Cn4Reader r(fname);
+  const int ntemp = r.ntemp, ndens = r.ndens;
+
+  // --- grids: temperatures [eV] then ion number densities [cm^-3] ---
+  std::vector<Real> temps, ndense;
+  r.ReadVec(temps, ntemp);
+  r.ReadVec(ndense, ndens);
+  CheckEosLogUniform(fname, "temperature", temps, 1.0e-4);
+  CheckEosLogUniform(fname, "number density", ndense, 1.0e-4);
+
+  // Optionally relabel the (log-spaced) density axis from number density to mass density;
+  // a constant multiplier preserves log-uniformity, so we only scale the (min,max) ends.
+  const Real dscale = (mass_per_ion > 0.0) ? mass_per_ion : 1.0;
+  table.Allocate(ntemp, ndens, temps.front(), temps.back(),
+                 ndense.front()*dscale, ndense.back()*dscale);
+
+  auto h_zbar   = Kokkos::create_mirror_view(table.zbar);
+  auto h_e_ele  = Kokkos::create_mirror_view(table.e_ele);
+  auto h_e_ion  = Kokkos::create_mirror_view(table.e_ion);
+  auto h_p_ele  = Kokkos::create_mirror_view(table.p_ele);
+  auto h_p_ion  = Kokkos::create_mirror_view(table.p_ion);
+  auto h_cv_ele = Kokkos::create_mirror_view(table.cv_ele);
+  auto h_cv_ion = Kokkos::create_mirror_view(table.cv_ion);
+
+  // 2-D cn4 blocks are density-major with temperature varying fastest (flat index
+  // id*ntemp + it); EosTable3T stores (it, id), so the inner loop is over `it`.  `floor`
+  // clamps the log-interpolated fields up to kCn4LogFloor; `zbar` is stored raw (>= 0).
+  auto read_block = [&](decltype(h_zbar) &h, bool floor) {
+    for (int id = 0; id < ndens; ++id) {
+      for (int it = 0; it < ntemp; ++it) {
+        Real v = r.Next();
+        h(it, id) = floor ? Kokkos::fmax(v, kCn4LogFloor) : Kokkos::fmax(v, 0.0);
+      }
+    }
+  };
+  read_block(h_zbar,   false);                  // zbar
+  r.Skip(ndens*ntemp);                          // dzdt   (unused)
+  read_block(h_p_ion,  true);                   // pion
+  read_block(h_p_ele,  true);                   // pele
+  r.Skip(ndens*ntemp);                          // dpidt  (unused)
+  r.Skip(ndens*ntemp);                          // dpedt  (unused)
+  read_block(h_e_ion,  true);                   // eion
+  read_block(h_e_ele,  true);                   // eele
+  read_block(h_cv_ion, true);                   // cvion
+  read_block(h_cv_ele, true);                   // cvele
+  // deidn, deedn and the opacity records that follow are not part of the EOS read.
 
   Kokkos::deep_copy(table.zbar,   h_zbar);
   Kokkos::deep_copy(table.e_ele,  h_e_ele);

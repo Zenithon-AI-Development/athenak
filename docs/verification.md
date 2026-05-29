@@ -62,6 +62,7 @@ Directories: `verification/`, `unit_tests/`.
 | `test_unit_matter_radiation_coupling_cpu.py` | 1 | analytic | Point-implicit grey coupling: relaxation to a·T⁴=E_r, exact E_r+e_mat conservation, unconditional stability for stiff absorption | closed form (equilibrium + conservation) | self |
 | `test_unit_multigroup_coupling_cpu.py` | 1 | analytic | Independent host-quadrature fractional Planck function F(x); Planck-spectrum equilibrium E_g=a·T_e⁴[F(x_{g+1})−F(x_g)]; exact conservation | closed form (Planck fraction) | self |
 | `test_unit_ionmix_opacity_cpu.py` | 1 | analytic | IONMIX multigroup opacity reader: group structure, per-group Planck/Rosseland reproduction, (ρ,T_e) bilinear interpolation, out-of-range clamping | closed form (log-log bilinear on synthetic table) | self |
+| `test_unit_ionmix_cn4_opacity_cpu.py` | 1 | independent re-derivation | Real FLASH IONMIX cn4 tables (Al/Be/D): per-group Planck-absorption/emission/Rosseland raw-load reproduction vs an independent Python decode of the packed cn4 bytes; ascending group bounds, positivity, (ρ,T_e) edge clamping | FLASH IONMIX / opacplot2 cn4 format; Al/Be/D tables supplied by the developer | self |
 
 ## Thermal transport, resistivity, and equation of state
 
@@ -75,6 +76,7 @@ Directories: `unit_tests/`, `cylindrical/`.
 | `test_unit_parabolic_conduction_cpu.py` | 1 | analytic | Cosine diffusion eigenmode: operator returns λ(E−E₀), exp(λt) decay, 2nd-order temporal convergence, energy conservation | closed form (diffusion eigenmode) | self |
 | `test_unit_eos_table_3t_cpu.py` | 1 | analytic | Synthetic ideal-gas 3T table: analytic energies/pressures/c_v/Z̄ under log-log bilinear, T→e→T round-trip, monotonic inversion | closed form (ideal-gas table) | self |
 | `test_unit_ionmix_eos_cpu.py` | 1 | analytic | IONMIX 3T EOS reader: per-species e/p/c_v/Z̄ reproduction, (ρ,T) bilinear, e→T inversion, out-of-range clamping | closed form (synthetic IONMIX table) | self |
+| `test_unit_ionmix_cn4_eos_cpu.py` | 1 | independent re-derivation | Real FLASH IONMIX cn4 tables (Al/Be/D): per-species e/p/c_v/Z̄ raw-load reproduction vs an independent Python decode of the packed cn4 bytes; Z̄∈[0,Z], e(T) monotone, e→T round-trip, edge clamping | FLASH IONMIX / opacplot2 cn4 format; Al/Be/D tables supplied by the developer | self |
 | `test_unit_sesame_eos_cpu.py` | 1 | analytic | SESAME reader (tables 304/305 electron/ion + 601 ionization): (ρ,T) laws, e→T inversion, c_v derivation | closed form (synthetic SESAME table) | self |
 | `test_unit_cons_to_prim_2t_cpu.py` | 1 | analytic | Tabulated 2T EOS inversion (e→T) + pressure composition for distinct γ; edge clamping; ideal-gas limit | closed form | self |
 | `test_unit_three_temp_cpu.py` | 1 | analytic | 3T energy reconciliation: e_tot conservation, PdV split by pressure fraction, shock dissipation to ions, 1T ideal-gas recovery | closed form (energy identities) | self |
