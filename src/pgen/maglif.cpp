@@ -125,7 +125,13 @@ void MagLIFBCs(Mesh *pm) {
 //! by construction, exactly like cyl_field_loop's div(B) history (issue #38).
 
 void MagLIFConsHistory(HistoryData *pdata, Mesh *pm) {
-  pdata->nhist = 7;
+  MeshBlockPack *pmbp = pm->pmb_pack;
+  // When the grey-FLD operator-split radiation field is live (coupled stack, #116/[B3])
+  // append an extra "erad" column = sum E_r dV.  Together with "etot" (MHD total energy)
+  // this closes the species-split energy budget of the coupled run; with FLD off (the
+  // ideal-MHD benchmarks) the column is absent so the history is byte-identical.
+  bool have_rad = (pmbp->pmhd != nullptr && pmbp->pmhd->pfld_op != nullptr);
+  pdata->nhist = have_rad ? 8 : 7;
   pdata->label[0] = "mass";
   pdata->label[1] = "etot";
   pdata->label[2] = "massr";
@@ -133,8 +139,8 @@ void MagLIFConsHistory(HistoryData *pdata, Mesh *pm) {
   pdata->label[4] = "maxdens";
   pdata->label[5] = "nmb";
   pdata->label[6] = "ncells";
+  if (have_rad) { pdata->label[7] = "erad"; }
 
-  MeshBlockPack *pmbp = pm->pmb_pack;
   auto &indcs = pm->mb_indcs;
   int is = indcs.is, ie = indcs.ie;
   int js = indcs.js, je = indcs.je;
@@ -215,6 +221,35 @@ void MagLIFConsHistory(HistoryData *pdata, Mesh *pm) {
     lbmax = fmax(lbmax, fabs(divb));
   }, Kokkos::Max<Real>(maxdens), Kokkos::Max<Real>(maxdivb));
 
+  // (3) radiation energy integral E_rad = sum E_r dV (coupled stack only, #116).  Same
+  // cylindrical finite-volume weight as the mass/etot integrals, so etot+erad is the
+  // genuinely-conserved combined energy the matter-radiation coupling exchanges between.
+  Real erad_tot = 0.0;
+  if (have_rad) {
+    auto erad = pmbp->pmhd->erad;
+    Kokkos::parallel_reduce("maglif_hist_erad",
+    Kokkos::RangePolicy<>(DevExeSpace(), 0, nmb*nkji),
+    KOKKOS_LAMBDA(const int idx, Real &lerad) {
+      int m = idx/nkji;
+      int kji = idx - m*nkji;
+      int k = kji/nji;
+      int ji = kji - k*nji;
+      int j = ji/ni;
+      int i = (ji - j*ni) + is;
+      j += js;
+      k += ks;
+      Real dx1 = size.d_view(m).dx1;
+      Real dx2 = size.d_view(m).dx2;
+      Real dx3 = size.d_view(m).dx3;
+      Real x1min = size.d_view(m).x1min;
+      Real x1max = size.d_view(m).x1max;
+      Real rm = LeftEdgeX(i  -is, nx1, x1min, x1max);
+      Real rp = LeftEdgeX(i+1-is, nx1, x1min, x1max);
+      Real vol = CellVolume(csys, dx1, dx2, dx3, rm, rp);
+      lerad += vol*erad(m,0,k,j,i);
+    }, Kokkos::Sum<Real>(erad_tot));
+  }
+
   pdata->hdata[0] = mass;
   pdata->hdata[1] = etot;
   pdata->hdata[2] = massr;
@@ -222,6 +257,7 @@ void MagLIFConsHistory(HistoryData *pdata, Mesh *pm) {
   pdata->hdata[4] = maxdens;
   pdata->hdata[5] = static_cast<Real>(nmb);
   pdata->hdata[6] = static_cast<Real>(nmb*nkji);
+  if (have_rad) { pdata->hdata[7] = erad_tot; }
   for (int n=pdata->nhist; n<NHISTORY_VARIABLES; ++n) { pdata->hdata[n] = 0.0; }
 }
 
@@ -399,6 +435,24 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
       u0(m,IEN,k,j,i) = p0/gm1 + 0.5*(bphi*bphi + bz0*bz0);
     }
   });
+
+  // ---- seed the operator-split grey-FLD radiation field to radiative equilibrium ----
+  // The coupled radiation-MHD stack (#116/[B3]) needs the standalone `erad` array (live
+  // only when <mhd> fld_operator_split=true) initialised; the MHD ctor allocates it
+  // uninitialised.  The target IC is uniform-pressure gas (e_gas = p0/(gamma-1)), so the
+  // point-implicit matter-radiation coupling's equilibrium E_r = a*T^4 with T = e_gas/c_v
+  // (c_v = <mhd> mrad_cv, a = <mhd> mrad_arad) is a single uniform value.  Seeding to
+  // equilibrium means the coupling starts balanced (no spurious initial energy kick) and
+  // the FLD diffusion + coupling then redistribute energy conservatively.  Guarded on
+  // pfld_op so the ideal-MHD benchmarks (FLD off) stay byte-identical: no array, no fill.
+  if (pmbp->pmhd->pfld_op != nullptr) {
+    Real e_gas = p0/gm1;
+    Real cv    = pmbp->pmhd->mrad_cv;
+    Real arad  = pmbp->pmhd->mrad_arad;
+    Real teq   = (cv > 0.0) ? e_gas/cv : 0.0;
+    Real erad_eq = arad*teq*teq*teq*teq;
+    Kokkos::deep_copy(pmbp->pmhd->erad, erad_eq);
+  }
 
   return;
 }

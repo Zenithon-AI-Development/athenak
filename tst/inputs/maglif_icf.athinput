@@ -17,14 +17,14 @@
 # (i0) is tuned so the liner stagnates at a finite, resolved radius (convergence ratio ~9, the
 # fuel compresses ~100x) and bounces back cleanly within tlim, staying safely off the r=0 axis.
 #
-# PHYSICS SCOPE (honest, per the #32 MagLIF-pgen scope note + the PRD Phase-1 sequencing):
-# the 2T tabulated EOS (#26), 2T Ohmic/radiation coupling (#30), grey/multigroup FLD radiation
-# and anisotropic conduction are operator-split modules that are NOT yet wired into the
-# production MHD driver, so this benchmark exercises the WIRED stack -- cylindrical ideal-MHD
-# (ADR-0004) + the prescribed-I(t) circuit drive (ADR-0005 mode A).  The 2T-EOS table inversion
-# and the matter-radiation coupling are verified in isolation (#26, #28, #30, #41).  The
-# adiabatic-MHD confinement-time signature measured here is the Phase-1 baseline; the tabulated
-# 2T EOS and radiation losses are layered in once the driver wiring lands.
+# PHYSICS SCOPE (Phase B, #116/[B3], ADR-0009): this benchmark now runs the FULL COUPLED
+# radiation-conduction-MHD stack -- cylindrical ideal-MHD (ADR-0004) + the prescribed-I(t)
+# circuit drive (ADR-0005 mode A) + the Strang-split operator-split parabolic block (grey
+# flux-limited radiation diffusion + anisotropic Braginskii conduction) with the
+# point-implicit matter-radiation coupling outside the super-step (the <mhd> block below).
+# This 1-D radial run uses a hotter seeded state (p0 = 0.1) so it carries its own
+# nondimensional coupling coefficients; the full 2T tabulated EOS and IONMIX-derived
+# opacities arrive in Phase C (#118).  Resistive B_phi / multigroup FLD stay off (Phase C).
 #
 # 1-D radial (nx2=nx3=1): a pure bulk stagnation, no MRT modes (those are #39/#42).  Built with
 # -D PROBLEM=maglif (a USER pgen, not in the suite binary).
@@ -78,6 +78,26 @@ rsolver     = hlld
 gamma       = 1.6666666666666667
 dfloor      = 1.0e-6
 pfloor      = 1.0e-8
+# ---- full coupled radiation-conduction-MHD stack (#116/[B3], ADR-0009) ----
+# See maglif_mrt.athinput for the rationale.  This benchmark is 1-D radial with a hotter
+# seeded state (p0 = 0.1, so e_gas = p0/(gamma-1) = 0.15), hence its own nondimensional
+# coefficients: mrad_cv = e_gas so T ~ 1 at the start, a smaller a (mrad_arad) so the
+# strongly-compressed stagnation does not let the a T^4 radiation reservoir dominate the
+# confinement signature, and a milder fld_chi for the finer (256-zone) radial grid.
+# resb_*/mgfld_* off (Phase C).
+strang_split          = true
+fld_operator_split    = true
+fld_c_light           = 10.0
+fld_chi               = 50.0
+fld_n_larsen          = 2.0
+fld_e_source          = -1.0
+acond_operator_split  = true
+acond_kappa_conv      = 1.0
+mrad_coupling         = true
+mrad_chi_a            = 1.0
+mrad_cv               = 0.15
+mrad_arad             = 7.5e-4
+mrad_clight           = 10.0
 
 <problem>
 current_mode     = driven       # driven (mu0*I/2*pi*r) B_phi outer boundary
@@ -93,9 +113,16 @@ d_vac            = 0.001        # vacuum (outer gap) density
 p0               = 0.1          # uniform thermal pressure (fuel in equilibrium with liner)
 bz0              = 0.1          # axial premagnetization field B_z (magneto-insulation)
 perturbation     = none         # clean bulk implosion (no MRT/RM seed; confinement-time test)
+user_hist        = true         # conservation history: mass, etot, ..., erad (coupled stack)
 
 <output1>
 file_type   = bin
 variable    = mhd_w_bcc
 id          = prim
 dt          = 0.03
+
+<output2>
+file_type      = hst   # conservation history -> maglif_icf.user.hst (etot + erad budget)
+variable       = mhd
+user_hist_only = true
+dt             = 0.03
