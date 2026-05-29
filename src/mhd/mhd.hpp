@@ -11,6 +11,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "athena.hpp"
 #include "parameter_input.hpp"
@@ -18,6 +19,9 @@
 #include "bvals/bvals.hpp"
 
 // forward declarations
+namespace parabolic {
+class CompositeParabolicOperator;
+}
 class EquationOfState;
 class Coordinates;
 class Viscosity;
@@ -54,6 +58,10 @@ struct MHDTaskIDs {
   TaskID opsmgfld;
   TaskID opsacond;
   TaskID opsresb;
+  TaskID cplb;       // matter-radiation coupling, before (Strang) -- outside super-step
+  TaskID strangb;    // half parabolic super-step, before (Strang)
+  TaskID stranga;    // half parabolic super-step, after  (Strang)
+  TaskID cpla;       // matter-radiation coupling, after  (Strang) -- outside super-step
   TaskID irecv;
   TaskID copyu;
   TaskID flux;
@@ -177,6 +185,36 @@ class MHD {
   DvceArray4D<Real> eta_resb;
   ResistiveBphiOperator *presb_op = nullptr;
 
+  // Strang-split orchestration of the coupled timestep (#115/[B2], ADR-0009).  The active
+  // stiff operator-split parabolic operators (FLD radiation, anisotropic conduction,
+  // resistive B_phi -- built above) are grouped into one CompositeParabolicOperator PER
+  // EVOLVED FIELD (operators sharing a field sum their action into one RKL2 super-step;
+  // distinct fields get distinct composites), and that composite block is Strang-wrapped
+  // around the hyperbolic update as  (1/2 super-step) . hydro . (1/2 super-step): a half
+  // super-step in "before_timeintegrator" and the other half in "after_timeintegrator".
+  // The per-cell point-implicit matter-radiation emission/absorption coupling is wrapped
+  // OUTSIDE the super-step (a half coupling step on each side), so it is NOT inflated by
+  // the RKL2 substage count.  Gated on `<mhd> strang_split` (default off => individual
+  // full-step operator tasks run as before, byte-identical).  `strang_comps` are owned by
+  // MHD; `strang_field_ids` selects which evolved field each composite acts on.
+  enum StrangField {SF_ERAD = 0, SF_ERADMG = 1, SF_U0 = 2, SF_BPHI = 3};
+  bool strang_split = false;
+  std::vector<parabolic::CompositeParabolicOperator*> strang_comps;
+  std::vector<int> strang_field_ids;
+
+  // Per-cell point-implicit (backward-Euler) grey matter-radiation coupling (#23 kernel),
+  // wrapped outside the super-step by the Strang orchestration above.  Exchanges energy
+  // between the grey radiation field `erad` and the gas internal energy (u0 IEN), driving
+  // each cell toward radiative equilibrium a*T^4 = E_r while conserving E_r + e_gas
+  // exactly (the "species split").  Constant code-unit coefficients (real opacity/EOS-
+  // derived coefficients arrive with the IONMIX tables in Phase C); gated on
+  // `<mhd> mrad_coupling` (and requires grey FLD).  Default off.
+  bool mrad_coupling = false;
+  Real mrad_chi_a = 0.0;     // Planck-mean absorption coefficient chi_a [1/length]
+  Real mrad_cv = 1.0;        // volumetric heat capacity c_v (e_gas = c_v T)
+  Real mrad_arad = 1.0;      // radiation constant a
+  Real mrad_clight = 1.0;    // code-unit speed of light c
+
   // following only used for time-evolving flow
   DvceArray5D<Real> u1;       // conserved variables, second register
   DvceFaceFld4D<Real> b1;     // face-centered magnetic fields, second register
@@ -213,6 +251,11 @@ class MHD {
   TaskStatus OperatorSplitAnisoConduction(Driver *d, int stage);
   // ...in "before_timeintegrator" list (operator-split cylindrical resistive B_phi, #113)
   TaskStatus OperatorSplitResistiveBphi(Driver *d, int stage);
+  // Strang orchestration (#115/[B2]): a HALF parabolic super-step over each per-field
+  // composite (in BOTH "before_" and "after_timeintegrator"), and the matter-radiation
+  // point-implicit coupling HALF step (outside the super-step).
+  TaskStatus StrangParabolicHalf(Driver *d, int stage);
+  TaskStatus MatterRadCouplingHalf(Driver *d, int stage);
   // ...in "before_stagen_tl" task list
   TaskStatus InitRecv(Driver *d, int stage);
   // ...in "stagen_tl" task list

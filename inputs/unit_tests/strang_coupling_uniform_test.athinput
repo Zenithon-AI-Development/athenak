@@ -1,0 +1,74 @@
+# AthenaK input file for the Strang-split coupled-timestep integrated test, UNIFORM mode
+# (unit_tests/strang_coupling_test, <problem> mode=uniform).
+#
+# AC: the per-cell point-implicit matter-radiation coupling runs OUTSIDE the RKL2
+# super-step and is NOT inflated by the substage count.  Uniform radiation E_r on a uniform
+# gas at rest (v=0, B=0): the grey-FLD spatial diffusion has zero gradient (identity on
+# E_r) and the hydro update is inert, yet the FLD super-step still runs s>2 substages
+# (fld_chi small => large diffusivity => tiny dt_exp).  After ONE driver step the
+# (E_r, e_gas) state must equal EXACTLY two backward-Euler coupling half-steps of dt/2 (the
+# host oracle in the pgen), regardless of s -- proving the coupling sits outside the
+# super-step.  All asserts run in the pgen finalize hook after the (nlim=1) driver step.
+
+<comment>
+problem = Strang-split coupled-timestep integrated test (uniform: coupling outside STS)
+
+<job>
+basename = strang_coupling_uniform_test
+
+<mesh>
+nghost = 2
+nx1    = 16
+x1min  = 0.0
+x1max  = 1.0
+ix1_bc = periodic
+ox1_bc = periodic
+
+nx2    = 1
+x2min  = -0.5
+x2max  = 0.5
+ix2_bc = periodic
+ox2_bc = periodic
+
+nx3    = 1
+x3min  = -0.5
+x3max  = 0.5
+ix3_bc = periodic
+ox3_bc = periodic
+
+<meshblock>
+nx1 = 16
+nx2 = 1
+nx3 = 1
+
+<time>
+evolution            = dynamic
+integrator           = rk2
+parabolic_integrator = sts
+cfl_number           = 0.3
+nlim                 = 1          # ONE full Strang-orchestrated step
+tlim                 = 1.0e30
+ndiag                = 1
+
+<mhd>
+eos                = ideal
+reconstruct        = plm
+rsolver            = hlle
+gamma              = 1.66666666666666667
+fld_operator_split = true         # grey FLD operator (the parabolic species)
+fld_c_light        = 1.0
+fld_chi            = 1.0e-2        # SMALL extinction => large D => tiny dt_exp => s>2
+fld_n_larsen       = 2.0
+fld_e_source       = -1.0         # insulated (irrelevant: field is uniform)
+strang_split       = true         # Strang-wrap the composite around hydro (#115)
+mrad_coupling      = true         # per-cell point-implicit matter-radiation coupling
+mrad_chi_a         = 1.0e2        # absorption coeff => beta = c*chi_a*dt/2 ~ O(1)
+mrad_cv            = 1.0
+mrad_arad          = 1.0
+mrad_clight        = 1.0
+
+<problem>
+mode    = uniform
+rho0    = 1.0
+e_gas0  = 1.0      # gas internal energy density (T = e_gas/cv = 1 => a T^4 = 1)
+e_rad0  = 0.5      # radiation colder than matter => non-trivial exchange
