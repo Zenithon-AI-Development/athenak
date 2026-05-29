@@ -100,7 +100,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   integ.SetFromInput(pin);
 
   // Dirichlet inner-x1 source = e_src, zero-gradient elsewhere.
-  FLDGreyOperator op(pmbp, erad, c_light, chi, nl, e_src);
+  FLDGreyOperator op(pmbp, pin, erad, c_light, chi, nl, e_src);
 
   // advance nsuper operator-split RKL2 supersteps to tlim, recording substage counts.
   const Real dt_super = tlim/static_cast<Real>(nsuper);
@@ -136,7 +136,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   std::vector<int> stage_list;
   Real dt_super_ref = -1.0;   // set from the thickest case (first in the list)
   for (size_t q = 0; q < chi_list.size(); ++q) {
-    FLDGreyOperator op_q(pmbp, efront, c_light, chi_list[q], nl, -1.0);
+    FLDGreyOperator op_q(pmbp, pin, efront, c_light, chi_list[q], nl, -1.0);
     op_q.ApplyBoundary(efront);
     Real dt_exp_q = op_q.ExplicitStableDt();
     if (dt_super_ref < 0.0) { dt_super_ref = dt_exp_q; }   // thickest: ~2 stages

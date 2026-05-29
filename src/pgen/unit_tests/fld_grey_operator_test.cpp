@@ -115,7 +115,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
 
   // insulated operator (esrc < 0 => inner-x1 zero-gradient too): exercises the conserving
   // cosine eigenmode oracle.
-  FLDGreyOperator op(pmbp, erad, c_light, chi, nl, -1.0);
+  FLDGreyOperator op(pmbp, pin, erad, c_light, chi, nl, -1.0);
 
   // ===== (D) explicit dt positive/finite =====
   const Real dt_exp = op.ExplicitStableDt();

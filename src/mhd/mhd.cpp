@@ -21,6 +21,7 @@
 #include "shearing_box/shearing_box.hpp"
 #include "shearing_box/orbital_advection.hpp"
 #include "bvals/bvals.hpp"
+#include "radiation_fld/fld_grey_operator.hpp"
 #include "mhd/mhd.hpp"
 
 namespace mhd {
@@ -53,6 +54,7 @@ MHD::MHD(MeshBlockPack *ppack, ParameterInput *pin) :
     e3_cc("e3_cc",1,1,1,1),
     utest("utest",1,1,1,1,1),
     bcctest("bcctest",1,1,1,1,1),
+    erad("erad",1,1,1,1,1),
     fofc("fofc",1,1,1,1) {
   // Total number of MeshBlocks on this rank to be used in array dimensioning
   int nmb = std::max((ppack->nmb_thispack), (ppack->pmesh->nmb_maxperrank));
@@ -164,6 +166,27 @@ MHD::MHD(MeshBlockPack *ppack, ParameterInput *pin) :
   pbval_u->InitializeBuffers((nmhd+nscalars));
   pbval_b = new MeshBoundaryValuesFC(ppack, pin);
   pbval_b->InitializeBuffers(3);
+
+  // Grey flux-limited radiation diffusion (FLD) wired operator-split into the MHD step
+  // (#110/[A3], ADR-0001).  Only built when explicitly enabled, so default MHD runs add
+  // nothing and stay byte-identical.  `erad` is a standalone single-variable radiation
+  // energy field; the FLDGreyOperator owns its own ghost-exchange boundary object (built
+  // from `pin`) so it runs multi-block/MPI/AMR, mirroring hydro's operator-split
+  // conduction (#108).  Routing decision (#109): FLD is stiff => super-time-stepped, so
+  // it does not limit the hyperbolic dt (the RKL2 super-step covers the full step).
+  fld_operator_split = pin->GetOrAddBoolean("mhd","fld_operator_split",false);
+  if (fld_operator_split) {
+    auto &indcs = pmy_pack->pmesh->mb_indcs;
+    int ncells1 = indcs.nx1 + 2*(indcs.ng);
+    int ncells2 = (indcs.nx2 > 1)? (indcs.nx2 + 2*(indcs.ng)) : 1;
+    int ncells3 = (indcs.nx3 > 1)? (indcs.nx3 + 2*(indcs.ng)) : 1;
+    Kokkos::realloc(erad, nmb, 1, ncells3, ncells2, ncells1);
+    Real fld_c   = pin->GetOrAddReal("mhd","fld_c_light", 1.0);
+    Real fld_chi = pin->GetOrAddReal("mhd","fld_chi", 1.0);
+    Real fld_nl  = pin->GetOrAddReal("mhd","fld_n_larsen", 2.0);
+    Real fld_es  = pin->GetOrAddReal("mhd","fld_e_source", -1.0);
+    pfld_op = new FLDGreyOperator(ppack, pin, erad, fld_c, fld_chi, fld_nl, fld_es);
+  }
 
   // Orbital advection and shearing box BCs (if requested in input file)
   if (pin->DoesBlockExist("shearing_box")) {
@@ -358,6 +381,7 @@ MHD::~MHD() {
   if (porb_u != nullptr) {delete porb_u;}
   delete pbval_b;
   delete pbval_u;
+  if (pfld_op != nullptr) {delete pfld_op;}
   if (psrc!= nullptr) {delete psrc;}
   if (pcond != nullptr) {delete pcond;}
   if (presist!= nullptr) {delete presist;}

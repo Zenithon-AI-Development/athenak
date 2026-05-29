@@ -1,0 +1,70 @@
+# AthenaK input file for the multi-block operator-split grey-FLD Marshak verification
+# (unit_tests/fld_marshak_multiblock_test).
+#
+# A 1D optically-thick cold slab heated from the inner-x1 Dirichlet radiation source,
+# decomposed into FOUR MeshBlocks along x1 (mesh nx1=128, meshblock nx1=32).  The grey
+# FLDGreyOperator is wired operator-split into the MHD timestep (mhd/fld_operator_split)
+# and advanced by the RKL2 STS integrator; its per-substage ghost refresh delegates the
+# cross-block (and, under MPI, cross-rank) neighbor exchange to
+# MeshBoundaryValuesCC::SyncParabolicGhosts (#108/[A1], #110/[A3]).  The test asserts the
+# wave reproduces the analytic erfc Marshak profile across the internal block boundaries.
+#
+# All checks run in ProblemGenerator::UserProblem; nlim = tlim = 0 (no time integration).
+# x1 boundaries are outflow (the FLD operator overrides its own x1 ghosts: Dirichlet at
+# the inner-x1 source, zero-gradient at outer-x1).
+
+<comment>
+problem   = multi-block operator-split grey-FLD Marshak (SyncParabolicGhosts) verification
+
+<job>
+basename  = fld_marshak_multiblock_test   # problem ID: basename of output filenames
+
+<mesh>
+nghost    = 2          # Number of ghost cells
+nx1       = 128        # Number of zones in X1-direction (global)
+x1min     = 0.0        # minimum value of X1
+x1max     = 0.4        # maximum value of X1
+ix1_bc    = outflow    # inner-X1 boundary flag (FLD operator overrides ghosts itself)
+ox1_bc    = outflow    # outer-X1 boundary flag
+
+nx2       = 1          # Number of zones in X2-direction
+x2min     = -0.5       # minimum value of X2
+x2max     = 0.5        # maximum value of X2
+ix2_bc    = periodic   # inner-X2 boundary flag
+ox2_bc    = periodic   # outer-X2 boundary flag
+
+nx3       = 1          # Number of zones in X3-direction
+x3min     = -0.5       # minimum value of X3
+x3max     = 0.5        # maximum value of X3
+ix3_bc    = periodic   # inner-X3 boundary flag
+ox3_bc    = periodic   # outer-X3 boundary flag
+
+<meshblock>
+nx1       = 32         # 128/32 = 4 MeshBlocks along X1 (the multi-block decomposition)
+nx2       = 1          # Number of cells in each MeshBlock, X2-dir
+nx3       = 1          # Number of cells in each MeshBlock, X3-dir
+
+<time>
+evolution            = dynamic   # dynamic/kinematic/static
+integrator           = rk2       # hyperbolic time integration algorithm
+parabolic_integrator = sts       # operator-split parabolic backend (RKL2 STS)
+cfl_number           = 0.3       # The Courant, Friedrichs, & Lewy (CFL) Number
+nlim                 = 0         # cycle limit (0: do no integration, just run UserProblem)
+tlim                 = 0         # time limit
+ndiag                = 1         # cycles between diagnostic output
+
+<mhd>
+eos                = ideal   # EOS type
+reconstruct        = plm     # spatial reconstruction method
+rsolver            = hlle    # Riemann-solver to be used
+gamma              = 1.66666666666666667   # gamma = C_p/C_v
+fld_operator_split = true    # wire grey FLD operator-split into the MHD timestep (#110)
+fld_c_light        = 1.0     # code-unit speed of light
+fld_chi            = 1.0e3   # extinction coefficient kappa_R*rho [1/length] (optically thick)
+fld_n_larsen       = 2.0     # Larsen flux-limiter exponent
+fld_e_source       = 1.0     # inner-x1 Dirichlet radiation-energy source (hot wall)
+
+<problem>
+e_floor   = 0.1        # initial/cold radiation energy
+tlim_fld  = 50.0       # FLD integration time (front ~ 2 sqrt(D*tlim) ~ 0.26 < domain)
+n_super   = 20         # number of operator-split RKL2 supersteps
