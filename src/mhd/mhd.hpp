@@ -32,6 +32,7 @@ class Driver;
 class FLDGreyOperator;
 class FLDMultigroupOperator;
 class AnisotropicConductionOperator;
+class ResistiveBphiOperator;
 
 // function ptr for user-defined MHD boundary functions enrolled in problem generator
 namespace mhd {
@@ -52,6 +53,7 @@ struct MHDTaskIDs {
   TaskID opsfld;
   TaskID opsmgfld;
   TaskID opsacond;
+  TaskID opsresb;
   TaskID irecv;
   TaskID copyu;
   TaskID flux;
@@ -161,6 +163,20 @@ class MHD {
   bool acond_operator_split = false;
   AnisotropicConductionOperator *pacond_op = nullptr;
 
+  // Cylindrical resistive B_phi diffusion (the -eta B_phi/r^2 curl-curl operator, the
+  // "one true cylindrical exception" of ADR-0004), advanced operator-split (RKL2 STS) in
+  // the MHD step (#113/[A6], ADR-0004/ADR-0001).  `bphi` is a standalone single-component
+  // field (B_phi) the operator diffuses with the cell-centred magnetic diffusivity
+  // `eta_resb`; `presb_op` is non-null only when explicitly enabled, so default MHD runs
+  // allocate nothing and stay byte-identical.  Stiff (#109) => super-time-stepped, so it
+  // does not limit the hyperbolic dt.  The operator owns its own ghost-exchange boundary
+  // object so it runs multi-block/MPI/AMR via SyncParabolicGhosts (#108/[A1]), with the
+  // antisymmetric axis ghost kept only at the true r=0 domain face.
+  bool resb_operator_split = false;
+  DvceArray5D<Real> bphi;
+  DvceArray4D<Real> eta_resb;
+  ResistiveBphiOperator *presb_op = nullptr;
+
   // following only used for time-evolving flow
   DvceArray5D<Real> u1;       // conserved variables, second register
   DvceFaceFld4D<Real> b1;     // face-centered magnetic fields, second register
@@ -195,6 +211,8 @@ class MHD {
   TaskStatus OperatorSplitMultigroupFLD(Driver *d, int stage);
   // ...in "before_timeintegrator" list (operator-split anisotropic conduction, #112/[A5])
   TaskStatus OperatorSplitAnisoConduction(Driver *d, int stage);
+  // ...in "before_timeintegrator" list (operator-split cylindrical resistive B_phi, #113)
+  TaskStatus OperatorSplitResistiveBphi(Driver *d, int stage);
   // ...in "before_stagen_tl" task list
   TaskStatus InitRecv(Driver *d, int stage);
   // ...in "stagen_tl" task list

@@ -1,0 +1,76 @@
+# AthenaK input file for the multi-block operator-split CYLINDRICAL resistive B_phi
+# diffusion verification (unit_tests/resb_bphi_multiblock_test).
+#
+# A 1-D radial cylinder r in [0, R=1] decomposed into FOUR MeshBlocks (mesh nx1=128,
+# meshblock nx1=32 => 4 radial blocks).  The ResistiveBphiOperator (the -eta B_phi/r^2
+# curl-curl operator) is advanced operator-split by the RKL2 STS integrator through the
+# exact production task body (parabolic::OperatorSplitStep); its per-substage ApplyBoundary
+# delegates the cross-block (and, under MPI, cross-rank) neighbour ghost refresh to
+# MeshBoundaryValuesCC::SyncParabolicGhosts (#108/[A1]), keeping the antisymmetric axis
+# ghost only at the true r=0 face.  The test seeds the Bessel J_1(kr*r) eigenmode with
+# kr = j_{1,1}/R, so J_1 vanishes on the axis (J_1(0)=0) AND at the outer node
+# (J_1(j_{1,1})=0); it asserts the numerical field reproduces the analytic A J_1 exp(-eta
+# kr^2 t) decay across the internal block faces, preserves the J_1 shape, and decays at the
+# analytic rate.  The internal radial block faces sit at r=0.25,0.5,0.75 where B_phi is
+# large, so a missing exchange (the embedded pin==nullptr RED run) sign-flips B_phi there.
+#
+# All checks run in ProblemGenerator::UserProblem; nlim = tlim = 0 (no time integration).
+# The operator's B_phi + eta fields are local work arrays sized from the hydro u0 array, so
+# the <hydro> block is only for array sizing.
+
+<comment>
+problem   = multi-block operator-split cylindrical resistive B_phi diffusion verification
+
+<job>
+basename  = resb_bphi_multiblock_test   # problem ID: basename of output filenames
+
+<mesh>
+nghost    = 2          # Number of ghost cells
+nx1       = 128        # Number of radial zones (global)
+x1min     = 0.0        # r_min (the axis)
+x1max     = 1.0        # r_max (the J_1 outer node)
+ix1_bc    = axis       # r=0 axisymmetric boundary (operator overrides with antisym ghost)
+ox1_bc    = outflow    # outer radial boundary (operator overrides with antisym/Dirichlet)
+
+nx2       = 1          # azimuthal (phi) zones (1 -> axisymmetric)
+x2min     = -0.5       # phi_min
+x2max     = 0.5        # phi_max
+ix2_bc    = periodic   # phi boundary
+ox2_bc    = periodic   # phi boundary
+
+nx3       = 1          # axial (z) zones
+x3min     = -0.5       # z_min
+x3max     = 0.5        # z_max
+ix3_bc    = periodic   # z boundary
+ox3_bc    = periodic   # z boundary
+
+<coord>
+system    = cylindrical  # (x1,x2,x3) = (r,phi,z)
+
+<meshblock>
+nx1       = 32         # 128/32 = 4 MeshBlocks along the radius (faces at r=0.25,0.5,0.75)
+nx2       = 1          # cells per MeshBlock, X2-dir
+nx3       = 1          # cells per MeshBlock, X3-dir
+
+<time>
+evolution            = dynamic   # dynamic/kinematic/static
+integrator           = rk2       # hyperbolic time integration algorithm
+parabolic_integrator = sts       # operator-split parabolic backend (RKL2 STS)
+cfl_number           = 0.3       # The Courant, Friedrichs, & Lewy (CFL) Number
+nlim                 = 0         # cycle limit (0: do no integration, just run UserProblem)
+tlim                 = 0         # time limit
+ndiag                = 1         # cycles between diagnostic output
+
+<hydro>
+eos          = ideal   # EOS type
+reconstruct  = plm     # spatial reconstruction method
+rsolver      = hllc    # Riemann-solver to be used
+gamma        = 1.66666666666666667   # gamma = C_p/C_v
+
+<problem>
+pgen_name = resb_bphi_multiblock_test  # (ignored: built with -D PROBLEM=unit_tests/...)
+eta     = 0.01         # constant magnetic diffusivity (SIM-76 / #20 field, constant fill)
+amp     = 1.0          # B_phi eigenmode amplitude
+kr      = 3.8317059702075123   # radial wavenumber = j_{1,1}/R (J_1 zero on axis + outer node)
+n_super = 24           # number of RKL2 supersteps
+dt_fac  = 200.0        # superstep size in units of the explicit-stable dt
