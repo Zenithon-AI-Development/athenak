@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Phase-Integration Grilling Outcome — AthenaK MagLIF</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad: true, theme: "neutral", securityLevel: "loose" });
+</script>
+<style>
+  .seam { stroke-dasharray: 4 4; }
+  pre.mermaid { background:#fff; }
+</style>
+</head>
+<body class="bg-stone-50 text-slate-900 font-sans">
+<main class="max-w-5xl mx-auto px-6 py-12 space-y-12">
+
+  <header class="space-y-3 border-b border-slate-200 pb-8">
+    <p class="text-xs uppercase tracking-widest text-indigo-600 font-semibold">Design grilling · outcome record</p>
+    <h1 class="text-3xl font-serif font-bold">Phase-Integration of the MagLIF HED operators into AthenaK</h1>
+    <p class="text-slate-600 max-w-3xl">Repo <code class="text-sm">Zenithon-AI-Development/athenak</code> · 2026-05-29 · branch <code class="text-sm">main</code> @ <code class="text-sm">9456e78f</code>. Outcome of a grill-with-docs session resolving how to wire the unit-verified operators into the production solver and replicate the Ellison benchmarks. Companion docs: <code class="text-sm">docs/adr/0009-composite-strang-rkl2-parabolic-superstep.md</code>, <code class="text-sm">CONTEXT.md</code>.</p>
+    <div class="flex flex-wrap gap-3 text-xs pt-2">
+      <span class="px-2 py-1 rounded bg-emerald-100 text-emerald-800">decided</span>
+      <span class="px-2 py-1 rounded bg-amber-100 text-amber-800">checkpoint / risk</span>
+      <span class="px-2 py-1 rounded bg-red-100 text-red-800">gap to close</span>
+      <span class="px-2 py-1 rounded bg-slate-200 text-slate-700">reuse existing</span>
+    </div>
+  </header>
+
+  <!-- PREMISE -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-serif font-semibold">The premise</h2>
+    <p class="text-slate-700 max-w-3xl">EPIC <code class="text-sm">#1</code> closed all 52 child issues, but completeness was overstated. The HED operators are each unit-verified <em>in isolation</em> and never registered into the production MHD timestep — so the four MagLIF benchmarks run <strong>adiabatic ideal-MHD + prescribed I(t)</strong>, asserting qualitative growth signatures, and <strong>no Ellison replication exists</strong>.</p>
+    <div class="grid md:grid-cols-3 gap-4 text-sm">
+      <div class="rounded-lg border border-slate-200 bg-white p-4">
+        <p class="font-semibold text-slate-800">Plots are real</p>
+        <p class="text-slate-600 mt-1">28/28 from genuine <code>./athena</code> runs (real <code>run_pgen</code>, no fabrication). Representative of the <em>wired</em> stack only.</p>
+      </div>
+      <div class="rounded-lg border border-slate-200 bg-white p-4">
+        <p class="font-semibold text-slate-800">Operators not wired</p>
+        <p class="text-slate-600 mt-1"><code>grep src/mhd|hydro|mesh</code> → zero registrations. <code>driver.cpp:94</code>: "inert until a ParabolicOperator is registered (#13)."</p>
+      </div>
+      <div class="rounded-lg border border-slate-200 bg-white p-4">
+        <p class="font-semibold text-slate-800">No replication</p>
+        <p class="text-slate-600 mt-1">Not CI-hidden — never built. Cannot exist until operators reach the solver.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- DECISIONS TABLE -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-serif font-semibold">Decisions</h2>
+    <div class="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-100 text-left text-xs uppercase tracking-wider text-slate-600">
+          <tr><th class="px-4 py-2">Fork</th><th class="px-4 py-2">Decision</th><th class="px-4 py-2">Why</th></tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          <tr><td class="px-4 py-3 font-medium">Benchmarks 5–6</td><td class="px-4 py-3"><span class="text-emerald-700 font-semibold">Out</span> — later phase</td><td class="px-4 py-3 text-slate-600">Need burn/α/preheat; not integration work. Anchor memory updated.</td></tr>
+          <tr><td class="px-4 py-3 font-medium">Nernst / extended-MHD</td><td class="px-4 py-3"><span class="text-amber-700 font-semibold">Out, tested checkpoint</span></td><td class="px-4 py-3 text-slate-600">Liner-edge divergence from Ellison = documented trigger to open extended-MHD. Resistive-only is a falsifiable hypothesis.</td></tr>
+          <tr><td class="px-4 py-3 font-medium">Sequencing</td><td class="px-4 py-3"><span class="text-emerald-700 font-semibold">Infra-first</span> A→B→C; parallel rejected</td><td class="px-4 py-3 text-slate-600">Real deliverable needs AMR/MPI; parallel tracks edit the same seam (<code>ParabolicOperator</code>) → churn.</td></tr>
+          <tr><td class="px-4 py-3 font-medium">STS surface</td><td class="px-4 py-3"><span class="text-emerald-700 font-semibold">Measure-first</span>, minimize</td><td class="px-4 py-3 text-slate-600">On a representative-<em>difficult</em> case (real magnetization/η/opacity), not the toy benchmarks. Flux-fuse anything not stiff → rides existing scaling.</td></tr>
+          <tr><td class="px-4 py-3 font-medium">Ghost-sync shape</td><td class="px-4 py-3"><span class="text-emerald-700 font-semibold">Shared hybrid helper</span></td><td class="px-4 py-3 text-slate-600">Zero exec cost vs per-op (by-ref, async MPI already); inherits tuned async pattern once; multigroup batches N groups → 1 exchange.</td></tr>
+          <tr><td class="px-4 py-3 font-medium">Operator composition</td><td class="px-4 py-3"><span class="text-emerald-700 font-semibold">Composite + Strang + RKL2</span> <span class="text-xs text-slate-500">(ADR-0009)</span></td><td class="px-4 py-3 text-slate-600">One superstep over summed M(u), s from stiffest; Strang ≈ free (s∝√dt); implicit backend = stagnation fallback. Matches Athena++/AthenaPK.</td></tr>
+          <tr><td class="px-4 py-3 font-medium">Material tables</td><td class="px-4 py-3"><span class="text-emerald-700 font-semibold">FLASH IONMIX (Al/Be/D)</span></td><td class="px-4 py-3 text-slate-600">User-supplied; covers EOS (#10) + multigroup opacity (#7). Blocker gone.</td></tr>
+          <tr><td class="px-4 py-3 font-medium">Replication oracle</td><td class="px-4 py-3"><span class="text-emerald-700 font-semibold">Experiment, hybrid digitization</span></td><td class="px-4 py-3 text-slate-600">Download infeasible (confirmed). I extract tables/scalars; user digitizes curves. Ground truth = experiment, FLASH secondary.</td></tr>
+          <tr><td class="px-4 py-3 font-medium">Per-benchmark bar</td><td class="px-4 py-3"><span class="text-emerald-700 font-semibold">Tiered</span></td><td class="px-4 py-3 text-slate-600">B3 quant anchor → B1 quant → B4 scalar+profile → B2 qualitative. Tolerance = max(exp error, digitization error).</td></tr>
+          <tr><td class="px-4 py-3 font-medium">CI / hardware</td><td class="px-4 py-3"><span class="text-emerald-700 font-semibold">3 triggers, 2 targets</span></td><td class="px-4 py-3 text-slate-600">Per-PR CPU (backbone+smoke); scheduled-monthly/dispatch/label heavy run on self-hosted GPU (athenakdev, <code>_gpu</code>); committed ground truth.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- PHASE FLOW -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-serif font-semibold">Phase architecture</h2>
+    <div class="rounded-lg border border-slate-200 bg-white p-4">
+      <pre class="mermaid">
+flowchart TB
+  subgraph A["Phase A — scale each operator (multi-block)"]
+    A1[Build shared SyncParabolicGhosts helper<br/>modeled on CorrectFlux] --> A2[Remove single-block FATAL]
+    A2 --> A3[Wire each operator into MHD slot,<br/>scale-test in isolation under MPI+AMR]
+    A3 --> A4[Measure per-operator stiffness<br/>on representative-difficult case]
+    A4 --> A5[Flux-fuse non-stiff ops · close gaps:<br/>multigroup flux-corr, regrid RefineCC list]
+  end
+  subgraph B["Phase B — couple full-physics"]
+    B1[CompositeParabolicOperator<br/>sum M_i, s from stiffest] --> B2[Strang wrap around hydro;<br/>point-implicit coupling outside STS]
+    B2 --> B3[Re-run benchmarks 1-4 full-stack<br/>+ re-baseline]
+  end
+  subgraph C["Phase C — replicate Ellison"]
+    C1[IONMIX tables · SI dimensional setup] --> C2[Paper-resolution AMR on GPU]
+    C2 --> C3[Validate vs committed digitized<br/>ground-truth · tiered bar]
+  end
+  A5 --> B1
+  B3 --> C1
+  classDef done stroke:#059669,stroke-width:2px;
+      </pre>
+    </div>
+  </section>
+
+  <!-- TIMESTEP STRUCTURE -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-serif font-semibold">The coupled timestep (Phase B)</h2>
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="rounded-lg border border-slate-200 bg-white p-4">
+        <pre class="mermaid">
+flowchart TB
+  S1["½ point-implicit coupling<br/>(local, no halos)"] --> S2
+  subgraph STSb["½ STS superstep"]
+    S2["RKL2 over composite M(u)=ΣMᵢ<br/>1 ghost-sync / substage · s from stiffest"]
+  end
+  STSb --> H["Hyperbolic MHD<br/>(full RK stage loop)"]
+  H --> STSa
+  subgraph STSa["½ STS superstep"]
+    S3["RKL2 over composite M(u)"]
+  end
+  STSa --> S4["½ point-implicit coupling"]
+        </pre>
+      </div>
+      <div class="space-y-3 text-sm text-slate-700">
+        <p><strong>Why composite-summed:</strong> one superstep, one shared ghost exchange per substage — vs N separate sweeps. Dissolves Lie/Strang ordering <em>among</em> the parabolic terms (summed, not sequenced).</p>
+        <p><strong>Why Strang is ~free:</strong> substage count <code>s ∝ √(dt/dt_par)</code>, so two half-supersteps of <code>s/√2</code> stages total the same substage count as one full superstep — 2nd-order accuracy without doubling flux work.</p>
+        <p><strong>Point-implicit stays outside:</strong> it is local (zero-stencil), so it must not be inflated by the STS substage count.</p>
+        <p class="rounded bg-amber-50 border border-amber-200 p-3 text-amber-900"><strong>Stagnation caution:</strong> FLASH (the anchor) used full implicit. STS + nonlinear Sharma–Hammett + Spitzer κ∝T<sup>5/2</sup> is where RKL monotonicity is unproven and cross-field leakage grows with <code>s</code>. Trigger to enable the implicit backend: leakage growth / <code>s</code> capping at stagnation.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- REUSE MAP -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-serif font-semibold">Reuse map — plug in, don't reinvent</h2>
+    <p class="text-slate-700 max-w-3xl">The integration is overwhelmingly existing AthenaK hooks. One genuinely-new piece, and even it mirrors an existing pattern.</p>
+    <div class="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-100 text-left text-xs uppercase tracking-wider text-slate-600">
+          <tr><th class="px-4 py-2">Need</th><th class="px-4 py-2">Existing hook</th><th class="px-4 py-2">Verdict</th></tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          <tr><td class="px-4 py-3">Per-substage ghost exchange</td><td class="px-4 py-3"><code>bvals</code> PackAndSend/RecvAndUnpackCC + CorrectFlux bundle pattern</td><td class="px-4 py-3"><span class="px-2 py-0.5 rounded bg-red-100 text-red-800 text-xs">NEW (one shared helper)</span></td></tr>
+          <tr><td class="px-4 py-3">AMR flux correction</td><td class="px-4 py-3"><code>CorrectFlux</code> — 3/4 ops already call it</td><td class="px-4 py-3"><span class="px-2 py-0.5 rounded bg-slate-200 text-slate-700 text-xs">REUSE · gap: multigroup (4-line copy)</span></td></tr>
+          <tr><td class="px-4 py-3">Div-preserving B prolongation</td><td class="px-4 py-3">Tóth–Roe <code>ProlongateFC</code> (+ cyl variant)</td><td class="px-4 py-3"><span class="px-2 py-0.5 rounded bg-slate-200 text-slate-700 text-xs">REUSE</span></td></tr>
+          <tr><td class="px-4 py-3">Faraday load-voltage reduction</td><td class="px-4 py-3"><code>circuit/faraday_voltage.hpp</code> on history machinery</td><td class="px-4 py-3"><span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-xs">DONE</span></td></tr>
+          <tr><td class="px-4 py-3">Point-implicit coupling</td><td class="px-4 py-3"><code>matter_radiation_coupling.hpp</code> (RadFluidCoupling pattern)</td><td class="px-4 py-3"><span class="px-2 py-0.5 rounded bg-slate-200 text-slate-700 text-xs">REUSE · glue: wrap in task</span></td></tr>
+          <tr><td class="px-4 py-3"><code>e_ele</code> advection</td><td class="px-4 py-3">passive scalars (<code>nscalars</code>)</td><td class="px-4 py-3"><span class="px-2 py-0.5 rounded bg-slate-200 text-slate-700 text-xs">REUSE</span></td></tr>
+          <tr><td class="px-4 py-3">New arrays on AMR regrid</td><td class="px-4 py-3"><code>mesh_refinement.cpp:564</code> RefineCC list (hardwired)</td><td class="px-4 py-3"><span class="px-2 py-0.5 rounded bg-red-100 text-red-800 text-xs">glue: add erad_</span></td></tr>
+          <tr><td class="px-4 py-3">Tasklist slot</td><td class="px-4 py-3"><code>before_timeintegrator</code> AddTask</td><td class="px-4 py-3"><span class="px-2 py-0.5 rounded bg-slate-200 text-slate-700 text-xs">REUSE</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+      <p class="font-semibold">The one new piece — <code>SyncParabolicGhosts(bval, array)</code></p>
+      <p class="mt-1">RKL2 substeps run <em>inside</em> the operator, between the driver's normal boundary points, so the stencil needs a neighbour ghost refresh per substage. Today every <code>ApplyBoundary</code> does only a local single-block fill; the wired path <code>FATAL</code>s on multi-block/MPI (<code>hydro_tasks.cpp:437</code>). Fix = bundle the existing <code>InitRecv/PackAndSendCC/RecvAndUnpackCC/ClearRecv/ClearSend</code> (+ Restrict/Prolongate) synchronously, exactly as <code>CorrectFlux</code> already bundles its flux routines. Not new infrastructure — a new <em>caller</em> of existing infrastructure.</p>
+    </div>
+  </section>
+
+  <!-- REPLICATION -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-serif font-semibold">Replication oracle (Phase C)</h2>
+    <p class="text-slate-700 max-w-3xl">Ground truth = the <strong>experiment</strong> FLASH is chasing, stored as a committed test directory. No downloadable dataset exists (arXiv ancillary 404, no deposit). Path = hybrid digitization of the primary Sandia Z-machine papers.</p>
+    <div class="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-100 text-left text-xs uppercase tracking-wider text-slate-600">
+          <tr><th class="px-4 py-2">Bench</th><th class="px-4 py-2">Experimental source</th><th class="px-4 py-2">Access</th><th class="px-4 py-2">Tier</th></tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          <tr><td class="px-4 py-3 font-medium">3 — converging RM (Be rod)</td><td class="px-4 py-3">Knapp et&nbsp;al., PoP 27, 092707 (2020)</td><td class="px-4 py-3 text-emerald-700">Open · OSTI</td><td class="px-4 py-3"><strong>Quantitative anchor</strong></td></tr>
+          <tr><td class="px-4 py-3 font-medium">1 — single-mode MRT (Al)</td><td class="px-4 py-3">Sinars et&nbsp;al., PoP 18, 056301 (2011)</td><td class="px-4 py-3">AIP (check OSTI)</td><td class="px-4 py-3">Quantitative</td></tr>
+          <tr><td class="px-4 py-3 font-medium">4 — ICF confinement (Be+D)</td><td class="px-4 py-3">Knapp et&nbsp;al., PoP 24, 042708 (2017)</td><td class="px-4 py-3">AIP</td><td class="px-4 py-3">Scalar+profile (0.45&nbsp;mm / ~10&nbsp;g/cc)</td></tr>
+          <tr><td class="px-4 py-3 font-medium">2 — multi-mode MRT (Be)</td><td class="px-4 py-3">McBride, PRL 109,135004 (2012) + PoP 20,056309 (2013)</td><td class="px-4 py-3">APS/AIP</td><td class="px-4 py-3 text-amber-700">Qualitative only</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="text-xs text-slate-500">Out of scope but noted: benchmark 5 (z2977) is the only one with hard tabulated numbers in Ellison (yield 3×10¹², Tᵢ 2.63±0.53 keV) — for if 5–6 ever enter scope.</p>
+  </section>
+
+  <!-- RISKS -->
+  <section class="space-y-4">
+    <h2 class="text-2xl font-serif font-semibold">Open risks &amp; checkpoints</h2>
+    <div class="grid md:grid-cols-2 gap-4 text-sm">
+      <div class="rounded-lg border border-amber-200 bg-amber-50 p-4"><p class="font-semibold text-amber-900">Nernst checkpoint</p><p class="text-amber-800 mt-1">If 1–4 diverge from Ellison at the liner edge (B-transport / Tₑ–Tᵢ separation) → open extended-MHD epic.</p></div>
+      <div class="rounded-lg border border-amber-200 bg-amber-50 p-4"><p class="font-semibold text-amber-900">Stagnation STS fragility</p><p class="text-amber-800 mt-1">Cross-field leakage growing with <code>s</code>, or <code>s</code> capping → enable implicit backend (slot already reserved, ADR-0001/0009).</p></div>
+      <div class="rounded-lg border border-amber-200 bg-amber-50 p-4"><p class="font-semibold text-amber-900"><code>e_ion</code> by subtraction</p><p class="text-amber-800 mt-1">Difference of large numbers in cold fast regions (PRD-flagged). Measure-first; direct-evolution fallback only if noise appears.</p></div>
+      <div class="rounded-lg border border-amber-200 bg-amber-50 p-4"><p class="font-semibold text-amber-900">Digitization fidelity</p><p class="text-amber-800 mt-1">The rate-limiter on Phase C. Store each datum with source figure + DOI + method; tolerance includes digitization error.</p></div>
+    </div>
+  </section>
+
+  <!-- ARTIFACTS -->
+  <section class="space-y-3">
+    <h2 class="text-2xl font-serif font-semibold">Artifacts &amp; references</h2>
+    <ul class="text-sm text-slate-700 space-y-1 list-disc pl-5">
+      <li><code>docs/adr/0009-composite-strang-rkl2-parabolic-superstep.md</code> — composite/Strang/RKL2 + implicit fallback (written this session)</li>
+      <li><code>CONTEXT.md</code> — Braginskii / Larsen / Sharma–Hammett disambiguation (added this session)</li>
+      <li><code>docs/adr/0001</code> (STS/pluggable integrator), <code>0003</code> (Ohmic→e, Nernst scope), <code>0006</code> (Braginskii), <code>0008</code> (verification provenance)</li>
+      <li>GitHub EPIC <code>#1</code> · 52 merged PRs <code>#44–#105</code> · verification index <code>docs/verification.md</code></li>
+      <li>Anchor: Ellison et&nbsp;al., Phys. Plasmas 32, 093902 (2025), arXiv:2504.10760</li>
+    </ul>
+  </section>
+
+  <footer class="pt-8 border-t border-slate-200 text-xs text-slate-400">Grill-with-docs outcome · next step: convert to a Phase-Integration PRD on the issue tracker.</footer>
+</main>
+</body>
+</html>
