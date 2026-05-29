@@ -1,0 +1,39 @@
+{
+  "benchmark": "B3",
+  "ellison_id": 3,
+  "title": "Converging Richtmyer-Meshkov (RM) instability on the magnetically driven Decel platform",
+  "description": "Ellison benchmark 3. A magnetically driven cylindrical liner (piston) launches a shock into a liquid-deuterium working fluid and into an on-axis rod carrying a pre-imposed sinusoidal perturbation, producing a Richtmyer-Meshkov instability in convergent geometry. The simulation must quantitatively reproduce the RM spike-amplitude growth (the quantitative anchor for #119).",
+  "primary_source": {
+    "authors": "P. F. Knapp et al.",
+    "paper": "A novel, magnetically driven convergent Richtmyer-Meshkov platform",
+    "journal": "Phys. Plasmas",
+    "volume": "27",
+    "issue": "9",
+    "article": "092707",
+    "year": 2020,
+    "doi": "10.1063/5.0013194"
+  },
+  "setup": {
+    "drive": "magnetically driven solid liner (piston)",
+    "working_fluid": "liquid deuterium",
+    "target": "on-axis rod with a pre-imposed sinusoidal perturbation",
+    "facility": "Sandia Z",
+    "geometry": "cylindrically convergent"
+  },
+  "data": [
+    {
+      "id": "rm_spike_amplitude",
+      "observable": "Richtmyer-Meshkov perturbation (spike) amplitude vs time",
+      "kind": "curve",
+      "status": "pending_digitization",
+      "confidence": "low",
+      "extraction_method": "pending_digitization (quantitative anchor to be digitized in #119 [C2]; no fabricated points)",
+      "oracle_kind": "experiment",
+      "source": {
+        "paper": "A novel, magnetically driven convergent Richtmyer-Meshkov platform",
+        "figure": "RM spike-amplitude growth figure (exact panel pinned on digitization, #119)",
+        "doi": "10.1063/5.0013194"
+      }
+    }
+  ]
+}

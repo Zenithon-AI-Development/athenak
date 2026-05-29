@@ -1,0 +1,40 @@
+{
+  "benchmark": "B1",
+  "ellison_id": 1,
+  "title": "Single-mode magneto-Rayleigh-Taylor (MRT) growth on an initially solid Al liner",
+  "description": "Ellison benchmark 1. Controlled single-mode MRT measurement: an initially solid aluminum liner with a seeded sinusoidal surface perturbation is imploded on the 20-MA, ~100-ns Z facility; the perturbation amplitude growth is measured radiographically. The simulation must reproduce the single-mode amplitude growth.",
+  "primary_source": {
+    "authors": "D. B. Sinars et al.",
+    "paper": "Measurements of magneto-Rayleigh-Taylor instability growth during the implosion of initially solid metal liners",
+    "journal": "Phys. Plasmas",
+    "volume": "18",
+    "issue": "5",
+    "article": "056301",
+    "year": 2011,
+    "doi": "10.1063/1.3560911"
+  },
+  "setup": {
+    "liner_material": "aluminum (initially solid)",
+    "drive_peak_current_MA": 20,
+    "drive_rise_time_ns": 100,
+    "facility": "Sandia Z",
+    "seeded_perturbation_wavelengths_um": [25, 400],
+    "perturbation_note": "single-mode sinusoidal seeds in the 25-400 um wavelength range"
+  },
+  "data": [
+    {
+      "id": "single_mode_amplitude_growth",
+      "observable": "seeded single-mode MRT perturbation amplitude vs time",
+      "kind": "curve",
+      "status": "pending_digitization",
+      "confidence": "low",
+      "extraction_method": "pending_digitization (curve to be digitized in #120 [C3]; no fabricated points)",
+      "oracle_kind": "experiment",
+      "source": {
+        "paper": "Measurements of magneto-Rayleigh-Taylor instability growth during the implosion of initially solid metal liners",
+        "figure": "single-mode MRT amplitude-vs-time radiograph figure (exact panel pinned on digitization, #120)",
+        "doi": "10.1063/1.3560911"
+      }
+    }
+  ]
+}

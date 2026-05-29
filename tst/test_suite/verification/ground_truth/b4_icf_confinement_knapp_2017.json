@@ -1,0 +1,86 @@
+{
+  "benchmark": "B4",
+  "ellison_id": 4,
+  "title": "Inertial confinement of a magnetically driven implosion (ICF confinement time)",
+  "description": "Ellison benchmark 4. A magnetically driven implosion in which the inertial confinement time of the stagnated fuel column is directly measured. The simulation must reproduce the stagnation scalars (minimum fuel radius, peak fuel density) and, ultimately, the confinement time. Stated scalars below are extracted faithfully; the confinement-time result is left pending digitization for #121 (no fabricated points).",
+  "primary_source": {
+    "authors": "P. F. Knapp et al.",
+    "paper": "Direct measurement of the inertial confinement time in a magnetically driven implosion",
+    "journal": "Phys. Plasmas",
+    "volume": "24",
+    "issue": "4",
+    "article": "042708",
+    "year": 2017,
+    "doi": "10.1063/1.4981206"
+  },
+  "setup": {
+    "drive": "magnetically driven cylindrical implosion",
+    "facility": "Sandia Z"
+  },
+  "data": [
+    {
+      "id": "min_radius",
+      "observable": "minimum fuel column radius at stagnation",
+      "kind": "scalar",
+      "value": 0.45,
+      "unit": "mm",
+      "confidence": "high",
+      "extraction_method": "stated scalar (issue #107 / Knapp 2017 stagnation result; value stated, not digitized from a figure)",
+      "oracle_kind": "experiment",
+      "experimental_error": {
+        "value": 0.10,
+        "kind": "relative",
+        "basis": "published per-shot uncertainty not transcribed here; ~10% radiographic placeholder, to be refined from Knapp 2017 in #121"
+      },
+      "digitization_error": {
+        "value": 0.0,
+        "kind": "absolute",
+        "basis": "stated scalar (not digitized from a figure)"
+      },
+      "source": {
+        "paper": "Direct measurement of the inertial confinement time in a magnetically driven implosion",
+        "figure": "stated stagnation scalar (text; not a figure point)",
+        "doi": "10.1063/1.4981206"
+      }
+    },
+    {
+      "id": "peak_density",
+      "observable": "peak fuel mass density at stagnation",
+      "kind": "scalar",
+      "value": 10.0,
+      "unit": "g/cc",
+      "confidence": "medium",
+      "extraction_method": "stated scalar (issue #107 / Knapp 2017; stated approximately as '~10 g/cc')",
+      "oracle_kind": "experiment",
+      "experimental_error": {
+        "value": 0.20,
+        "kind": "relative",
+        "basis": "stated approximately ('~10 g/cc', ~1 significant figure); ~20% placeholder, to be refined from Knapp 2017 in #121"
+      },
+      "digitization_error": {
+        "value": 0.0,
+        "kind": "absolute",
+        "basis": "stated scalar (not digitized from a figure)"
+      },
+      "source": {
+        "paper": "Direct measurement of the inertial confinement time in a magnetically driven implosion",
+        "figure": "stated stagnation scalar (text; not a figure point)",
+        "doi": "10.1063/1.4981206"
+      }
+    },
+    {
+      "id": "confinement_time",
+      "observable": "directly-measured inertial confinement time at stagnation",
+      "kind": "scalar",
+      "status": "pending_digitization",
+      "confidence": "low",
+      "extraction_method": "pending_digitization (headline confinement-time result to be extracted faithfully in #121 [C4]; no fabricated value)",
+      "oracle_kind": "experiment",
+      "source": {
+        "paper": "Direct measurement of the inertial confinement time in a magnetically driven implosion",
+        "figure": "confinement-time result (text/figure; exact value and uncertainty pinned in #121)",
+        "doi": "10.1063/1.4981206"
+      }
+    }
+  ]
+}
