@@ -1,0 +1,117 @@
+# AthenaK input: low-resolution full-physics coupled-stack SMOKE TEST (benchmark 1 shape, #117/[B4]).
+#
+# A deliberately CHEAP, low-resolution single-mode-MRT MagLIF run wired onto the FULL COUPLED
+# radiation-conduction-MHD stack (ADR-0009): cylindrical ideal-MHD (ADR-0004) + the prescribed
+# constant-I(t) circuit drive (ADR-0005 mode A) + the Strang-split operator-split parabolic
+# block (grey flux-limited radiation diffusion + anisotropic Braginskii conduction on the live
+# gas energy) wrapped around the hyperbolic update, with the point-implicit matter-radiation
+# coupling outside the super-step.  This is NOT a quantitative benchmark -- it is the per-PR
+# integration-rot guard (#117/[B4]): it asserts the coupled stack still RUNS, conserves species
+# energy, and reproduces the qualitative MRT signature (convergence + single-mode growth) on a
+# tiny mesh that runs in a few seconds on CPU.  The quantitative benchmarks are maglif_mrt/
+# mmrt/rm/icf (#116/[B3]); this just exercises the same plumbing cheaply on every PR.
+#
+# MULTI-BLOCK ON PURPOSE: the axial (z) direction is split into 2 MeshBlocks so the coupled
+# operators' per-substage cross-block ghost exchange (SyncParabolicGhosts, #108) is exercised
+# in per-PR CI -- the integration path most prone to silent rot.  Resistive B_phi / multigroup
+# FLD stay off here (Phase C, #118), matching the maglif_mrt benchmark scope.
+#
+# Built with -D PROBLEM=maglif (a USER pgen, not in the suite binary).
+
+<comment>
+problem   = MagLIF coupled-stack low-res smoke test (benchmark 1 shape)
+
+<job>
+basename  = maglif_smoke
+
+<mesh>
+nghost    = 2
+nx1       = 32         # radial zones (low res)
+x1min     = 0.0        # r = 0 axis
+x1max     = 1.0        # outer radius R_out (driven boundary)
+ix1_bc    = axis       # cylindrical r=0 axisymmetric boundary (issue #16)
+ox1_bc    = user       # circuit-driven B_phi boundary (issue #21)
+
+nx2       = 4          # thin azimuthal (phi) wedge (axisymmetric IC)
+x2min     = 0.0
+x2max     = 1.0
+ix2_bc    = periodic
+ox2_bc    = periodic
+
+nx3       = 24         # axial (z) zones -- still resolves the single mode (~8/wavelength)
+x3min     = 0.0
+x3max     = 1.0
+ix3_bc    = periodic
+ox3_bc    = periodic
+
+<meshblock>
+nx1       = 32
+nx2       = 4
+nx3       = 12         # 2 MeshBlocks in z -> exercises coupled-operator cross-block exchange
+
+<coord>
+system    = cylindrical  # (x1,x2,x3) = (r,phi,z)
+
+<time>
+evolution  = dynamic
+integrator = rk2
+cfl_number = 0.3
+nlim       = 100000
+tlim       = 0.2         # short -- enough to see convergence + growth onset, cheap for CI
+ndiag      = 200
+
+<mhd>
+eos         = ideal
+reconstruct = plm
+rsolver     = hlld
+gamma       = 1.6666666666666667
+dfloor      = 1.0e-5
+pfloor      = 1.0e-7
+# ---- full coupled radiation-conduction-MHD stack (#116/[B3], ADR-0009) ----
+# Same nondimensional coefficients as inputs/maglif_mrt.athinput (the coupled physics is a
+# stable, signature-preserving perturbation).  Resistive B_phi (resb_*) and multigroup FLD
+# (mgfld_*) stay off (Phase C #118).
+strang_split          = true
+fld_operator_split    = true   # grey flux-limited radiation diffusion (standalone erad)
+fld_c_light           = 10.0   # code-unit radiation speed (>> fluid speeds)
+fld_chi               = 1000.0 # opaque liner -> small radiative diffusivity D = c/(3 chi)
+fld_n_larsen          = 2.0
+fld_e_source          = -1.0   # < 0 -> insulated (zero-gradient) radiation boundaries
+acond_operator_split  = true   # anisotropic Braginskii conduction on the live gas energy
+acond_kappa_conv      = 0.05   # mild conduction: a signature-preserving thermal smoother
+mrad_coupling         = true   # point-implicit matter<->radiation energy exchange (a T^4)
+mrad_chi_a            = 0.04    # gentle matter<->radiation coupling (modest perturbation)
+mrad_cv               = 1.5e-3 # heat capacity: T = e_gas/cv ~ 1 at the seeded state
+mrad_arad             = 1.0e-6 # small radiation reservoir -> signature-preserving
+mrad_clight           = 10.0
+
+<problem>
+current_mode     = driven       # driven (mu0*I/2*pi*r) B_phi outer boundary
+current_waveform = constant     # prescribed I(t): constant load current -> SUSTAINED acceleration
+i0               = 3.0          # load current (code units) -- strong enough for a clean implosion
+t_rise           = 1.0          # ramp time (unused for the constant waveform)
+mu0              = 1.0          # code-unit permeability (Heaviside-Lorentz: 1)
+r_fuel           = 0.4          # fuel/liner interface radius
+r_liner          = 0.6          # liner/vacuum interface (current sheet)
+d_fuel           = 0.05         # fuel (inner gas) density
+d_liner          = 1.0          # liner (dense shell) density
+d_vac            = 0.01         # vacuum (outer gap) density
+p0               = 1.0e-3       # uniform (low) thermal pressure
+bz0              = 0.1          # axial premagnetization field B_z
+perturbation     = single_mode  # single axial mode on the liner interface
+pert_amp         = 0.05         # radial interface perturbation amplitude
+pert_mode        = 3            # axial mode number (wavelength = Lz/pert_mode)
+pert_phase       = 0.0          # axial phase offset
+user_hist        = true         # conservation history: mass, etot, ..., erad (coupled stack)
+
+<output1>
+file_type   = bin
+variable    = mhd_w_bcc
+id          = prim
+dt          = 0.02
+
+<output2>
+file_type      = hst   # conservation history -> maglif_smoke.user.hst (etot + erad budget)
+variable       = mhd
+user_hist_only = true
+dt             = 0.02
