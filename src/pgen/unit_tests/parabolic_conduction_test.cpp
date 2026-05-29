@@ -138,7 +138,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   Kokkos::deep_copy(phydro->u0, u_ic);
 
   // the operator under test (diffuses u_work; density read from u_ic)
-  ConductionOperator op(pmbp, u_ic, kappa, gamma);
+  ConductionOperator op(pmbp, pin, u_ic, kappa, gamma);
   const Real dt_exp = op.ExplicitStableDt();
   test.CheckTrue(dt_exp > 0.0, "explicit conduction dt is positive");
 

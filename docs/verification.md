@@ -79,6 +79,7 @@ Directories: `unit_tests/`, `cylindrical/`.
 | `test_unit_cons_to_prim_2t_cpu.py` | 1 | analytic | Tabulated 2T EOS inversion (e→T) + pressure composition for distinct γ; edge clamping; ideal-gas limit | closed form | self |
 | `test_unit_three_temp_cpu.py` | 1 | analytic | 3T energy reconciliation: e_tot conservation, PdV split by pressure fraction, shock dissipation to ions, 1T ideal-gas recovery | closed form (energy identities) | self |
 | `test_verify_cyl_aniso_ring_cpu.py` | 2 | self-snapshot | Field-aligned conduction reproducing the published ring test: azimuthal-vs-radial broadening ratio, cross-field leakage < tol, Sharma–Hammett monotonicity; harness baseline is the regression guard | Parrish & Stone 2005 (ring test); Sharma & Hammett 2007 (limiter) | `test_unit_aniso_conduction_cpu.py`, `test_unit_parabolic_conduction_cpu.py` |
+| `test_verify_conduction_multiblock_cpu.py` / `_mpicpu.py` | 1 | analytic | Same cosine diffusion eigenmode as `parabolic_conduction`, but the GLOBAL mode split over 4 MeshBlocks (cpu) / 4 MPI ranks (mpicpu): exp(λt) decay reproduced across block/rank boundaries via `SyncParabolicGhosts`, energy conserved across the decomposition (#108/[A1]) | closed form (diffusion eigenmode) | `test_unit_parabolic_conduction_cpu.py` |
 
 ## Circuit drive (ADR-0005)
 

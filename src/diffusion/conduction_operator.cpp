@@ -11,23 +11,50 @@
 #include <limits>
 
 #include "athena.hpp"
+#include "parameter_input.hpp"
 #include "mesh/mesh.hpp"
 #include "mesh/meshblock_pack.hpp"
 #include "coordinates/coordinates.hpp"
 #include "coordinates/coord_geometry.hpp"
+#include "bvals/bvals.hpp"
 #include "diffusion/conduction_operator.hpp"
 
 //----------------------------------------------------------------------------------------
-//! \brief ConductionOperator constructor.
+//! \brief ConductionOperator constructor.  Allocates the operator's own cell-centered
+//! boundary-values object (its per-substage multi-block/MPI ghost exchange) sized to the
+//! diffused field's variable width, plus a coarse-mesh scratch array for the
+//! restriction/prolongation done at fine/coarse boundaries under SMR/AMR (#108/[A1]).
 
-ConductionOperator::ConductionOperator(MeshBlockPack *pp, const DvceArray5D<Real> &cons,
-  Real kappa, Real gamma) :
+ConductionOperator::ConductionOperator(MeshBlockPack *pp, ParameterInput *pin,
+  const DvceArray5D<Real> &cons, Real kappa, Real gamma) :
   pmy_pack(pp),
   cons_(cons),
   kappa_(kappa),
   gamma_(gamma),
   hflx_("cond_op_hflx", cons.extent_int(0), cons.extent_int(1),
-        cons.extent_int(2), cons.extent_int(3), cons.extent_int(4)) {
+        cons.extent_int(2), cons.extent_int(3), cons.extent_int(4)),
+  coarse_("cond_op_coarse", 1, 1, 1, 1, 1) {
+  const int nvar = cons.extent_int(1);
+  // own boundary-values object: a unique MPI communicator for this operator's exchange,
+  // buffers sized to the diffused field's variable width (configurable per operator).
+  pbval_ = new MeshBoundaryValuesCC(pp, pin, false);
+  pbval_->InitializeBuffers(nvar);
+  // coarse-mesh scratch (only meaningful with SMR/AMR; left 1^5 on a uniform grid, where
+  // SyncParabolicGhosts never touches it)
+  if (pp->pmesh->multilevel) {
+    auto &indcs = pp->pmesh->mb_indcs;
+    int n_ccells1 = indcs.cnx1 + 2*(indcs.ng);
+    int n_ccells2 = (indcs.cnx2 > 1) ? (indcs.cnx2 + 2*(indcs.ng)) : 1;
+    int n_ccells3 = (indcs.cnx3 > 1) ? (indcs.cnx3 + 2*(indcs.ng)) : 1;
+    Kokkos::realloc(coarse_, cons.extent_int(0), nvar, n_ccells3, n_ccells2, n_ccells1);
+  }
+}
+
+//----------------------------------------------------------------------------------------
+//! \brief ConductionOperator destructor: free the owned boundary-values object.
+
+ConductionOperator::~ConductionOperator() {
+  delete pbval_;
 }
 
 //----------------------------------------------------------------------------------------
@@ -157,9 +184,18 @@ Real ConductionOperator::ExplicitStableDt() {
 
 //----------------------------------------------------------------------------------------
 //! \fn void ConductionOperator::ApplyBoundary()
-//! \brief Zero-gradient (insulated) ghost-zone refresh: ghost cells copy the nearest
-//! active cell, so dT/dx = 0 at the domain boundary => zero heat flux through it.  Called
-//! before every M(.) evaluation so the RKL2 substeps see boundary-consistent ghosts.
+//! \brief Refresh the trial state's ghost zones before every M(.) evaluation so the RKL2
+//! substeps see a boundary-consistent stencil.  Two steps, in order:
+//!  (1) Insulated (zero-gradient) fill of ALL ghost zones: ghost cells copy the nearest
+//!      active cell, so dT/dx = 0 across that face => zero heat flux.  This is the
+//!      correct PHYSICAL boundary condition (insulated box).
+//!  (2) The shared multi-block/MPI/AMR neighbor exchange (SyncParabolicGhosts) then
+//!      OVERWRITES the ghosts on every INTERNAL block face (where a neighbor exists) with
+//!      the neighbor's real data, leaving only the true domain-boundary ghosts insulated.
+//! Doing the insulated fill first and the exchange second is what makes the single global
+//! box (split across blocks/ranks) insulated only at its outer edges -- so the discrete
+//! cosine eigenmode decays as exp(lambda t) across block boundaries.  On a single block
+//! with no neighbors step (2) is a no-op and the behaviour is the original fill.
 
 void ConductionOperator::ApplyBoundary(DvceArray5D<Real> &u) {
   auto &indcs = pmy_pack->pmesh->mb_indcs;
@@ -196,4 +232,9 @@ void ConductionOperator::ApplyBoundary(DvceArray5D<Real> &u) {
       u(m,n,ke+1+g,j,i) = u(m,n,ke,j,i);
     });
   }
+
+  // (2) overwrite internal block-face ghosts (and coarse/fine boundary ghosts under
+  // SMR/AMR) with neighbor data via the shared synchronous exchange.  Untouched at true
+  // physical boundaries (no neighbor), so those keep the insulated fill from step (1).
+  pbval_->SyncParabolicGhosts(u, coarse_);
 }

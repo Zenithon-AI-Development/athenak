@@ -16,6 +16,7 @@
 #include "eos/eos.hpp"
 #include "diffusion/viscosity.hpp"
 #include "diffusion/conduction.hpp"
+#include "diffusion/conduction_operator.hpp"
 #include "srcterms/srcterms.hpp"
 #include "shearing_box/shearing_box.hpp"
 #include "shearing_box/orbital_advection.hpp"
@@ -125,6 +126,16 @@ Hydro::Hydro(MeshBlockPack *ppack, ParameterInput *pin) :
   // allocate boundary buffers for conserved (cell-centered) variables
   pbval_u = new MeshBoundaryValuesCC(ppack, pin, false);
   pbval_u->InitializeBuffers((nhydro+nscalars));
+
+  // operator-split isotropic conduction (RKL2 STS): build the ParabolicOperator here (in
+  // the constructor) rather than in AssembleHydroTasks because it needs `pin` to allocate
+  // its own boundary-values object for the per-substage multi-block/MPI ghost exchange
+  // (#108/[A1]).  u0 and the coarse arrays above are already allocated.  Only built when
+  // explicitly enabled, so default runs add nothing and are byte-identical (ADR-0001).
+  if (pcond != nullptr && cond_operator_split) {
+    pcond_op = new ConductionOperator(ppack, pin, u0, pcond->kappa,
+                                      peos->eos_data.gamma);
+  }
 
   // Orbital advection and shearing box BCs (if requested in input file)
   if (pin->DoesBlockExist("shearing_box")) {
