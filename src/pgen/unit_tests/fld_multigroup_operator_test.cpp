@@ -108,7 +108,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
 
   // insulated operator (e_source < 0 => inner-x1 zero-gradient too): the conserving
   // cosine-eigenmode oracle.
-  FLDMultigroupOperator op(pmbp, erad, table, c_light, rho_bg, te_bg, nl, -1.0);
+  FLDMultigroupOperator op(pmbp, pin, erad, table, c_light, rho_bg, te_bg, nl, -1.0);
 
   // ===== (A, cont.) per-group extinction matches the documented fixture values =====
   auto d_chi = op.chi();

@@ -106,7 +106,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   integ.SetFromInput(pin);
 
   // Dirichlet inner-x1 source = e_src (all groups), zero-gradient elsewhere.
-  FLDMultigroupOperator op(pmbp, erad, table, c_light, rho_bg, te_bg, nl, e_src);
+  FLDMultigroupOperator op(pmbp, pin, erad, table, c_light, rho_bg, te_bg, nl, e_src);
 
   // advance nsuper operator-split RKL2 supersteps to tlim.
   const Real dt_super = tlim/static_cast<Real>(nsuper);

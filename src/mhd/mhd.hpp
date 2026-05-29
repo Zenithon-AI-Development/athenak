@@ -30,6 +30,7 @@ class ShearingBoxCC;
 class ShearingBoxFC;
 class Driver;
 class FLDGreyOperator;
+class FLDMultigroupOperator;
 
 // function ptr for user-defined MHD boundary functions enrolled in problem generator
 namespace mhd {
@@ -48,6 +49,7 @@ enum class MHD_RSolver {advect, llf, hlle, hlld, roe,   // non-relativistic
 struct MHDTaskIDs {
   TaskID savest;
   TaskID opsfld;
+  TaskID opsmgfld;
   TaskID irecv;
   TaskID copyu;
   TaskID flux;
@@ -134,6 +136,18 @@ class MHD {
   DvceArray5D<Real> erad;
   FLDGreyOperator *pfld_op = nullptr;
 
+  // Multigroup flux-limited radiation diffusion (FLD), advanced operator-split (RKL2 STS)
+  // in the same MHD once-per-step slot (#111/[A4], ADR-0001/ADR-0007).  `erad_mg` is the
+  // standalone per-group radiation-energy field (var extent == number of photon-energy
+  // groups) the multigroup operator diffuses; `pmg_op` is non-null only when multigroup
+  // FLD is enabled, so default runs allocate nothing and stay byte-identical.  The
+  // per-group arrays ARE registered with the AMR regrid machinery (mesh_refinement.cpp /
+  // load_balance.cpp), so they survive a re-refinement; the operator owns the coarse
+  // scratch used both per-substage (SyncParabolicGhosts) and by the regrid (RefineCC).
+  bool mgfld_operator_split = false;
+  DvceArray5D<Real> erad_mg;
+  FLDMultigroupOperator *pmg_op = nullptr;
+
   // following only used for time-evolving flow
   DvceArray5D<Real> u1;       // conserved variables, second register
   DvceFaceFld4D<Real> b1;     // face-centered magnetic fields, second register
@@ -164,6 +178,8 @@ class MHD {
   TaskStatus SaveMHDState(Driver *d, int stage);
   // ...in "before_timeintegrator" list (operator-split grey FLD radiation, #110/[A3])
   TaskStatus OperatorSplitFLD(Driver *d, int stage);
+  // ...in "before_timeintegrator" list (operator-split multigroup FLD, #111/[A4])
+  TaskStatus OperatorSplitMultigroupFLD(Driver *d, int stage);
   // ...in "before_stagen_tl" task list
   TaskStatus InitRecv(Driver *d, int stage);
   // ...in "stagen_tl" task list

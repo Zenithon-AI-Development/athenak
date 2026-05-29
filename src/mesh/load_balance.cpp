@@ -18,6 +18,7 @@
 #include "hydro/hydro.hpp"
 #include "mhd/mhd.hpp"
 #include "radiation/radiation.hpp"
+#include "radiation_fld/fld_multigroup_operator.hpp"  // erad_mg AMR load-balance pack
 #include "z4c/z4c.hpp"
 
 #if MPI_PARALLEL_ENABLED
@@ -144,6 +145,10 @@ void MeshRefinement::InitRecvAMR(int nleaf) {
     ncc_tosend += (pmy_mesh->pmb_pack->pmhd->nmhd +
                    pmy_mesh->pmb_pack->pmhd->nscalars);
     nfc_tosend += 1;
+    // standalone multigroup radiation group-energy array (#111/[A4])
+    if (pmy_mesh->pmb_pack->pmhd->pmg_op != nullptr) {
+      ncc_tosend += pmy_mesh->pmb_pack->pmhd->erad_mg.extent_int(1);
+    }
   }
   if (pmy_mesh->pmb_pack->prad != nullptr) {
     ncc_tosend += (pmy_mesh->pmb_pack->prad->prgeo->nangles);
@@ -399,6 +404,10 @@ void MeshRefinement::PackAndSendAMR(int nleaf) {
     ncc_tosend += (pmy_mesh->pmb_pack->pmhd->nmhd +
                    pmy_mesh->pmb_pack->pmhd->nscalars);
     nfc_tosend += 1;
+    // standalone multigroup radiation group-energy array (#111/[A4])
+    if (pmy_mesh->pmb_pack->pmhd->pmg_op != nullptr) {
+      ncc_tosend += pmy_mesh->pmb_pack->pmhd->erad_mg.extent_int(1);
+    }
   }
   if (pmy_mesh->pmb_pack->prad != nullptr) {
     ncc_tosend += (pmy_mesh->pmb_pack->prad->prgeo->nangles);
@@ -541,6 +550,12 @@ void MeshRefinement::PackAndSendAMR(int nleaf) {
     ncc_sent += pmhd->nmhd + pmhd->nscalars;
     PackAMRBuffersFC(pmhd->b0, pmhd->coarse_b0, ncc_sent, nfc_sent);
     nfc_sent += 1;
+    // standalone multigroup radiation group-energy array (#111/[A4]); coarse() was
+    // refreshed at the top of RedistAndRefineMeshBlocks so the fine->coarse pack is OK
+    if (pmhd->pmg_op != nullptr) {
+      PackAMRBuffersCC(pmhd->erad_mg, pmhd->pmg_op->coarse(), ncc_sent, nfc_sent);
+      ncc_sent += pmhd->erad_mg.extent_int(1);
+    }
   }
   if (prad != nullptr) {
     PackAMRBuffersCC(prad->i0, prad->coarse_i0, ncc_sent, nfc_sent);
@@ -831,6 +846,12 @@ void MeshRefinement::ClearRecvAndUnpackAMR() {
     ncc_recv += pmhd->nmhd + pmhd->nscalars;
     UnpackAMRBuffersFC(pmhd->b0, pmhd->coarse_b0, ncc_recv, nfc_recv);
     nfc_recv += 1;
+    // standalone multigroup radiation group-energy array (#111/[A4]); same order as the
+    // pack so the per-MB buffer offsets line up
+    if (pmhd->pmg_op != nullptr) {
+      UnpackAMRBuffersCC(pmhd->erad_mg, pmhd->pmg_op->coarse(), ncc_recv, nfc_recv);
+      ncc_recv += pmhd->erad_mg.extent_int(1);
+    }
   }
   if (prad != nullptr) {
     UnpackAMRBuffersCC(prad->i0, prad->coarse_i0, ncc_recv, nfc_recv);

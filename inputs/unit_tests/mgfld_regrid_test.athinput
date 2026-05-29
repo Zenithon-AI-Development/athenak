@@ -1,0 +1,77 @@
+# AthenaK input file for the DYNAMIC-AMR multigroup-FLD regrid verification
+# (unit_tests/mgfld_regrid_test, #111/[A4]).
+#
+# A uniform static gas (v=0, B=0, uniform p) carries a smooth, conserved per-group
+# radiation field diffused by an INSULATED operator-split multigroup FLD operator
+# (mhd/mgfld_e_source < 0).  The driver RUNS (nlim>0) so the standard adaptive-mesh-
+# refinement cycle fires: a user refinement criterion refines the central x1 blocks for the
+# first half of the run and de-refines them for the second half, exercising BOTH
+# prolongation (refine) and restriction (de-refine) of the standalone group-energy array
+# erad_mg through the AMR regrid machinery (#111/[A4]).  The finalize hook checks that the
+# volume-weighted total radiation energy is conserved across the regrids -- RED without
+# erad_mg registered in the regrid path, GREEN with it.
+#
+# The Python wrapper overrides mhd/mgfld_opacity_file with an absolute path.
+
+<comment>
+problem   = dynamic-AMR multigroup-FLD regrid (group-array restrict/prolong) verification
+
+<job>
+basename  = mgfld_regrid_test   # problem ID: basename of output filenames
+
+<mesh>
+nghost    = 2          # Number of ghost cells
+nx1       = 64         # Number of zones in X1-direction (global)
+x1min     = 0.0        # minimum value of X1
+x1max     = 1.0        # maximum value of X1
+ix1_bc    = outflow    # inner-X1 boundary flag (FLD operator overrides ghosts itself)
+ox1_bc    = outflow    # outer-X1 boundary flag
+
+nx2       = 16         # Number of zones in X2-direction
+x2min     = 0.0        # minimum value of X2
+x2max     = 0.25       # maximum value of X2
+ix2_bc    = periodic   # inner-X2 boundary flag
+ox2_bc    = periodic   # outer-X2 boundary flag
+
+nx3       = 1          # Number of zones in X3-direction
+x3min     = -0.5       # minimum value of X3
+x3max     = 0.5        # maximum value of X3
+ix3_bc    = periodic   # inner-X3 boundary flag
+ox3_bc    = periodic   # outer-X3 boundary flag
+
+<meshblock>
+nx1       = 16         # 64/16 = 4 root MeshBlocks along X1
+nx2       = 16         # 16/16 = 1 root MeshBlock  along X2
+nx3       = 1          # Number of cells in each MeshBlock, X3-dir
+
+<mesh_refinement>
+refinement          = adaptive   # dynamic AMR (the mesh regrids during the run)
+num_levels          = 2          # root + one level of refinement
+refinement_interval = 2          # cycles a refined block must wait before re-flagging
+ncycle_check        = 1          # check for refinement every cycle
+max_nmb_per_rank    = 256        # generous cap (View allocation size per rank)
+
+<amr_criterion1>
+method = user          # use the pgen-enrolled user_ref_func (MgfldRegridRefine)
+
+<time>
+evolution            = dynamic   # dynamic/kinematic/static
+integrator           = rk2       # hyperbolic time integration algorithm
+parabolic_integrator = sts       # operator-split parabolic backend (RKL2 STS)
+cfl_number           = 0.3       # The Courant, Friedrichs, & Lewy (CFL) Number
+nlim                 = 40        # cycle limit (driver runs; regrids fire each AMR check)
+tlim                 = 1.0e30    # effectively unlimited -> the run is cycle-limited
+ndiag                = 10        # cycles between diagnostic output
+
+<mhd>
+eos                 = ideal   # EOS type
+reconstruct         = plm     # spatial reconstruction method
+rsolver             = hlle    # Riemann-solver to be used
+gamma               = 1.66666666666666667   # gamma = C_p/C_v
+mgfld_operator_split = true   # wire multigroup FLD operator-split into the MHD step (#111)
+mgfld_opacity_file  = inputs/radiation_fld/multigroup_opacity.cn4  # opacity fixture
+mgfld_c_light       = 1.0     # code-unit speed of light
+mgfld_rho_bg        = 1.0e-2  # background mass density (sets chi_g)
+mgfld_te_bg         = 1.0e2   # background electron temperature (sets chi_g)
+mgfld_n_larsen      = 2.0     # Larsen flux-limiter exponent
+mgfld_e_source      = -1.0    # < 0 => insulated (zero-gradient) => energy conserved

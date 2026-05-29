@@ -25,6 +25,7 @@
 #include "hydro/hydro.hpp"
 #include "mhd/mhd.hpp"
 #include "radiation/radiation.hpp"
+#include "radiation_fld/fld_multigroup_operator.hpp"  // erad_mg regrid restrict/prolong
 #include "coordinates/coordinates.hpp"
 #include "coordinates/cell_locations.hpp"
 #include "coordinates/coord_geometry.hpp"
@@ -388,6 +389,14 @@ void MeshRefinement::UpdateMeshBlockTree(int &nnew, int &ndel) {
 
 void MeshRefinement::RedistAndRefineMeshBlocks(ParameterInput *pin, int nnew, int ndel) {
   Mesh* pm = pmy_mesh;
+  // Keep the multigroup-radiation coarse companion current before ANY pack/derefine reads
+  // it (#111/[A4]).  Hydro/MHD coarse_u0 is kept current each step by the RestrictU task,
+  // but erad_mg's coarse scratch is only refreshed mid-substage by the operator, so it is
+  // stale at AMR time; restrict the CURRENT field here (on the old mesh) so both the
+  // MPI fine->coarse pack and the same-rank de-refinement are conservative.
+  if (pm->pmb_pack->pmhd != nullptr && pm->pmb_pack->pmhd->pmg_op != nullptr) {
+    RestrictCC(pm->pmb_pack->pmhd->erad_mg, pm->pmb_pack->pmhd->pmg_op->coarse());
+  }
   int old_nmb = pm->nmb_total;
   int new_nmb = old_nmb + nnew - ndel;
   // compute nleaf = number of leaf MeshBlocks per refined block
@@ -496,6 +505,12 @@ void MeshRefinement::RedistAndRefineMeshBlocks(ParameterInput *pin, int nnew, in
     if (pmhd != nullptr) {
       DerefineCCSameRank(pmhd->u0, pmhd->coarse_u0);
       DerefineFCSameRank(pmhd->b0, pmhd->coarse_b0);
+      // standalone multigroup radiation group-energy array (#111/[A4]); its coarse
+      // companion was refreshed at the top of this function so the fine->coarse
+      // de-refinement (and the MPI pack above) is conservative.
+      if (pmhd->pmg_op != nullptr) {
+        DerefineCCSameRank(pmhd->erad_mg, pmhd->pmg_op->coarse());
+      }
     }
     if (prad != nullptr) {
       DerefineCCSameRank(prad->i0, prad->coarse_i0);
@@ -514,6 +529,7 @@ void MeshRefinement::RedistAndRefineMeshBlocks(ParameterInput *pin, int nnew, in
   if (pmhd != nullptr) {
     CopyCC(pmhd->u0);
     CopyFC(pmhd->b0);
+    if (pmhd->pmg_op != nullptr) { CopyCC(pmhd->erad_mg); }  // #111/[A4]
   }
   if (prad != nullptr) {
     CopyCC(prad->i0);
@@ -533,6 +549,9 @@ void MeshRefinement::RedistAndRefineMeshBlocks(ParameterInput *pin, int nnew, in
     if (pmhd != nullptr) {
       CopyForRefinementCC(pmhd->u0, pmhd->coarse_u0);
       CopyForRefinementFC(pmhd->b0, pmhd->coarse_b0);
+      if (pmhd->pmg_op != nullptr) {
+        CopyForRefinementCC(pmhd->erad_mg, pmhd->pmg_op->coarse());  // #111/[A4]
+      }
     }
     if (prad != nullptr) {
       CopyForRefinementCC(prad->i0, prad->coarse_i0);
@@ -568,6 +587,9 @@ void MeshRefinement::RedistAndRefineMeshBlocks(ParameterInput *pin, int nnew, in
     if (pmhd != nullptr) {
       RefineCC(new_to_old, pmhd->u0, pmhd->coarse_u0);
       RefineFC(new_to_old, pmhd->b0, pmhd->coarse_b0);
+      if (pmhd->pmg_op != nullptr) {
+        RefineCC(new_to_old, pmhd->erad_mg, pmhd->pmg_op->coarse());  // #111/[A4]
+      }
     }
     if (prad != nullptr) {
       RefineCC(new_to_old, prad->i0, prad->coarse_i0);

@@ -28,6 +28,7 @@
 #include "driver/driver.hpp"
 #include "driver/parabolic_integrator.hpp"
 #include "radiation_fld/fld_grey_operator.hpp"
+#include "radiation_fld/fld_multigroup_operator.hpp"
 #include "mhd/mhd.hpp"
 #include "dyn_grmhd/dyn_grmhd.hpp"
 
@@ -50,6 +51,15 @@ void MHD::AssembleMHDTasks(std::map<std::string, std::shared_ptr<TaskList>> tl) 
   // add no task and are byte-identical (ADR-0001, #110/[A3]).
   if (pfld_op != nullptr) {
     id.opsfld = tl["before_timeintegrator"]->AddTask(&MHD::OperatorSplitFLD, this, none);
+  }
+
+  // operator-split MULTIGROUP FLD radiation (RKL2 STS), once per step.  pmg_op is built
+  // in the MHD ctor (it needs `pin` for its ghost-exchange object + opacity table);
+  // non-null only when multigroup FLD operator-split is enabled, so default runs add no
+  // task and are byte-identical (ADR-0001/ADR-0007, #111/[A4]).
+  if (pmg_op != nullptr) {
+    id.opsmgfld = tl["before_timeintegrator"]->AddTask(&MHD::OperatorSplitMultigroupFLD,
+                                                       this, none);
   }
 
   // assemble "before_stagen" task list
@@ -121,6 +131,24 @@ TaskStatus MHD::SaveMHDState(Driver *pdrive, int stage) {
 TaskStatus MHD::OperatorSplitFLD(Driver *pdrive, int stage) {
   if (pfld_op == nullptr) { return TaskStatus::complete; }
   parabolic::OperatorSplitStep(pdrive->pparabolic, *pfld_op, erad,
+                               pmy_pack->pmesh->dt);
+  return TaskStatus::complete;
+}
+
+//----------------------------------------------------------------------------------------
+//! \fn TaskStatus MHD::OperatorSplitMultigroupFLD
+//! \brief Advance the MULTIGROUP FLD per-group radiation energy `erad_mg` one
+//! operator-split RKL2 super-step over the full hyperbolic dt (#111/[A4]).  Identical
+//! structure to OperatorSplitFLD: parabolic::OperatorSplitStep wraps the
+//! FLDMultigroupOperator, whose per-substage ApplyBoundary delegates the cross-block/rank
+//! (and AMR coarse/fine) ghost refresh of ALL groups (one batched exchange) to
+//! SyncParabolicGhosts, and whose OperatorAction runs the conservative refine-boundary
+//! flux correction, so it runs on >1 MeshBlock, >1 MPI rank, and under block-AMR
+//! (incl. dynamic regrid, #111/[A4]).
+
+TaskStatus MHD::OperatorSplitMultigroupFLD(Driver *pdrive, int stage) {
+  if (pmg_op == nullptr) { return TaskStatus::complete; }
+  parabolic::OperatorSplitStep(pdrive->pparabolic, *pmg_op, erad_mg,
                                pmy_pack->pmesh->dt);
   return TaskStatus::complete;
 }
