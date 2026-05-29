@@ -26,6 +26,23 @@ thick) and the free-streaming limit (optically thin). **Decision: use the Larsen
 flux limiter** (smooth, well-behaved across the optically thick/thin transition).
 The same Larsen form is reused for flux-limited thermal conduction.
 
+**Three distinct "limiters/coefficients" in magnetized transport (do not conflate)**:
+These three answer different questions and are used *together*; the grilling for the
+Phase-integration work showed they are easy to confuse.
+- **Braginskii coefficients** — the *physics*: `κ∥`, `κ⊥` (and `η∥`, `η⊥`) as functions of
+  magnetization `ω_cτ`. How much heat/current flows along vs. across **B**. (ADR-0006.)
+- **Larsen flux limiter** — *physical saturation*: caps a flux at its free-streaming limit
+  (radiation `|F|→cE`; field-aligned heat flux at the free-streaming electron flux). The
+  radiation form uses the tabulated Rosseland opacity, `D = cλ(R)/χ`, `R=|∇E|/(χE)`.
+  (CONTEXT "Flux limiter" above.)
+- **Sharma–Hammett (2007) limiter** — *numerical monotonicity*, NOT saturation and NOT
+  Braginskii: a van-Leer slope limiter on the **transverse** temperature gradient in the
+  anisotropic-conduction stencil, so the *discretization* cannot leak heat cold→hot across
+  field lines. Matters wherever `∇T` is oblique to **B** (the `B_z`-insulated fuel/liner
+  interface — the MagLIF mechanism itself). (ADR-0006; src/diffusion/aniso_conduction_operator.*)
+_Avoid_: calling Sharma–Hammett a "flux limiter" (it is a slope limiter) or associating it
+with Braginskii (it is purely a grid-discretization safeguard).
+
 ## Flagged ambiguities
 
 **"Radiation" (module-name collision)**:
