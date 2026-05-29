@@ -10,14 +10,17 @@ is therefore magneto-Rayleigh-Taylor (MRT) unstable, and the seeded single mode 
 This is benchmark 1 of the FLASH MagLIF validation ladder -- the Phase-1 convergence point
 (Ellison et al. 2025, arXiv:2504.10760).
 
-Physics scope (honest, per the #32 MagLIF-pgen scope note + the PRD Phase-1 sequencing):
-the grey-FLD radiation, anisotropic-conduction and variable-resistivity operators are
-operator-split modules that are NOT yet wired into the production MHD driver, so this
-benchmark exercises the WIRED stack -- cylindrical ideal-MHD (ADR-0004) + the prescribed-
-I(t) circuit drive (ADR-0005 mode A).  Each operator-split closure is verified separately
-(#25 anisotropic conduction in cylindrical, #27 cylindrical B_phi resistive operator, #28
-coupled grey rad-hydro, #41 multigroup).  The adiabatic-MHD MRT growth measured here is
-the Phase-1 backbone; the closures layer in once the driver wiring lands.
+Physics scope (Phase B, #116/[B3], ADR-0009): this benchmark now runs the FULL COUPLED
+radiation-conduction-MHD stack -- cylindrical ideal-MHD (ADR-0004) + the prescribed-I(t)
+circuit drive (ADR-0005 mode A) + the operator-split parabolic block (grey flux-limited
+radiation diffusion + anisotropic Braginskii conduction on the live gas energy) Strang-
+wrapped around the hyperbolic update, with the point-implicit matter-radiation coupling
+outside the super-step (see inputs/maglif_mrt.athinput's <mhd> block).  Coefficients are
+nondimensional code units chosen so the coupled physics is a stable, signature-preserving
+perturbation; real opacity/EOS-derived values arrive with the IONMIX tables in Phase C
+(#118).  Resistive B_phi and multigroup FLD stay off here (the former is wired as a
+standalone array not fed back into the live implosion B and is axis-stiff; the latter
+needs an IONMIX opacity file).  The regression baseline reflects this coupled stack.
 
 Discriminating quantities (see inputs/maglif_mrt.athinput):
   * R_liner(t)  -- mass-weighted mean liner radius: the bulk convergence trajectory.
@@ -50,6 +53,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import test_suite.testutils as testutils  # noqa: E402
 import test_suite.verification.harness as harness  # noqa: E402
+import test_suite.cylindrical.maglif_coupled_energy as cenergy  # noqa: E402
 
 # bin_convert lives next to athena_read in vis/python; add it by absolute path so the
 # import is robust to the test's working directory (tests run from tst/build/src).
@@ -64,7 +68,11 @@ HALF = 0.5 * D_LINER   # half-max density level isolating the dense liner
 
 # Verification thresholds.
 CONV_FRAC = 0.75       # require >= 25% bulk convergence (R_liner shrinks)
-GROWTH_MIN = 1.5       # require >= 1.5x single-mode growth on the driven surface
+# >= 1.3x single-mode growth on the driven surface.  Re-anchored from the ideal-MHD 1.5x
+# for the coupled regime (#116/[B3]): anisotropic conduction stabilises the shorter-
+# wavelength axial mode, so the coupled single-mode growth (~1.5x) is below the ideal
+# (~1.9x); 1.3x keeps the same ~80% relative margin the original bar had vs its ideal run.
+GROWTH_MIN = 1.3
 DOM_FRAC = 0.6         # seeded mode must hold >= 60% of the interface z-variance
 RAD_GROWTH = 1.3       # require the synthetic-radiograph modulation to grow >= 1.3x
 
@@ -259,6 +267,10 @@ def test_verify_maglif_mrt():
             f"radiograph modulation did not grow: {rad_mod[0]:.4e} -> {rad_mod[-1]:.4e} "
             f"(need > {RAD_GROWTH}x)"
         )
+
+        # (6) The coupled radiation-conduction-MHD stack ran and kept the species-split
+        # energy budget physically sane (erad finite, non-neg, bounded; #116/[B3]).
+        cenergy.assert_coupled_energy_sane("maglif_mrt")
 
         # Plot the synthetic radiograph (initial vs final); trajectories + baseline below.
         _plot_radiograph(xrad, z, rad0, radN, times[0], times[-1])

@@ -10,14 +10,14 @@
 # side-on radiograph.  This is FLASH MagLIF validation benchmark 1 (single-mode MRT, the
 # Phase-1 convergence point) from Ellison et al. 2025 (arXiv:2504.10760).
 #
-# PHYSICS SCOPE (honest, per the #32 MagLIF-pgen scope note + the PRD Phase-1 sequencing):
-# the grey-FLD radiation, anisotropic conduction and variable resistivity operators are
-# operator-split modules that are NOT yet wired into the production MHD driver, so this
-# benchmark exercises the WIRED stack -- cylindrical ideal-MHD (ADR-0004) + the prescribed-
-# I(t) circuit drive (ADR-0005 mode A).  Each operator-split closure is verified independently
-# (#25 anisotropic conduction in cylindrical, #27 cylindrical B_phi resistive operator, #28
-# coupled grey rad-hydro, #41 multigroup); the adiabatic-MHD MRT growth measured here is the
-# Phase-1 backbone benchmark, with the closures layered in once the driver wiring lands.
+# PHYSICS SCOPE (Phase B, #116/[B3], ADR-0009): this benchmark now runs the FULL COUPLED
+# radiation-conduction-MHD stack -- cylindrical ideal-MHD (ADR-0004) + the prescribed-I(t)
+# circuit drive (ADR-0005 mode A) + the Strang-split operator-split parabolic block (grey
+# flux-limited radiation diffusion + anisotropic Braginskii conduction) with the
+# point-implicit matter-radiation coupling outside the super-step (the <mhd> block below).
+# The coefficients are nondimensional code units chosen so the coupled physics is a stable,
+# signature-preserving perturbation; real opacity/EOS-derived values arrive with the IONMIX
+# tables in Phase C (#118).  Resistive B_phi / multigroup FLD stay off here (Phase C).
 #
 # ADR-0004 fixes the axial direction to x3 and AthenaK forbids the (nx2=1, nx3>1) topology, so
 # the axially-resolved run uses a thin azimuthal (phi) wedge -- the axisymmetric IC replicates
@@ -72,6 +72,28 @@ rsolver     = hlld
 gamma       = 1.6666666666666667
 dfloor      = 1.0e-5
 pfloor      = 1.0e-7
+# ---- full coupled radiation-conduction-MHD stack (#116/[B3], ADR-0009) ----
+# Strang-split parabolic super-step (grey FLD radiation diffusion + anisotropic Braginskii
+# conduction on the live u0) wrapped around the hyperbolic update, with the point-implicit
+# matter-radiation coupling outside the super-step.  Coefficients are nondimensional code
+# units chosen for stability + a modest (signature-preserving) radiation channel; real
+# opacity/EOS-derived values arrive with the IONMIX tables in Phase C (#118).  Resistive
+# B_phi (resb_*) and multigroup FLD (mgfld_*) stay off here: the former is wired as a
+# standalone array (not fed back into the live implosion B) and is axis-stiff (eta/r^2),
+# the latter needs an IONMIX opacity file (Phase C).
+strang_split          = true
+fld_operator_split    = true   # grey flux-limited radiation diffusion (standalone erad)
+fld_c_light           = 10.0   # code-unit radiation speed (>> fluid speeds)
+fld_chi               = 1000.0 # opaque liner -> small radiative diffusivity D = c/(3 chi)
+fld_n_larsen          = 2.0
+fld_e_source          = -1.0   # < 0 -> insulated (zero-gradient) radiation boundaries
+acond_operator_split  = true   # anisotropic Braginskii conduction on the live gas energy
+acond_kappa_conv      = 0.05  # mild conduction: a signature-preserving thermal smoother
+mrad_coupling         = true   # point-implicit matter<->radiation energy exchange (a T^4)
+mrad_chi_a            = 0.04  # gentle matter<->radiation coupling (modest perturbation)
+mrad_cv               = 1.5e-3 # heat capacity: T = e_gas/cv ~ 1 at the seeded state
+mrad_arad             = 1.0e-6 # small radiation reservoir -> signature-preserving
+mrad_clight           = 10.0
 
 <problem>
 current_mode     = driven       # driven (mu0*I/2*pi*r) B_phi outer boundary
@@ -90,9 +112,16 @@ perturbation     = single_mode  # single axial mode on the liner interface
 pert_amp         = 0.05         # radial interface perturbation amplitude
 pert_mode        = 3            # axial mode number (wavelength = Lz/pert_mode); distinct from RM (#36)
 pert_phase       = 0.0          # axial phase offset
+user_hist        = true         # conservation history: mass, etot, ..., erad (coupled stack)
 
 <output1>
 file_type   = bin
 variable    = mhd_w_bcc
 id          = prim
 dt          = 0.02
+
+<output2>
+file_type      = hst   # conservation history -> maglif_mrt.user.hst (etot + erad budget)
+variable       = mhd
+user_hist_only = true
+dt             = 0.02

@@ -8,13 +8,16 @@ perturbation is seeded, unlike the instability benchmarks #36/#39/#42).  This is
 4 of the FLASH MagLIF validation ladder (Ellison et al. 2025, arXiv:2504.10760), whose
 observables are the PDV/radiography inner-radius trajectory and the stagnation density.
 
-Physics scope (honest, per the #32 MagLIF-pgen scope note + the PRD Phase-1 sequencing):
-the 2T tabulated EOS (#26), 2T Ohmic/radiation coupling (#30) and the FLD/conduction
-operators are operator-split modules NOT yet wired into the production MHD driver, so this
-benchmark exercises the WIRED stack -- cylindrical ideal-MHD (ADR-0004) + the prescribed-
-I(t) circuit drive (ADR-0005 mode A).  The 2T-EOS inversion and matter-radiation coupling
-are verified in isolation (#26, #28, #30, #41).  The adiabatic-MHD confinement-time
-signature measured here is the Phase-1 baseline; radiation losses are layered in later.
+Physics scope (Phase B, #116/[B3], ADR-0009): this benchmark now runs the FULL COUPLED
+radiation-conduction-MHD stack -- cylindrical ideal-MHD (ADR-0004) + the prescribed-I(t)
+circuit drive (ADR-0005 mode A) + the Strang-split operator-split parabolic block (grey
+flux-limited radiation diffusion + anisotropic Braginskii conduction) with the point-
+implicit matter-radiation coupling outside the super-step (see the input's <mhd> block).
+This 1-D radial run uses a hotter seeded state (p0 = 0.1), so it carries its own
+nondimensional coupling coefficients; real opacity/EOS-derived values (full 2T tabulated
+EOS, IONMIX opacities) arrive in Phase C (#118).  Resistive B_phi / multigroup FLD stay
+off here (Phase C).  The regression baseline below reflects this coupled stack, not the
+earlier ideal-MHD run.
 
 The discriminating observables (1-D radial, axisymmetric -- a pure bulk stagnation) are
 tracked by ENCLOSED MASS, which is robust to shocks and the fuzzy fuel/liner density
@@ -46,6 +49,7 @@ import sys
 import numpy as np
 import test_suite.testutils as testutils
 import test_suite.verification.harness as harness
+import test_suite.cylindrical.maglif_coupled_energy as cenergy
 
 # bin_convert lives next to athena_read in vis/python; add it by absolute path so the
 # import is robust to the test's working directory (tests run from tst/build/src).
@@ -58,7 +62,8 @@ D_LINER = 1.85         # beryllium liner density
 R_FUEL = 0.4           # fuel/liner interface radius
 R_LINER = 0.6          # liner/vacuum interface radius
 
-# Verification thresholds (comfortable margins around the observed adiabatic-MHD run:
+# Verification thresholds (comfortable margins; the qualitative convergence/stagnation/
+# rebound signature is preserved under the coupled stack -- observed adiabatic-MHD run:
 # R_if ~ 0.40 -> 0.045 (convergence ratio ~9) -> rebound to ~0.23; fuel compresses ~75x).
 CR_MIN = 2.0           # require >= 2x convergence of the inner radius (clean implosion)
 REBOUND_MIN = 0.04     # require the inner radius to bounce back >= this after stagnation
@@ -189,6 +194,10 @@ def test_verify_maglif_icf():
         assert tau_conf > TAU_MIN, (
             f"confinement time {tau_conf:.4f} <= {TAU_MIN} (no sustained stagnation)"
         )
+
+        # The full coupled radiation-conduction-MHD stack ran and kept the species-split
+        # energy budget physically sane (erad finite, non-neg, bounded; #116/[B3]).
+        cenergy.assert_coupled_energy_sane("maglif_icf")
 
         harness.verify(
             "maglif_icf",

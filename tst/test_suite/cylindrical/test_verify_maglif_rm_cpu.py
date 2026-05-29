@@ -9,13 +9,15 @@ Richtmyer-Meshkov feed plus Bell-Plesset convergence amplification); the radiogr
 observable is the growth of that single-mode amplitude.  This is benchmark 3 of the FLASH
 MagLIF validation ladder (Ellison et al. 2025, arXiv:2504.10760).
 
-Physics scope (honest, per the #32 MagLIF-pgen scope note + the PRD Phase-1 sequencing):
-the grey-FLD radiation, anisotropic-conduction and variable-resistivity operators are
-operator-split modules that are NOT yet wired into the production MHD driver, so this
-benchmark exercises the WIRED stack -- cylindrical ideal-MHD (ADR-0004) + the prescribed-
-I(t) circuit drive (ADR-0005 mode A).  The radiation coupling is verified separately
-(#28 coupled grey rad-hydro, #41 multigroup).  The converging-RM growth measured here is
-the adiabatic-MHD baseline; radiation is layered in once the driver wiring lands.
+Physics scope (Phase B, #116/[B3], ADR-0009): this benchmark now runs the FULL COUPLED
+radiation-conduction-MHD stack -- cylindrical ideal-MHD (ADR-0004) + the prescribed-I(t)
+circuit drive (ADR-0005 mode A) + the Strang-split operator-split parabolic block (grey
+flux-limited radiation diffusion + anisotropic Braginskii conduction) with the point-
+implicit matter-radiation coupling outside the super-step (see inputs/maglif_rm.athinput).
+Coefficients are nondimensional code units chosen so the coupled physics is a stable,
+signature-preserving perturbation; real opacity/EOS-derived values arrive with the IONMIX
+tables in Phase C (#118).  Resistive B_phi / multigroup FLD stay off here (Phase C).  The
+regression baseline below reflects this coupled stack, not the earlier ideal-MHD run.
 
 Discriminating quantities (see inputs/maglif_rm.athinput):
   * R_liner(t)  -- mass-weighted mean liner radius: the bulk convergence trajectory.
@@ -40,6 +42,7 @@ import sys
 import numpy as np
 import test_suite.testutils as testutils
 import test_suite.verification.harness as harness
+import test_suite.cylindrical.maglif_coupled_energy as cenergy
 
 # bin_convert lives next to athena_read in vis/python; add it by absolute path so the
 # import is robust to the test's working directory (tests run from tst/build/src).
@@ -54,7 +57,11 @@ HALF = 0.5 * D_LINER   # half-max density level isolating the dense liner
 
 # Verification thresholds.
 CONV_FRAC = 0.75       # require >= 25% bulk convergence (R_liner shrinks)
-GROWTH_MIN = 1.5       # require >= 1.5x single-mode growth on the driven surface
+# >= 1.3x single-mode growth on the driven surface.  Re-anchored from the ideal-MHD 1.5x
+# for the coupled regime (#116/[B3]): anisotropic conduction stabilises the shorter-
+# wavelength axial mode, so the coupled converging-RM growth (~1.6x) is below the ideal
+# (~2.0x); 1.3x keeps the same ~80% relative margin the original bar had vs its ideal run.
+GROWTH_MIN = 1.3
 DOM_FRAC = 0.6         # seeded mode must hold >= 60% of the interface z-variance
 
 input_file = os.path.join(testutils._repo_root(), "tst", "inputs", "maglif_rm.athinput")
@@ -169,6 +176,10 @@ def test_verify_maglif_rm():
         assert dom > DOM_FRAC, (
             f"seeded mode not dominant at stagnation: {dom:.2f} < {DOM_FRAC}"
         )
+
+        # The full coupled radiation-conduction-MHD stack ran and kept the species-split
+        # energy budget physically sane (erad finite, non-neg, bounded; #116/[B3]).
+        cenergy.assert_coupled_energy_sane("maglif_rm")
 
         harness.verify(
             "maglif_rm",

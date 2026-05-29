@@ -17,6 +17,7 @@
 #include "mesh/meshblock_pack.hpp"
 #include "coordinates/coordinates.hpp"
 #include "coordinates/coord_geometry.hpp"
+#include "coordinates/cell_locations.hpp"
 #include "bvals/bvals.hpp"
 #include "radiation_fld/fld_grey_operator.hpp"
 
@@ -87,6 +88,7 @@ void FLDGreyOperator::OperatorAction(const DvceArray5D<Real> &u_in,
   int js = indcs.js, je = indcs.je;
   int ks = indcs.ks, ke = indcs.ke;
   int nmb1 = pmy_pack->nmb_thispack - 1;
+  int nx1 = indcs.nx1;
   auto size = pmy_pack->pmb->mb_size;
   auto csys = pmy_pack->pcoord->coord_system;
   Real cc = c_, chi = chi_, nl = nlarsen_;
@@ -120,7 +122,13 @@ void FLDGreyOperator::OperatorAction(const DvceArray5D<Real> &u_in,
     KOKKOS_LAMBDA(const int m, const int k, const int j, const int i) {
       Real el = u_in(m,irad,k,j-1,i);
       Real er = u_in(m,irad,k,j,i);
-      Real dedx = (er - el)/size.d_view(m).dx2;
+      // azimuthal gradient uses the physical arc length (cyl CenterWidth2 = x1v*dx2,
+      // Cartesian = dx2 -> bit-identical), so the cross-axis phi diffusion is geometric.
+      Real x1v2 = 0.0;
+      if (csys == CoordSystem::cylindrical) {
+        x1v2 = CellCenterX(i-is, nx1, size.d_view(m).x1min, size.d_view(m).x1max);
+      }
+      Real dedx = (er - el)/CenterWidth2(csys, size.d_view(m).dx2, x1v2);
       Real eface = 0.5*(el + er);
       Real R = Kokkos::fabs(dedx)/(chi*Kokkos::fmax(eface, tiny));
       Real D = cc*LarsenLimiter(R, nl)/chi;
@@ -149,11 +157,22 @@ void FLDGreyOperator::OperatorAction(const DvceArray5D<Real> &u_in,
   // as the hydro/MHD RKUpdate and ConductionOperator do.
   par_for("fld_op_div", DevExeSpace(), 0, nmb1, ks, ke, js, je, is, ie,
   KOKKOS_LAMBDA(const int m, const int k, const int j, const int i) {
+    // cylindrical face radii (rm,rp) / cell radius (x1v) feed the curvilinear flux
+    // divergence (1/r) d(r F)/dr and (1/r) dF/dphi; default 0 -> Cartesian (fr-fl)/dx,
+    // byte-identical.  Required for the operator to run on the cylindrical MagLIF mesh
+    // (#116/[B3]) -- without them FluxDivX1 evaluates 0/0 at every cell (NaN).
+    Real rm = 0.0, rp = 0.0, x1v = 0.0;
+    if (csys == CoordSystem::cylindrical) {
+      Real x1min = size.d_view(m).x1min, x1max = size.d_view(m).x1max;
+      rm  = LeftEdgeX(i-is,    nx1, x1min, x1max);
+      rp  = LeftEdgeX(i+1-is,  nx1, x1min, x1max);
+      x1v = CellCenterX(i-is,  nx1, x1min, x1max);
+    }
     Real divf = FluxDivX1(csys, flx1(m,irad,k,j,i), flx1(m,irad,k,j,i+1),
-                          size.d_view(m).dx1);
+                          size.d_view(m).dx1, rm, rp);
     if (!one_d) {
       divf += FluxDivX2(csys, flx2(m,irad,k,j,i), flx2(m,irad,k,j+1,i),
-                        size.d_view(m).dx2);
+                        size.d_view(m).dx2, x1v);
     }
     if (!one_d && !two_d) {
       divf += FluxDivX3(csys, flx3(m,irad,k,j,i), flx3(m,irad,k+1,j,i),
