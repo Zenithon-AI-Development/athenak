@@ -13,7 +13,9 @@
 #include <limits>
 
 #include "athena.hpp"
+#include "parameter_input.hpp"
 #include "mesh/mesh.hpp"
+#include "mesh/meshblock.hpp"
 #include "mesh/meshblock_pack.hpp"
 #include "coordinates/coordinates.hpp"
 #include "coordinates/coord_geometry.hpp"
@@ -36,11 +38,24 @@ Real TempMHD(const DvceArray5D<Real> &u, const DvceArray5D<Real> &bcc, Real gm1,
 }
 
 //----------------------------------------------------------------------------------------
+//! \fn bool InsulatingBdry()
+//! \brief True iff a MeshBlock face is an INSULATING domain boundary -- i.e. it has no
+//! neighbour (not a `block` internal face) and is not connected to one across the domain
+//! (not `periodic`/`shear_periodic`).  At such faces the anisotropic boundary flux is
+//! zeroed (insulated box); at internal/periodic faces it is left intact so heat conducts
+//! across the block boundary after the SyncParabolicGhosts exchange (#112/[A5]).
+KOKKOS_INLINE_FUNCTION
+bool InsulatingBdry(BoundaryFlag flag) {
+  return (flag != BoundaryFlag::block && flag != BoundaryFlag::periodic
+          && flag != BoundaryFlag::shear_periodic && flag != BoundaryFlag::undef);
+}
+
+//----------------------------------------------------------------------------------------
 //! \brief AnisotropicConductionOperator constructor.
 
 AnisotropicConductionOperator::AnisotropicConductionOperator(MeshBlockPack *pp,
-  const DvceArray5D<Real> &cons, const DvceArray5D<Real> &bcc, Real gamma,
-  const anisocond::AnisoCondParams &par) :
+  ParameterInput *pin, const DvceArray5D<Real> &cons, const DvceArray5D<Real> &bcc,
+  Real gamma, const anisocond::AnisoCondParams &par) :
   pmy_pack(pp),
   cons_(cons),
   bcc_(bcc),
@@ -48,11 +63,29 @@ AnisotropicConductionOperator::AnisotropicConductionOperator(MeshBlockPack *pp,
   par_(par),
   hflx_("aniso_cond_hflx", cons.extent_int(0), cons.extent_int(1),
         cons.extent_int(2), cons.extent_int(3), cons.extent_int(4)),
+  pbval_(nullptr),
+  coarse_("aniso_cond_coarse", 1, 1, 1, 1, 1),
   pbval_flux_(nullptr) {
-  // On a multilevel (SMR/AMR) mesh, register the heat flux for the conservative
-  // fine->coarse flux correction (#33), so conducted energy conserves across refinement
-  // boundaries.  (pin is unused by the boundary-values constructor.)
+  const int nvar = cons.extent_int(1);
+  // own boundary-values object for the per-substage neighbour ghost exchange: unique MPI
+  // communicator for this operator's exchange, buffers sized to the diffused field's
+  // variable width (#112/[A5]).  Only built when `pin` is supplied (the production
+  // wiring); legacy single-block-only callers may pass nullptr to skip it.
+  if (pin != nullptr) {
+    pbval_ = new MeshBoundaryValuesCC(pp, pin, false);
+    pbval_->InitializeBuffers(nvar);
+  }
+  // coarse-mesh scratch (only meaningful with SMR/AMR; left 1^5 on a uniform grid, where
+  // SyncParabolicGhosts never touches it)
   if (pp->pmesh->multilevel) {
+    auto &indcs = pp->pmesh->mb_indcs;
+    int n_ccells1 = indcs.cnx1 + 2*(indcs.ng);
+    int n_ccells2 = (indcs.cnx2 > 1) ? (indcs.cnx2 + 2*(indcs.ng)) : 1;
+    int n_ccells3 = (indcs.cnx3 > 1) ? (indcs.cnx3 + 2*(indcs.ng)) : 1;
+    Kokkos::realloc(coarse_, cons.extent_int(0), nvar, n_ccells3, n_ccells2, n_ccells1);
+    // On a multilevel (SMR/AMR) mesh, register the heat flux for the conservative
+    // fine->coarse flux correction (#33), so conducted energy conserves across refinement
+    // boundaries.  (pin is unused by the boundary-values constructor.)
     pbval_flux_ = new MeshBoundaryValuesCC(pp, nullptr, false);
     pbval_flux_->InitializeBuffers(hflx_.x1f.extent_int(1));
   }
@@ -62,6 +95,7 @@ AnisotropicConductionOperator::AnisotropicConductionOperator(MeshBlockPack *pp,
 //! \brief AnisotropicConductionOperator destructor.
 
 AnisotropicConductionOperator::~AnisotropicConductionOperator() {
+  if (pbval_ != nullptr) { delete pbval_; }
   if (pbval_flux_ != nullptr) { delete pbval_flux_; }
 }
 
@@ -233,32 +267,47 @@ void AnisotropicConductionOperator::OperatorAction(const DvceArray5D<Real> &u_in
     });
   }
 
-  // INSULATED boundary: zero out the heat flux on the domain-boundary faces.  For
-  // anisotropic conduction the parallel flux has a normal component (b_normal != 0) even
-  // when the temperature gradient normal to the boundary vanishes (zero-gradient ghost
-  // fill), so the ConductionOperator-style ghost-only BC does NOT close the box.  Setting
-  // the boundary face flux to 0 makes the operator exactly energy-conserving on a single
-  // block, which is the "insulated box" the unit-test ring run + the parabolic-conduction
-  // cosine-eigenmode oracle assume.  (Multi-block / MPI ghost exchange between substeps
-  // -- the production wiring -- replaces this with the neighbour-block flux, like all the
-  // other ParabolicOperators here.)
+  // INSULATED boundary: zero out the heat flux on the true domain-boundary faces ONLY.
+  // For anisotropic conduction the parallel flux has a normal component (b_normal != 0)
+  // even when the temperature gradient normal to the boundary vanishes (zero-gradient
+  // ghost fill), so the ConductionOperator-style ghost-only BC does NOT close the box.
+  // Setting the boundary face flux to 0 makes the operator energy-conserving at an
+  // insulated outer edge (the "insulated box" the ring run + cosine-eigenmode oracle
+  // assume).  On a multi-block / AMR / MPI run only TRUE domain faces are zeroed
+  // (InsulatingBdry); internal block faces (`block`) and periodic faces keep the computed
+  // flux, so heat conducts across them after the SyncParabolicGhosts neighbour exchange
+  // refreshes their ghosts (#112/[A5]).  On a single block every face is a domain
+  // boundary, so the behaviour is byte-identical to the previous unconditional zeroing.
+  auto mbbcs = pmy_pack->pmb->mb_bcs;
   par_for("aniso_zerobflx1", DevExeSpace(), 0, nmb1, ks, ke, js, je,
   KOKKOS_LAMBDA(const int m, const int k, const int j) {
-    flx1(m,IEN,k,j,is)   = 0.0;
-    flx1(m,IEN,k,j,ie+1) = 0.0;
+    if (InsulatingBdry(mbbcs.d_view(m,BoundaryFace::inner_x1))) {
+      flx1(m,IEN,k,j,is)   = 0.0;
+    }
+    if (InsulatingBdry(mbbcs.d_view(m,BoundaryFace::outer_x1))) {
+      flx1(m,IEN,k,j,ie+1) = 0.0;
+    }
   });
   if (!one_d) {
     par_for("aniso_zerobflx2", DevExeSpace(), 0, nmb1, ks, ke, is, ie,
     KOKKOS_LAMBDA(const int m, const int k, const int i) {
-      flx2(m,IEN,k,js,i)   = 0.0;
-      flx2(m,IEN,k,je+1,i) = 0.0;
+      if (InsulatingBdry(mbbcs.d_view(m,BoundaryFace::inner_x2))) {
+        flx2(m,IEN,k,js,i)   = 0.0;
+      }
+      if (InsulatingBdry(mbbcs.d_view(m,BoundaryFace::outer_x2))) {
+        flx2(m,IEN,k,je+1,i) = 0.0;
+      }
     });
   }
   if (!one_d && !two_d) {
     par_for("aniso_zerobflx3", DevExeSpace(), 0, nmb1, js, je, is, ie,
     KOKKOS_LAMBDA(const int m, const int j, const int i) {
-      flx3(m,IEN,ks,j,i)   = 0.0;
-      flx3(m,IEN,ke+1,j,i) = 0.0;
+      if (InsulatingBdry(mbbcs.d_view(m,BoundaryFace::inner_x3))) {
+        flx3(m,IEN,ks,j,i)   = 0.0;
+      }
+      if (InsulatingBdry(mbbcs.d_view(m,BoundaryFace::outer_x3))) {
+        flx3(m,IEN,ke+1,j,i) = 0.0;
+      }
     });
   }
 
@@ -357,9 +406,17 @@ Real AnisotropicConductionOperator::ExplicitStableDt() {
 
 //----------------------------------------------------------------------------------------
 //! \fn void AnisotropicConductionOperator::ApplyBoundary()
-//! \brief Zero-gradient (insulated) ghost-zone refresh: ghost cells copy nearest active
-//! cell, so the heat flux through the domain boundary is zero (energy conserved).  Called
-//! before every M(.) evaluation so the RKL2 substeps see boundary-consistent ghosts.
+//! \brief Refresh the trial state's ghost zones before every M(.) evaluation.  Two steps,
+//! in order (mirrors ConductionOperator #108/[A1] and FLDGreyOperator #110/[A3]):
+//!  (1) Zero-gradient (insulated) PHYSICAL fill of all ghost zones: ghost cells copy the
+//!      nearest active cell.  Combined with OperatorAction's flux zeroing, this is
+//!      the insulated-box BC at a true domain edge (zero heat flux out of the box).
+//!  (2) The shared multi-block/MPI/AMR neighbour exchange (SyncParabolicGhosts) then
+//!      OVERWRITES the ghosts on every INTERNAL block (and coarse/fine) face with the
+//!      neighbour's real data, leaving only the true domain ghosts insulated -- so
+//!      a block-decomposed run is a single insulated global box and heat conducts across
+//!      the internal block boundaries.  On a lone block with no neighbours (or when built
+//!      with pin==nullptr) step (2) is a no-op and the behaviour is the original fill.
 
 void AnisotropicConductionOperator::ApplyBoundary(DvceArray5D<Real> &u) {
   auto &indcs = pmy_pack->pmesh->mb_indcs;
@@ -395,4 +452,10 @@ void AnisotropicConductionOperator::ApplyBoundary(DvceArray5D<Real> &u) {
       u(m,n,ke+1+g,j,i) = u(m,n,ke,j,i);
     });
   }
+
+  // (2) overwrite internal block-face ghosts (and coarse/fine boundary ghosts under
+  // SMR/AMR) with neighbour data via the shared synchronous exchange.  Untouched at true
+  // physical boundaries (no neighbour), so those keep the insulated fill from step (1).
+  // Skipped only when built with pin==nullptr (legacy single-block-only construction).
+  if (pbval_ != nullptr) { pbval_->SyncParabolicGhosts(u, coarse_); }
 }

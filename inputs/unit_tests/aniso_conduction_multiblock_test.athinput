@@ -1,0 +1,67 @@
+# AthenaK input file for the multi-block operator-split anisotropic (Braginskii)
+# conduction verification (unit_tests/aniso_conduction_multiblock_test).
+#
+# A 2D Cartesian [-1,1]^2 mesh decomposed into FOUR MeshBlocks (mesh 64x64, meshblock
+# 32x32 => 2x2).  The AnisotropicConductionOperator is advanced operator-split by the RKL2
+# STS integrator through the exact production task body (parabolic::OperatorSplitStep);
+# its per-substage ApplyBoundary delegates the cross-block (and, under MPI, cross-rank)
+# neighbour ghost refresh to MeshBoundaryValuesCC::SyncParabolicGhosts (#108/[A1]), and
+# zeroes the boundary heat flux only on TRUE domain faces (#112/[A5]).  The test asserts a
+# field-aligned cosine mode reproduces its analytic parallel decay across the internal
+# block faces, the perpendicular mode barely decays (heat stays on field lines), the ring
+# stays on its circular field lines, and the box conserves the volume-weighted energy.
+#
+# The single internal x1 block face is the domain centre x=0; m_mode=1 puts it on the
+# mode's steep zero-crossing so a missing exchange is maximally visible.  All checks run in
+# ProblemGenerator::UserProblem; nlim = tlim = 0 (no time integration).  The operator's
+# conserved field + cell-centred B are local work arrays sized from the hydro u0 array, so
+# the <hydro> block is only for array sizing + the ideal-gas gamma.
+
+<comment>
+problem   = multi-block operator-split anisotropic Braginskii conduction verification
+
+<job>
+basename  = aniso_conduction_multiblock_test   # problem ID: basename of output filenames
+
+<mesh>
+nghost    = 2          # Number of ghost cells
+nx1       = 64         # Number of zones in X1-direction (global)
+x1min     = -1.0       # minimum value of X1
+x1max     = 1.0        # maximum value of X1
+ix1_bc    = outflow    # inner-X1 boundary flag (true insulating domain face)
+ox1_bc    = outflow    # outer-X1 boundary flag
+
+nx2       = 64         # Number of zones in X2-direction (global)
+x2min     = -1.0       # minimum value of X2
+x2max     = 1.0        # maximum value of X2
+ix2_bc    = outflow    # inner-X2 boundary flag
+ox2_bc    = outflow    # outer-X2 boundary flag
+
+nx3       = 1          # Number of zones in X3-direction
+x3min     = -0.5       # minimum value of X3
+x3max     = 0.5        # maximum value of X3
+ix3_bc    = periodic   # inner-X3 boundary flag
+ox3_bc    = periodic   # outer-X3 boundary flag
+
+<meshblock>
+nx1       = 32         # 64/32 = 2 MeshBlocks along X1 (internal face at x=0)
+nx2       = 32         # 64/32 = 2 MeshBlocks along X2 (internal face at y=0)
+nx3       = 1          # Number of cells in each MeshBlock, X3-dir
+
+<time>
+evolution            = dynamic   # dynamic/kinematic/static
+integrator           = rk2       # hyperbolic time integration algorithm
+parabolic_integrator = sts       # operator-split parabolic backend (RKL2 STS)
+cfl_number           = 0.3       # The Courant, Friedrichs, & Lewy (CFL) Number
+nlim                 = 0         # cycle limit (0: do no integration, just run UserProblem)
+tlim                 = 0         # time limit
+ndiag                = 1         # cycles between diagnostic output
+
+<hydro>
+eos          = ideal   # EOS type
+reconstruct  = plm     # spatial reconstruction method
+rsolver      = llf     # Riemann-solver to be used
+gamma        = 1.66666666666666667   # gamma = C_p/C_v
+
+<problem>
+pgen_name = aniso_conduction_multiblock_test  # (ignored: built with -D PROBLEM=unit_tests/...)

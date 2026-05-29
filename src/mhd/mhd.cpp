@@ -25,6 +25,8 @@
 #include "opacity/ionmix_opacity_reader.hpp"
 #include "radiation_fld/fld_grey_operator.hpp"
 #include "radiation_fld/fld_multigroup_operator.hpp"
+#include "diffusion/aniso_conduction_operator.hpp"
+#include "diffusion/braginskii_transport.hpp"
 #include "mhd/mhd.hpp"
 
 namespace mhd {
@@ -58,6 +60,7 @@ MHD::MHD(MeshBlockPack *ppack, ParameterInput *pin) :
     utest("utest",1,1,1,1,1),
     bcctest("bcctest",1,1,1,1,1),
     erad("erad",1,1,1,1,1),
+    erad_mg("erad_mg",1,1,1,1,1),
     fofc("fofc",1,1,1,1) {
   // Total number of MeshBlocks on this rank to be used in array dimensioning
   int nmb = std::max((ppack->nmb_thispack), (ppack->pmesh->nmb_maxperrank));
@@ -217,6 +220,32 @@ MHD::MHD(MeshBlockPack *ppack, ParameterInput *pin) :
     Real mg_es  = pin->GetOrAddReal("mhd","mgfld_e_source", -1.0);
     pmg_op = new FLDMultigroupOperator(ppack, pin, erad_mg, mg_table, mg_c, mg_rho, mg_te,
                                        mg_nl, mg_es);
+  }
+
+  // Anisotropic (magnetized) Braginskii electron+ion thermal conduction wired operator-
+  // split into the MHD step (#112/[A5], ADR-0006/ADR-0001).  Only built when explicitly
+  // enabled, so default MHD runs add nothing and stay byte-identical.  Unlike the FLD
+  // operators it diffuses the LIVE conserved field u0 (IEN) field-aligned along the
+  // frozen cell-centred B (bcc0), so it needs no standalone array.  The operator owns its
+  // own ghost-exchange boundary object (built from `pin`) plus coarse scratch, so it runs
+  // multi-block/MPI/AMR via SyncParabolicGhosts.  Stiff (#109) => super-time-stepped,
+  // so it does not limit the hyperbolic dt (the RKL2 super-step covers the full step).
+  acond_operator_split = pin->GetOrAddBoolean("mhd","acond_operator_split",false);
+  if (acond_operator_split) {
+    anisocond::AnisoCondParams apar;
+    apar.zbar       = pin->GetOrAddReal("mhd","acond_zbar", 1.0);
+    apar.mi_si      = pin->GetOrAddReal("mhd","acond_mi_si", braginskii::kProtonMass);
+    apar.lnlam      = pin->GetOrAddReal("mhd","acond_lnlam", 10.0);
+    apar.dens_conv  = pin->GetOrAddReal("mhd","acond_dens_conv", 1.0);
+    apar.temp_conv  = pin->GetOrAddReal("mhd","acond_temp_conv", 1.0);
+    apar.bmag_conv  = pin->GetOrAddReal("mhd","acond_bmag_conv", 1.0);
+    apar.kappa_conv = pin->GetOrAddReal("mhd","acond_kappa_conv", 1.0);
+    apar.nlarsen    = pin->GetOrAddReal("mhd","acond_n_larsen", 2.0);
+    apar.vfs        = pin->GetOrAddReal("mhd","acond_vfs", -1.0);
+    apar.incl_e     = pin->GetOrAddBoolean("mhd","acond_incl_e", true);
+    apar.incl_i     = pin->GetOrAddBoolean("mhd","acond_incl_i", true);
+    Real agamma = peos->eos_data.gamma;
+    pacond_op = new AnisotropicConductionOperator(ppack, pin, u0, bcc0, agamma, apar);
   }
 
   // Orbital advection and shearing box BCs (if requested in input file)
@@ -414,6 +443,7 @@ MHD::~MHD() {
   delete pbval_u;
   if (pfld_op != nullptr) {delete pfld_op;}
   if (pmg_op != nullptr) {delete pmg_op;}
+  if (pacond_op != nullptr) {delete pacond_op;}
   if (psrc!= nullptr) {delete psrc;}
   if (pcond != nullptr) {delete pcond;}
   if (presist!= nullptr) {delete presist;}

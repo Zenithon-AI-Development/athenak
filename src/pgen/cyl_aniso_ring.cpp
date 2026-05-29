@@ -155,7 +155,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   // ---- advance the operator operator-split by RKL2 super-time-stepping ----
   parabolic::ParabolicIntegrator integ;
   integ.SetFromInput(pin);
-  AnisotropicConductionOperator op(pmbp, cons, bcc, gamma, par);
+  AnisotropicConductionOperator op(pmbp, nullptr, cons, bcc, gamma, par);
   const Real dt_exp = op.ExplicitStableDt();
   const Real dt_super = dt_fac*dt_exp;
   Kokkos::deep_copy(work, cons);
