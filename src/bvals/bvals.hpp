@@ -178,6 +178,13 @@ class MeshBoundaryValuesCC : public MeshBoundaryValues {
   TaskStatus RecvAndUnpackFluxCC(DvceFaceFld5D<Real> &flx);
   // synchronous (blocking) bundle of the above for callers outside the driver tasklist
   TaskStatus CorrectFlux(DvceFaceFld5D<Real> &flx);
+  // synchronous (blocking) per-substage neighbor ghost-zone refresh for the operator-
+  // split parabolic operators (RKL2 super-time-stepping, ADR-0001/ADR-0009).  Bundles the
+  // existing CC exchange (InitRecv/PackAndSendCC/RecvAndUnpackCC/ClearRecv/ClearSend) and
+  // restriction/prolongation on refined meshes into one blocking call -- the analog of
+  // CorrectFlux for variables.  Buffer width is `a`'s 2nd extent, set per operator by the
+  // InitializeBuffers(nvar) call that allocated this object (#108/[A1]).
+  TaskStatus SyncParabolicGhosts(DvceArray5D<Real> &a, DvceArray5D<Real> &ca);
 
   // functions to prolongate conserved and primitive CC variables
   void FillCoarseInBndryCC(DvceArray5D<Real> &a, DvceArray5D<Real> &ca,

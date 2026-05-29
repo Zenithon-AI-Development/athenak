@@ -16,6 +16,7 @@
 #include "globals.hpp"
 #include "parameter_input.hpp"
 #include "mesh/mesh.hpp"
+#include "mesh/mesh_refinement.hpp"   // MeshRefinement::RestrictCC (SyncParabolicGhosts)
 #include "bvals.hpp"
 
 //----------------------------------------------------------------------------------------
@@ -406,5 +407,58 @@ TaskStatus MeshBoundaryValuesCC::RecvAndUnpackCC(DvceArray5D<Real> &a,
     tmember.team_barrier();
   });  // end par_for_outer
 
+  return TaskStatus::complete;
+}
+
+//----------------------------------------------------------------------------------------
+//! \fn TaskStatus MeshBoundaryValuesCC::SyncParabolicGhosts()
+//! \brief Synchronous (blocking) per-substage neighbor ghost-zone refresh for an
+//! operator-split parabolic operator (RKL2 super-time-stepping; ADR-0001, ADR-0009).
+//!
+//! The RKL2 substeps run INSIDE the integrator -- between the driver's normal boundary
+//! task points -- so each substage needs a neighbor ghost-zone refresh of the diffused
+//! field, across MeshBlocks and across MPI ranks (and, on a refined mesh, the
+//! restriction/prolongation that fills coarse/fine boundary ghosts).  The driver tasklist
+//! splits the cell-centered exchange (RestrictU -> InitRecv -> SendU -> RecvU ->
+//! ClearSend/ClearRecv -> Prolongate) across tasks so async MPI overlaps; an
+//! operator-split operator instead recomputes its flux every substage and so needs the
+//! exchange to complete in ONE call.  This bundles the SAME existing routines
+//! synchronously -- the variable-side analog of CorrectFlux -- adding NO new comms code:
+//!   1. restrict the field into the coarse buffer (so coarser neighbors get restricted
+//!      data) -- multilevel only;
+//!   2. post receives, pack+send (direct copy into the neighbor's recv buffer on the same
+//!      rank, MPI_Isend otherwise), busy-wait the receives, then clear sends/receives;
+//!   3. fill the coarse boundary array from same-level neighbors and prolongate into the
+//!      fine ghost zones -- multilevel only.
+//! PHYSICAL domain boundaries (no neighbor: nghbr.gid < 0) are untouched here -- those
+//! are the operator's own ApplyBoundary job (e.g. the insulated conduction fill).
+//! Buffer width = a's 2nd extent (this object's InitializeBuffers(nvar)); the multigroup
+//! FLD operator batches all groups into one exchange by sizing that width to all groups.
+//! On a single MeshBlock with no refinement this is a no-op, so a single-block run is
+//! byte-identical to the pre-#108 local-only path.
+
+TaskStatus MeshBoundaryValuesCC::SyncParabolicGhosts(DvceArray5D<Real> &a,
+                                                     DvceArray5D<Real> &ca) {
+  int nvar = a.extent_int(1);
+  auto &multilevel = pmy_pack->pmesh->multilevel;
+
+  // (1) restrict interior into coarse buffer so coarser neighbors get restricted data
+  if (multilevel) {
+    pmy_pack->pmesh->pmr->RestrictCC(a, ca);
+  }
+
+  // (2) post receives, send, busy-wait receives to completion, clear (serial completes at
+  // once; under MPI the non-blocking sends/recvs complete within this call)
+  InitRecv(nvar);
+  PackAndSendCC(a, ca);
+  while (RecvAndUnpackCC(a, ca) == TaskStatus::incomplete) {}
+  ClearRecv();
+  ClearSend();
+
+  // (3) fill coarse boundary array + prolongate into fine ghost zones at c/f faces
+  if (multilevel) {
+    FillCoarseInBndryCC(a, ca);
+    ProlongateCC(a, ca);
+  }
   return TaskStatus::complete;
 }

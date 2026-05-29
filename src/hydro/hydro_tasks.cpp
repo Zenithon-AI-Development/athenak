@@ -52,11 +52,11 @@ void Hydro::AssembleHydroTasks(std::map<std::string, std::shared_ptr<TaskList>> 
   TaskID none(0);
 
   // assemble "before_timeintegrator" task list: operator-split parabolic conduction
-  // (RKL2 STS), once per step.  Only built when explicitly enabled, so default runs add
-  // no task and are byte-identical (ADR-0001, issue #13).
-  if (pcond != nullptr && cond_operator_split) {
-    pcond_op = new ConductionOperator(pmy_pack, u0, pcond->kappa,
-                                      peos->eos_data.gamma);
+  // (RKL2 STS), once per step.  pcond_op is built in the Hydro constructor (it needs
+  // `pin` for its own ghost-exchange boundary object, #108); it is non-null only when
+  // conduction is on AND operator-split is enabled, so default runs add no task and are
+  // byte-identical (ADR-0001, issue #13).
+  if (pcond_op != nullptr) {
     id.opsplit = tl["before_timeintegrator"]->AddTask(
                    &Hydro::OperatorSplitConduction, this, none);
   }
@@ -431,15 +431,10 @@ TaskStatus Hydro::ConToPrim(Driver *pdrive, int stage) {
 
 TaskStatus Hydro::OperatorSplitConduction(Driver *pdrive, int stage) {
   if (pcond_op == nullptr) { return TaskStatus::complete; }
-  // single MeshBlock on a single rank only: ConductionOperator refreshes ghost zones with
-  // a local (insulated) fill between RKL2 substeps; multi-block inter-substep boundary
-  // exchange is the consuming physics issues' (#17/#18) responsibility.
-  if (pmy_pack->pmesh->nmb_total > 1 || global_variable::nranks > 1) {
-    std::cout << "### FATAL ERROR in " << __FILE__ << " at line " << __LINE__ << std::endl
-              << "conduction_operator_split currently supports a single MeshBlock on one "
-              << "MPI rank (inter-substep boundary exchange not yet wired)." << std::endl;
-    std::exit(EXIT_FAILURE);
-  }
+  // The RKL2 substeps refresh ghost zones via ConductionOperator::ApplyBoundary, which
+  // delegates the inter-block/inter-rank (and AMR coarse/fine) neighbor exchange to the
+  // shared MeshBoundaryValuesCC::SyncParabolicGhosts helper (#108/[A1]) -- so this path
+  // now runs on >1 MeshBlock and >1 MPI rank (the former single-block FATAL is gone).
   parabolic::OperatorSplitStep(pdrive->pparabolic, *pcond_op, u0, pmy_pack->pmesh->dt);
   return ConToPrim(pdrive, stage);  // refresh primitives after the operator-split update
 }
