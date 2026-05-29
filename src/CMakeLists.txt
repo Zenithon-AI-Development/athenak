@@ -38,6 +38,7 @@ add_executable(
         diffusion/resistivity.cpp
         diffusion/viscosity.cpp
 
+        driver/composite_parabolic_operator.cpp
         driver/driver.cpp
 
         dyn_grmhd/dyn_grmhd.cpp
