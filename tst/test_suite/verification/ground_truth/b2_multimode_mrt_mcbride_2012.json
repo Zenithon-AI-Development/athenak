@@ -1,0 +1,48 @@
+{
+  "benchmark": "B2",
+  "ellison_id": 2,
+  "title": "Multi-mode magneto-Rayleigh-Taylor (MRT) growth on a Be liner",
+  "description": "Ellison benchmark 2. Multi-mode MRT on an initially solid beryllium liner imploded on the 20-MA Z accelerator (100- or 200-ns current rise). Penetrating radiography resolves the evolving, azimuthally-correlated MRT structure prior to and during stagnation. The simulation must qualitatively reproduce the multi-mode structure and amplitude growth.",
+  "primary_source": {
+    "authors": "R. D. McBride et al.",
+    "paper": "Penetrating Radiography of Imploding and Stagnating Beryllium Liners on the Z Accelerator",
+    "journal": "Phys. Rev. Lett.",
+    "volume": "109",
+    "article": "135004",
+    "year": 2012,
+    "doi": "10.1103/PhysRevLett.109.135004"
+  },
+  "companion_source": {
+    "authors": "R. D. McBride et al.",
+    "paper": "Beryllium liner implosion experiments on the Z accelerator in preparation for magnetized liner inertial fusion",
+    "journal": "Phys. Plasmas",
+    "volume": "20",
+    "issue": "5",
+    "article": "056309",
+    "year": 2013,
+    "doi": "10.1063/1.4803079"
+  },
+  "setup": {
+    "liner_material": "beryllium (initially solid)",
+    "drive_peak_current_MA": 20,
+    "drive_rise_time_ns": [100, 200],
+    "facility": "Sandia Z",
+    "note": "broadband (multi-mode) surface seeding; azimuthally-correlated MRT structure near stagnation"
+  },
+  "data": [
+    {
+      "id": "multimode_amplitude_growth",
+      "observable": "multi-mode MRT amplitude growth (dominant-mode envelope) vs time",
+      "kind": "curve",
+      "status": "pending_digitization",
+      "confidence": "low",
+      "extraction_method": "pending_digitization (curve to be digitized in #122 [C5]; no fabricated points)",
+      "oracle_kind": "experiment",
+      "source": {
+        "paper": "Penetrating Radiography of Imploding and Stagnating Beryllium Liners on the Z Accelerator",
+        "figure": "stagnation radiograph / azimuthal-correlation figure (exact panel pinned on digitization, #122)",
+        "doi": "10.1103/PhysRevLett.109.135004"
+      }
+    }
+  ]
+}

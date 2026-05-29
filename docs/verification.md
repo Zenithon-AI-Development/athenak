@@ -120,6 +120,22 @@ each test also keeps a `harness.verify` regression baseline.
 | `test_verify_maglif_rm_cpu.py` | 1 | literature | FLASH benchmark 3 — converging single-mode Richtmyer–Meshkov: single-mode amplitude growth during compression | Ellison et al. 2025 (arXiv:2504.10760) | self |
 | `test_verify_maglif_icf_cpu.py` | 1 | literature | FLASH benchmark 4 — ICF confinement-time signature: bulk stagnation via enclosed-mass tracking (R_if, ρ_fuel) | Ellison et al. 2025 (arXiv:2504.10760) | self |
 
+## Experimental ground-truth oracle — Ellison benchmarks 1–4 (ADR-0008)
+
+Directory: `verification/`. The **Layer-1 experimental oracle** the Phase-C benchmark
+replications (#119–#122) compare their simulation observables against. The binding ground
+truth is the **experiment** (digitized/stated data from the primary Sandia papers), never
+another code — FLASH/LASNEX/HYDRA values, where stored, are secondary reference only. The
+committed, provenance-tagged data lives in `verification/ground_truth/` (one JSON file per
+benchmark, each datum carrying source paper + figure + DOI + extraction method); the oracle
+(`verification/ground_truth_oracle.py`) loads it, validates the provenance, and compares
+within a tolerance band = max(experimental error, digitization error). The test below
+exercises that load/provenance/tolerance-band/compare logic (a component test, no sim).
+
+| Test | Layer | Oracle type | Ground-truth oracle | Citation | Method anchor |
+|------|-------|-------------|---------------------|----------|---------------|
+| `test_verify_ground_truth_oracle_cpu.py` | 1 | literature (experiment) | Committed experimental data for Ellison 1–4: B1 single-mode MRT (Sinars 2011), B2 multi-mode MRT (McBride 2012/2013), B3 convergent RM (Knapp 2020), B4 ICF confinement (Knapp 2017, min-radius 0.45 mm, peak density ~10 g/cc); provenance-validated load + tolerance-band compare | Sinars PoP 18,056301 (2011) [10.1063/1.3560911]; McBride PRL 109,135004 (2012) [10.1103/PhysRevLett.109.135004] / PoP 20,056309 (2013) [10.1063/1.4803079]; Knapp PoP 27,092707 (2020) [10.1063/5.0013194]; Knapp PoP 24,042708 (2017) [10.1063/1.4981206] | self |
+
 ---
 
 ## Layer-2 self-snapshot gaps — all closed
