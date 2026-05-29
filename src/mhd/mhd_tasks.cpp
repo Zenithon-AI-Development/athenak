@@ -27,6 +27,8 @@
 #include "shearing_box/orbital_advection.hpp"
 #include "driver/driver.hpp"
 #include "driver/parabolic_integrator.hpp"
+#include "driver/composite_parabolic_operator.hpp"
+#include "radiation_fld/matter_radiation_coupling.hpp"
 #include "radiation_fld/fld_grey_operator.hpp"
 #include "radiation_fld/fld_multigroup_operator.hpp"
 #include "diffusion/aniso_conduction_operator.hpp"
@@ -47,39 +49,62 @@ void MHD::AssembleMHDTasks(std::map<std::string, std::shared_ptr<TaskList>> tl) 
   // assemble "before_timeintegrator" task list
   id.savest = tl["before_timeintegrator"]->AddTask(&MHD::SaveMHDState, this, none);
 
-  // operator-split grey FLD radiation (RKL2 STS), once per step.  pfld_op is built in the
-  // MHD constructor (it needs `pin` for its own ghost-exchange boundary object, #108); it
-  // is non-null only when grey FLD is on AND operator-split is enabled, so default runs
-  // add no task and are byte-identical (ADR-0001, #110/[A3]).
-  if (pfld_op != nullptr) {
-    id.opsfld = tl["before_timeintegrator"]->AddTask(&MHD::OperatorSplitFLD, this, none);
-  }
+  if (!strang_split) {
+    // ---- DEFAULT (Lie-split) path: each operator advances a FULL super-step once per
+    // step in "before_timeintegrator" (#110-#113).  Unchanged from before #115; default
+    // runs add no task and are byte-identical. ----
 
-  // operator-split MULTIGROUP FLD radiation (RKL2 STS), once per step.  pmg_op is built
-  // in the MHD ctor (it needs `pin` for its ghost-exchange object + opacity table);
-  // non-null only when multigroup FLD operator-split is enabled, so default runs add no
-  // task and are byte-identical (ADR-0001/ADR-0007, #111/[A4]).
-  if (pmg_op != nullptr) {
-    id.opsmgfld = tl["before_timeintegrator"]->AddTask(&MHD::OperatorSplitMultigroupFLD,
-                                                       this, none);
-  }
+    // operator-split grey FLD radiation (RKL2 STS), once per step.  pfld_op is built
+    // in the MHD constructor (needs `pin` for its own ghost-exchange object, #108);
+    // non-null only when grey FLD operator-split is enabled, so default runs add no
+    // task and are byte-identical (ADR-0001, #110/[A3]).
+    if (pfld_op != nullptr) {
+      id.opsfld = tl["before_timeintegrator"]->AddTask(&MHD::OperatorSplitFLD, this,
+                                                       none);
+    }
 
-  // operator-split ANISOTROPIC Braginskii conduction (RKL2 STS), once per step.
-  // pacond_op is built in the MHD ctor (needs `pin` for its own ghost-exchange boundary
-  // object, #108); non-null only when aniso conduction operator-split is enabled, so
-  // default runs add no task and are byte-identical (ADR-0006/ADR-0001, #112/[A5]).
-  if (pacond_op != nullptr) {
-    id.opsacond = tl["before_timeintegrator"]->AddTask(&MHD::OperatorSplitAnisoConduction,
-                                                       this, none);
-  }
+    // operator-split MULTIGROUP FLD radiation (RKL2 STS), once per step.  pmg_op is built
+    // in the MHD ctor (it needs `pin` for its ghost-exchange object + opacity table);
+    // non-null only when multigroup FLD operator-split is enabled, so default runs add no
+    // task and are byte-identical (ADR-0001/ADR-0007, #111/[A4]).
+    if (pmg_op != nullptr) {
+      id.opsmgfld = tl["before_timeintegrator"]->AddTask(&MHD::OperatorSplitMultigroupFLD,
+                                                         this, none);
+    }
 
-  // operator-split CYLINDRICAL resistive B_phi diffusion (RKL2 STS), once per step.
-  // presb_op is built in the MHD ctor (needs `pin` for its own ghost-exchange boundary
-  // object, #108); non-null only when resistive-B_phi operator-split is enabled, so
-  // default runs add no task and are byte-identical (ADR-0004/ADR-0001, #113/[A6]).
-  if (presb_op != nullptr) {
-    id.opsresb = tl["before_timeintegrator"]->AddTask(&MHD::OperatorSplitResistiveBphi,
-                                                      this, none);
+    // operator-split ANISOTROPIC Braginskii conduction (RKL2 STS), once per step.
+    // pacond_op is built in the MHD ctor (needs `pin` for its own ghost-exchange boundary
+    // object, #108); non-null only when aniso conduction operator-split is enabled, so
+    // default runs add no task and are byte-identical (ADR-0006/ADR-0001, #112/[A5]).
+    if (pacond_op != nullptr) {
+      id.opsacond = tl["before_timeintegrator"]->AddTask(
+                        &MHD::OperatorSplitAnisoConduction, this, none);
+    }
+
+    // operator-split CYLINDRICAL resistive B_phi diffusion (RKL2 STS), once per step.
+    // presb_op is built in the MHD ctor (needs `pin` for its own ghost-exchange boundary
+    // object, #108); non-null only when resistive-B_phi operator-split is enabled, so
+    // default runs add no task and are byte-identical (ADR-0004/ADR-0001, #113/[A6]).
+    if (presb_op != nullptr) {
+      id.opsresb = tl["before_timeintegrator"]->AddTask(&MHD::OperatorSplitResistiveBphi,
+                                                        this, none);
+    }
+  } else {
+    // ---- STRANG-split path (#115/[B2], ADR-0009): the parabolic composite block is
+    // Strang-wrapped around the hyperbolic update as  (1/2 STS) . hydro . (1/2 STS),
+    // with the per-cell point-implicit matter-radiation coupling wrapped OUTSIDE the
+    // super-step on each side (a half coupling step each), so it is NOT inflated
+    // by the RKL2 substage count.  "before_timeintegrator": (1/2 coupling) -> (1/2 STS);
+    // "after_timeintegrator": (1/2 STS) -> (1/2 coupling).  Symmetric => globally 2nd
+    // order.  The half-step tasks are no-ops unless their physics is active. ----
+    id.cplb    = tl["before_timeintegrator"]->AddTask(&MHD::MatterRadCouplingHalf, this,
+                                                      id.savest);
+    id.strangb = tl["before_timeintegrator"]->AddTask(&MHD::StrangParabolicHalf, this,
+                                                      id.cplb);
+    id.stranga = tl["after_timeintegrator"]->AddTask(&MHD::StrangParabolicHalf, this,
+                                                     none);
+    id.cpla    = tl["after_timeintegrator"]->AddTask(&MHD::MatterRadCouplingHalf, this,
+                                                     id.stranga);
   }
 
   // assemble "before_stagen" task list
@@ -207,6 +232,77 @@ TaskStatus MHD::OperatorSplitResistiveBphi(Driver *pdrive, int stage) {
   if (presb_op == nullptr) { return TaskStatus::complete; }
   parabolic::OperatorSplitStep(pdrive->pparabolic, *presb_op, bphi,
                                pmy_pack->pmesh->dt);
+  return TaskStatus::complete;
+}
+
+//----------------------------------------------------------------------------------------
+//! \fn TaskStatus MHD::StrangParabolicHalf
+//! \brief Advance every per-field composite parabolic operator (#114) by ONE RKL2 super-
+//! step over HALF the hyperbolic dt (#115/[B2], ADR-0009).  Registered in BOTH the
+//! "before_timeintegrator" and "after_timeintegrator" slots, so the halves Strang-wrap
+//! the hyperbolic update: (1/2 STS) . hydro . (1/2 STS).  Each composite owns the global
+//! min-dt MPI all-reduce, so every rank derives the same stage count per field.  Runs
+//! only when `<mhd> strang_split` is on (else the individual full-step operator tasks
+//! run instead); a no-op when no composite is registered.
+
+TaskStatus MHD::StrangParabolicHalf(Driver *pdrive, int stage) {
+  const Real half_dt = 0.5*pmy_pack->pmesh->dt;
+  const int ncomp = static_cast<int>(strang_comps.size());
+  for (int n = 0; n < ncomp; ++n) {
+    DvceArray5D<Real> *field = nullptr;
+    switch (strang_field_ids[n]) {
+      case SF_ERAD:   field = &erad;    break;
+      case SF_ERADMG: field = &erad_mg; break;
+      case SF_U0:     field = &u0;      break;
+      case SF_BPHI:   field = &bphi;    break;
+      default: break;
+    }
+    if (field != nullptr) {
+      parabolic::OperatorSplitStep(pdrive->pparabolic, *strang_comps[n], *field, half_dt);
+    }
+  }
+  return TaskStatus::complete;
+}
+
+//----------------------------------------------------------------------------------------
+//! \fn TaskStatus MHD::MatterRadCouplingHalf
+//! \brief One per-cell point-implicit (backward-Euler) matter-radiation coupling step
+//! over HALF the hyperbolic dt (#115/[B2], reusing the #23 kernel).  Exchanges energy
+//! between the grey radiation field `erad` and the gas internal energy (u0 IEN), driving
+//! each cell toward radiative equilibrium a*T^4 = E_r, conserving E_r + e_gas exactly
+//! (the "species split").  This is the local, point-stiff partner of the FLD spatial
+//! diffusion; it is wrapped OUTSIDE the RKL2 super-step (half a step each Strang side),
+//! so it is applied exactly twice per timestep -- NOT inflated by the substage count `s`.
+//! No-op unless `<mhd> mrad_coupling` is on (and grey FLD is active).
+
+TaskStatus MHD::MatterRadCouplingHalf(Driver *pdrive, int stage) {
+  if (!mrad_coupling || pfld_op == nullptr) { return TaskStatus::complete; }
+  const Real half_dt = 0.5*pmy_pack->pmesh->dt;
+  auto &indcs = pmy_pack->pmesh->mb_indcs;
+  int is = indcs.is, ie = indcs.ie;
+  int js = indcs.js, je = indcs.je;
+  int ks = indcs.ks, ke = indcs.ke;
+  int nmb1 = pmy_pack->nmb_thispack - 1;
+  auto u   = u0;
+  auto er  = erad;
+  auto bcc = bcc0;
+  const Real chia = mrad_chi_a, cv = mrad_cv, arad = mrad_arad, cl = mrad_clight;
+  par_for("mrad_cpl", DevExeSpace(), 0, nmb1, ks, ke, js, je, is, ie,
+  KOKKOS_LAMBDA(const int m, const int k, const int j, const int i) {
+    // recover the gas INTERNAL energy density (subtract kinetic + magnetic) so coupling
+    // exchanges only thermal energy; momentum/B are untouched by the local exchange.
+    Real rho = u(m,IDN,k,j,i);
+    Real mx = u(m,IM1,k,j,i), my = u(m,IM2,k,j,i), mz = u(m,IM3,k,j,i);
+    Real ke_d = (rho > 0.0) ? 0.5*(mx*mx + my*my + mz*mz)/rho : 0.0;
+    Real bx = bcc(m,IBX,k,j,i), by = bcc(m,IBY,k,j,i), bz = bcc(m,IBZ,k,j,i);
+    Real me_d = 0.5*(bx*bx + by*by + bz*bz);
+    Real e_gas = u(m,IEN,k,j,i) - ke_d - me_d;
+    Real e_rad_new, e_gas_new;
+    radiationfld::PointImplicitGreyCoupling(er(m,0,k,j,i), e_gas, cv, chia, cl, arad,
+                                            half_dt, e_rad_new, e_gas_new);
+    er(m,0,k,j,i) = e_rad_new;
+    u(m,IEN,k,j,i) = e_gas_new + ke_d + me_d;
+  });
   return TaskStatus::complete;
 }
 

@@ -1,0 +1,77 @@
+# AthenaK input file for the Strang-split coupled-timestep integrated test, BUMP mode
+# (unit_tests/strang_coupling_test, <problem> mode=bump).
+#
+# AC: the fully-coupled stack conserves total energy across the species split.  A smooth
+# radiation bump on a uniform gas, advanced by the full orchestration -- grey FLD spatial
+# diffusion as a half RKL2 super-step on each Strang side (INSULATED => closed radiation
+# box), the per-cell point-implicit matter-radiation coupling exchanging energy between the
+# radiation and the gas each step, and the conservative hydro (periodic gas BCs) in
+# between.  Decomposed into TWO MeshBlocks along x1 so the parabolic half-step exercises
+# the SyncParabolicGhosts cross-block exchange.  The volume-weighted TOTAL energy
+# sum_i (E_r,i + E_gas,i) dV must be conserved to round-off across the run: diffusion
+# conserves the radiation integral, the point coupling conserves E_r + e_gas per cell, and
+# the conservative hydro conserves the gas-energy integral.
+
+<comment>
+problem = Strang-split coupled-timestep integrated test (bump: total-energy conservation)
+
+<job>
+basename = strang_coupling_bump_test
+
+<mesh>
+nghost = 2
+nx1    = 32
+x1min  = 0.0
+x1max  = 1.0
+ix1_bc = periodic
+ox1_bc = periodic
+
+nx2    = 1
+x2min  = -0.5
+x2max  = 0.5
+ix2_bc = periodic
+ox2_bc = periodic
+
+nx3    = 1
+x3min  = -0.5
+x3max  = 0.5
+ix3_bc = periodic
+ox3_bc = periodic
+
+<meshblock>
+nx1 = 16             # 32/16 = 2 MeshBlocks along x1 (cross-block SyncParabolicGhosts)
+nx2 = 1
+nx3 = 1
+
+<time>
+evolution            = dynamic
+integrator           = rk2
+parabolic_integrator = sts
+cfl_number           = 0.3
+nlim                 = 10         # several fully-coupled Strang-orchestrated steps
+tlim                 = 1.0e30
+ndiag                = 1
+
+<mhd>
+eos                = ideal
+reconstruct        = plm
+rsolver            = hlle
+gamma              = 1.66666666666666667
+fld_operator_split = true
+fld_c_light        = 1.0
+fld_chi            = 1.0          # extinction => D = c/(3 chi) (meaningful diffusion)
+fld_n_larsen       = 2.0
+fld_e_source       = -1.0         # INSULATED radiation box => E_r integral conserved
+strang_split       = true
+mrad_coupling      = true
+mrad_chi_a         = 20.0         # coupling strong enough to move energy between species
+mrad_cv            = 1.0
+mrad_arad          = 1.0
+mrad_clight        = 1.0
+
+<problem>
+mode    = bump
+rho0    = 1.0
+e_gas0  = 2.0      # matter hotter than radiation (a T^4=16 >> E_r~1) => strong net
+e_rad0  = 1.0      #   matter->radiation transfer, so conservation is a non-trivial check
+amp     = 0.3      # radiation bump amplitude

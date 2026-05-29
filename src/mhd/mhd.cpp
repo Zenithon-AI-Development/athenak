@@ -28,6 +28,7 @@
 #include "diffusion/aniso_conduction_operator.hpp"
 #include "diffusion/braginskii_transport.hpp"
 #include "diffusion/resistive_bphi_operator.hpp"
+#include "driver/composite_parabolic_operator.hpp"
 #include "mhd/mhd.hpp"
 
 namespace mhd {
@@ -274,6 +275,60 @@ MHD::MHD(MeshBlockPack *ppack, ParameterInput *pin) :
     presb_op = new ResistiveBphiOperator(ppack, pin, bphi, eta_resb);
   }
 
+  // Strang-split orchestration of the coupled timestep (#115/[B2], ADR-0009).  Group the
+  // active stiff operator-split operators into one CompositeParabolicOperator PER EVOLVED
+  // FIELD (operators that share a field sum into one super-step; distinct fields get
+  // distinct composites), then Strang-wrap the composite block around the hyperbolic
+  // update -- a half super-step before the integrator and the other half after.  The
+  // composite (ADR-0009) is what owns the GLOBAL min-dt MPI all-reduce, so every rank
+  // derives the same RKL2 stage count (removing the per-operator deadlock risk, #114).
+  // Default off => the individual full-step operator tasks above run unchanged
+  // (byte-identical).  The per-field composites are heap-owned (deleted in the dtor).
+  strang_split = pin->GetOrAddBoolean("mhd","strang_split",false);
+  if (strang_split) {
+    // erad (grey FLD) -- one composite per distinct evolved field.
+    if (pfld_op != nullptr) {
+      auto *c = new parabolic::CompositeParabolicOperator();
+      c->AddOperator(pfld_op);
+      strang_comps.push_back(c);
+      strang_field_ids.push_back(SF_ERAD);
+    }
+    // erad_mg (multigroup FLD)
+    if (pmg_op != nullptr) {
+      auto *c = new parabolic::CompositeParabolicOperator();
+      c->AddOperator(pmg_op);
+      strang_comps.push_back(c);
+      strang_field_ids.push_back(SF_ERADMG);
+    }
+    // u0 (anisotropic Braginskii conduction acts on the live conserved energy)
+    if (pacond_op != nullptr) {
+      auto *c = new parabolic::CompositeParabolicOperator();
+      c->AddOperator(pacond_op);
+      strang_comps.push_back(c);
+      strang_field_ids.push_back(SF_U0);
+    }
+    // bphi (cylindrical resistive B_phi)
+    if (presb_op != nullptr) {
+      auto *c = new parabolic::CompositeParabolicOperator();
+      c->AddOperator(presb_op);
+      strang_comps.push_back(c);
+      strang_field_ids.push_back(SF_BPHI);
+    }
+  }
+
+  // Per-cell point-implicit grey matter-radiation coupling (#23), Strang-wrapped OUTSIDE
+  // the super-step by the orchestration above.  Requires grey FLD (couples erad <-> gas
+  // IEN).  Constant code-unit coefficients here; real opacity/EOS values come with
+  // the IONMIX tables (Phase C, #118).  Default off => byte-identical.
+  mrad_coupling = pin->GetOrAddBoolean("mhd","mrad_coupling",false);
+  if (mrad_coupling) {
+    mrad_chi_a   = pin->GetOrAddReal("mhd","mrad_chi_a", 0.0);
+    mrad_cv      = pin->GetOrAddReal("mhd","mrad_cv", 1.0);
+    mrad_arad    = pin->GetOrAddReal("mhd","mrad_arad", 1.0);
+    mrad_clight  = pin->GetOrAddReal("mhd","mrad_clight",
+                                     (pfld_op != nullptr) ? pfld_op->c_light() : 1.0);
+  }
+
   // Orbital advection and shearing box BCs (if requested in input file)
   if (pin->DoesBlockExist("shearing_box")) {
     porb_u = new OrbitalAdvectionCC(ppack, pin, (nmhd+nscalars));
@@ -471,6 +526,7 @@ MHD::~MHD() {
   if (pmg_op != nullptr) {delete pmg_op;}
   if (pacond_op != nullptr) {delete pacond_op;}
   if (presb_op != nullptr) {delete presb_op;}
+  for (auto *c : strang_comps) {delete c;}
   if (psrc!= nullptr) {delete psrc;}
   if (pcond != nullptr) {delete pcond;}
   if (presist!= nullptr) {delete presist;}

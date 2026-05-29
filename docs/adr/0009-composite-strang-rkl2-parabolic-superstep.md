@@ -62,6 +62,27 @@ backend integrates the same `CompositeParabolicOperator`): cross-field leakage g
 `s`, or `s` capping out, in the dense stagnation zones. Apply Sharma-Hammett only as a
 floor-triggered safety and instrument cross-field leakage vs `s`.
 
+**Wiring decision (#115/[B2] — field strategy and Strang nesting).** ADR-0009 above
+assumes the sub-operators share one field so their actions can literally be summed. In
+AthenaK the wired operators act on *different* storage today — grey/multigroup FLD on the
+standalone `erad`/`erad_mg`, anisotropic Braginskii conduction on the live conserved `u0`
+(IEN), resistive `B_φ` on the standalone `bphi` — so #115 settles the field strategy as
+**one `CompositeParabolicOperator` per evolved field**: operators that share a field sum
+into a single super-step (the ADR's isotropic+anisotropic-conduction → energy case), and
+distinct fields get distinct composites (a per-field super-step needs its own
+per-substage exchange anyway, since the field arrays differ in shape and halo). Each
+per-field composite still owns the **global min-dt `MPI_Allreduce`** behind its stable-dt
+query, so every rank derives the same RKL2 stage count for that field — which is what makes
+the synchronous `SyncParabolicGhosts` exchange MPI-safe even for a spatially-varying
+diffusivity (it retires the per-operator deadlock workaround of #113). The Strang nesting is
+**symmetric with the point-implicit coupling outermost**:
+`½·coupling · ½·STS · hydro · ½·STS · ½·coupling` — realized as
+(`½·coupling` → `½·STS`) in the driver's `before_timeintegrator` slot and
+(`½·STS` → `½·coupling`) in `after_timeintegrator`. The coupling is therefore applied
+**exactly twice per step (each over dt/2), never inside the RKL2 substage loop**, so it is
+not inflated by the substage count `s`. Gated on `<mhd> strang_split` (default off → the
+individual full-step operator tasks of #110–#113 run unchanged, byte-identical).
+
 **Considered and rejected.**
 - **Separate STS sweep per operator** — N× ghost exchanges per step plus a Lie splitting
   error *between* operators; the literature unanimously avoids it.
