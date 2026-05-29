@@ -13,10 +13,12 @@
 #include <limits>
 
 #include "athena.hpp"
+#include "parameter_input.hpp"
 #include "mesh/mesh.hpp"
 #include "mesh/meshblock_pack.hpp"
 #include "coordinates/coordinates.hpp"
 #include "coordinates/coord_geometry.hpp"
+#include "bvals/bvals.hpp"
 #include "opacity/multigroup_opacity.hpp"
 #include "radiation_fld/fld_multigroup_operator.hpp"
 
@@ -25,9 +27,13 @@ using radiationfld::LarsenLimiter;
 //----------------------------------------------------------------------------------------
 //! \brief FLDMultigroupOperator constructor.  Precomputes the per-group extinction
 //! chi_g = rho_bg * kappa_R,g(rho_bg, te_bg) from the tabulated Rosseland transport
-//! opacity (the group structure and per-group D both come from the opacity table).
+//! opacity (the group structure and per-group D both come from the opacity table), and --
+//! exactly like FLDGreyOperator (#110/[A3]) -- allocates the operator's own cell-centered
+//! boundary-values object (its per-substage multi-block/MPI ghost exchange, sized to ALL
+//! groups so the batched field exchanges in one call), plus a coarse-mesh scratch array
+//! used both by SyncParabolicGhosts and by the AMR regrid restrict/prolong (#111/[A4]).
 
-FLDMultigroupOperator::FLDMultigroupOperator(MeshBlockPack *pp,
+FLDMultigroupOperator::FLDMultigroupOperator(MeshBlockPack *pp, ParameterInput *pin,
   const DvceArray5D<Real> &erad, const opacity::MultigroupOpacity &table, Real c_light,
   Real rho_bg, Real te_bg, Real n_larsen, Real e_source) :
   pmy_pack(pp),
@@ -38,7 +44,10 @@ FLDMultigroupOperator::FLDMultigroupOperator(MeshBlockPack *pp,
   ngroups_(table.ngroups),
   chi_("fld_mg_chi", table.ngroups),
   rflx_("fld_mg_rflx", erad.extent_int(0), erad.extent_int(1),
-        erad.extent_int(2), erad.extent_int(3), erad.extent_int(4)) {
+        erad.extent_int(2), erad.extent_int(3), erad.extent_int(4)),
+  pbval_flux_(nullptr),
+  pbval_(nullptr),
+  coarse_("fld_mg_coarse", 1, 1, 1, 1, 1) {
   // Precompute the per-group extinction chi_g from the tabulated Rosseland transport
   // (mass) opacity at the background: chi_g = rho * kappa_R,g(rho, te) [1/length].
   opacity::MultigroupOpacity tab = table;   // shallow View copy -> device-valid in kernel
@@ -48,6 +57,36 @@ FLDMultigroupOperator::FLDMultigroupOperator(MeshBlockPack *pp,
   par_for("fld_mg_chi_init", DevExeSpace(), 0, ng-1, KOKKOS_LAMBDA(const int ig) {
     chi(ig) = rho*tab.RosselandTransport(ig, rho, te);
   });
+
+  // own boundary-values object for the per-substage neighbor ghost exchange: a unique MPI
+  // communicator for this operator's exchange, buffers sized to ALL groups (the
+  // multigroup operator batches every group into one exchange).
+  const int nvar = erad.extent_int(1);   // == ngroups
+  pbval_ = new MeshBoundaryValuesCC(pp, pin, false);
+  pbval_->InitializeBuffers(nvar);
+  // coarse-mesh scratch (only meaningful with SMR/AMR; left 1^5 on a uniform grid, where
+  // SyncParabolicGhosts never touches it).  This SAME array is reused by the regrid
+  // restrict/prolong of erad_mg (exposed via coarse()).
+  if (pp->pmesh->multilevel) {
+    auto &indcs = pp->pmesh->mb_indcs;
+    int n_ccells1 = indcs.cnx1 + 2*(indcs.ng);
+    int n_ccells2 = (indcs.cnx2 > 1) ? (indcs.cnx2 + 2*(indcs.ng)) : 1;
+    int n_ccells3 = (indcs.cnx3 > 1) ? (indcs.cnx3 + 2*(indcs.ng)) : 1;
+    Kokkos::realloc(coarse_, erad.extent_int(0), nvar, n_ccells3, n_ccells2, n_ccells1);
+    // register the per-group radiative flux for the conservative fine->coarse flux
+    // correction (#33/#111), so the diffused radiation energy is conserved across
+    // refinement boundaries for the multigroup operator (the grey operator already did).
+    pbval_flux_ = new MeshBoundaryValuesCC(pp, nullptr, false);
+    pbval_flux_->InitializeBuffers(rflx_.x1f.extent_int(1));
+  }
+}
+
+//----------------------------------------------------------------------------------------
+//! \brief FLDMultigroupOperator destructor: free the owned boundary-values objects.
+
+FLDMultigroupOperator::~FLDMultigroupOperator() {
+  if (pbval_flux_ != nullptr) { delete pbval_flux_; }
+  if (pbval_ != nullptr) { delete pbval_; }
 }
 
 //----------------------------------------------------------------------------------------
@@ -119,6 +158,12 @@ void FLDMultigroupOperator::OperatorAction(const DvceArray5D<Real> &u_in,
       flx3(m,g,k,j,i) = -D*dedx;
     });
   }
+
+  // conservative fine->coarse flux correction at SMR/AMR level boundaries (#33/#111):
+  // replace each coarse-side boundary face flux with the restricted (area-averaged) fine
+  // flux so the coarse divergence matches the sum of the fine faces -- for EVERY group
+  // (pbval_flux_ buffers are sized to all groups).  No-op on a uniform mesh.
+  if (pbval_flux_ != nullptr) { pbval_flux_->CorrectFlux(rflx_); }
 
   // dE_g/dt = -div(F_g): difference the per-group face fluxes through the geometry
   // accessors, exactly as the hydro/MHD RKUpdate and FLDGreyOperator do.
@@ -247,4 +292,10 @@ void FLDMultigroupOperator::ApplyBoundary(DvceArray5D<Real> &u) {
       u(m,n,ke+1+g,j,i) = u(m,n,ke,j,i);
     });
   }
+
+  // overwrite internal block-face ghosts (and coarse/fine boundary ghosts under SMR/AMR)
+  // with neighbor data via the shared synchronous exchange -- ALL groups in one call
+  // (#108/[A1], #111/[A4]).  Untouched at true physical boundaries (no neighbor), so
+  // those keep the physical fill above; a no-op on a single block.
+  pbval_->SyncParabolicGhosts(u, coarse_);
 }

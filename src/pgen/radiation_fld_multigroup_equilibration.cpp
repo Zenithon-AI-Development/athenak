@@ -259,7 +259,8 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
 
   // Dirichlet inner-x1 source = e_source (all groups), zero-gradient elsewhere; chi_R,g
   // from the table at (diff_rho, te_bg).
-  FLDMultigroupOperator op(pmbp, erad, table, c_light, diff_rho, te_bg, nl, e_source);
+  FLDMultigroupOperator op(pmbp, pin, erad, table, c_light, diff_rho, te_bg, nl,
+                           e_source);
   const Real dt_super = tlim_fld/static_cast<Real>(n_super);
   for (int s = 0; s < n_super; ++s) {
     // 1) per-group FLD spatial diffusion (operator-split RKL2 superstep).

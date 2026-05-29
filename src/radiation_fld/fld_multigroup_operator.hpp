@@ -69,10 +69,11 @@ class FLDMultigroupOperator : public parabolic::ParabolicOperator {
   //! per-group extinction chi_g = rho_bg * kappa_R,g(rho_bg, te_bg), the Larsen exponent
   //! `n_larsen`, and the inner-x1 Dirichlet source `e_source` (e_source < 0 => inner-x1
   //! zero-gradient).
-  FLDMultigroupOperator(MeshBlockPack *pp, const DvceArray5D<Real> &erad,
+  FLDMultigroupOperator(MeshBlockPack *pp, ParameterInput *pin,
+                        const DvceArray5D<Real> &erad,
                         const opacity::MultigroupOpacity &table, Real c_light,
                         Real rho_bg, Real te_bg, Real n_larsen, Real e_source);
-  ~FLDMultigroupOperator() = default;
+  ~FLDMultigroupOperator();
 
   //! \brief M(u): per-group FLD flux divergence div(D_g grad E_g) into rhs_out(ig) for
   //! every group ig; reads ghost zones of u_in.  (All components are evolved.)
@@ -91,6 +92,10 @@ class FLDMultigroupOperator : public parabolic::ParabolicOperator {
   int ngroups() const { return ngroups_; }
   Real c_light() const { return c_; }
   DvceArray1D<Real> chi() const { return chi_; }  // per-group extinction chi_g
+  // coarse-mesh scratch (nmb, ngroups, cn3, cn2, cn1); the SAME array the operator uses
+  // per-substage (SyncParabolicGhosts) is reused by the AMR regrid restrict/prolong
+  // (#111/[A4]), exposed as a non-const lvalue reference for mesh_refinement.cpp.
+  DvceArray5D<Real> &coarse() { return coarse_; }
 
  private:
   MeshBlockPack *pmy_pack;
@@ -101,6 +106,14 @@ class FLDMultigroupOperator : public parabolic::ParabolicOperator {
   int ngroups_;               // number of photon-energy groups (= table.ngroups)
   DvceArray1D<Real> chi_;     // per-group extinction chi_g = rho*kappa_R,g [1/length]
   DvceFaceFld5D<Real> rflx_;  // scratch face-centred per-group radiative flux
+  // conservative fine->coarse flux correction at AMR/SMR level boundaries (#33/#111);
+  // built only on a multilevel mesh, nullptr otherwise -> no-op on a uniform grid.
+  MeshBoundaryValuesCC *pbval_flux_;
+  // per-substage multi-block/MPI/AMR neighbor ghost exchange for the batched per-group
+  // field (#108/[A1] SyncParabolicGhosts, all groups in one exchange), with a coarse-mesh
+  // scratch for SMR/AMR restriction/prolongation at fine/coarse boundaries (#111/[A4]).
+  MeshBoundaryValuesCC *pbval_;
+  DvceArray5D<Real> coarse_;
 };
 
 #endif  // RADIATION_FLD_FLD_MULTIGROUP_OPERATOR_HPP_

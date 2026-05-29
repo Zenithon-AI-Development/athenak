@@ -21,7 +21,10 @@
 #include "shearing_box/shearing_box.hpp"
 #include "shearing_box/orbital_advection.hpp"
 #include "bvals/bvals.hpp"
+#include "opacity/multigroup_opacity.hpp"
+#include "opacity/ionmix_opacity_reader.hpp"
 #include "radiation_fld/fld_grey_operator.hpp"
+#include "radiation_fld/fld_multigroup_operator.hpp"
 #include "mhd/mhd.hpp"
 
 namespace mhd {
@@ -186,6 +189,34 @@ MHD::MHD(MeshBlockPack *ppack, ParameterInput *pin) :
     Real fld_nl  = pin->GetOrAddReal("mhd","fld_n_larsen", 2.0);
     Real fld_es  = pin->GetOrAddReal("mhd","fld_e_source", -1.0);
     pfld_op = new FLDGreyOperator(ppack, pin, erad, fld_c, fld_chi, fld_nl, fld_es);
+  }
+
+  // Multigroup flux-limited radiation diffusion (FLD) wired operator-split into the MHD
+  // step (#111/[A4], ADR-0001/ADR-0007).  Only built when explicitly enabled, so default
+  // MHD runs add nothing and stay byte-identical.  `erad_mg` is a standalone per-group
+  // radiation-energy field (var extent == the opacity table's group count), sized to
+  // nmb_maxperrank so it survives an AMR regrid; the operator owns its own ghost-exchange
+  // boundary object (built from `pin`) plus the coarse scratch reused by the regrid
+  // restrict/prolong.  Stiff (#109) => super-time-stepped, so it does not limit the
+  // hyperbolic dt (the RKL2 super-step covers the full step).
+  mgfld_operator_split = pin->GetOrAddBoolean("mhd","mgfld_operator_split",false);
+  if (mgfld_operator_split) {
+    auto &indcs = pmy_pack->pmesh->mb_indcs;
+    int ncells1 = indcs.nx1 + 2*(indcs.ng);
+    int ncells2 = (indcs.nx2 > 1)? (indcs.nx2 + 2*(indcs.ng)) : 1;
+    int ncells3 = (indcs.nx3 > 1)? (indcs.nx3 + 2*(indcs.ng)) : 1;
+    // read the multigroup opacity table (group count + per-group Rosseland D)
+    std::string mg_fname = pin->GetString("mhd","mgfld_opacity_file");
+    opacity::MultigroupOpacity mg_table;
+    opacity::ReadIonmixOpacity(mg_fname, mg_table);
+    Kokkos::realloc(erad_mg, nmb, mg_table.ngroups, ncells3, ncells2, ncells1);
+    Real mg_c   = pin->GetOrAddReal("mhd","mgfld_c_light", 1.0);
+    Real mg_rho = pin->GetOrAddReal("mhd","mgfld_rho_bg", 1.0);
+    Real mg_te  = pin->GetOrAddReal("mhd","mgfld_te_bg", 1.0);
+    Real mg_nl  = pin->GetOrAddReal("mhd","mgfld_n_larsen", 2.0);
+    Real mg_es  = pin->GetOrAddReal("mhd","mgfld_e_source", -1.0);
+    pmg_op = new FLDMultigroupOperator(ppack, pin, erad_mg, mg_table, mg_c, mg_rho, mg_te,
+                                       mg_nl, mg_es);
   }
 
   // Orbital advection and shearing box BCs (if requested in input file)
@@ -382,6 +413,7 @@ MHD::~MHD() {
   delete pbval_b;
   delete pbval_u;
   if (pfld_op != nullptr) {delete pfld_op;}
+  if (pmg_op != nullptr) {delete pmg_op;}
   if (psrc!= nullptr) {delete psrc;}
   if (pcond != nullptr) {delete pcond;}
   if (presist!= nullptr) {delete presist;}
