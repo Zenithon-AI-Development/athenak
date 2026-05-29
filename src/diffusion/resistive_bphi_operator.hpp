@@ -52,6 +52,7 @@
 // forward declarations
 class MeshBlockPack;
 class MeshBoundaryValuesCC;
+class ParameterInput;
 
 //----------------------------------------------------------------------------------------
 //! \class ResistiveBphiOperator
@@ -64,9 +65,14 @@ class ResistiveBphiOperator : public parabolic::ParabolicOperator {
   //! \brief Build the operator over the single-component field `bphi` (component 0 holds
   //! B_phi) it diffuses, with the cell-centred magnetic diffusivity field `eta`
   //! (nmb,n3,n2,n1) -- the SIM-76 / #20 Resistivity::ComputeEta output (or a constant
-  //! fill for the verification oracle).
-  ResistiveBphiOperator(MeshBlockPack *pp, const DvceArray5D<Real> &bphi,
-                        const DvceArray4D<Real> &eta);
+  //! fill for the verification oracle).  When `pin != nullptr` the operator builds its
+  //! own cell-centred ghost-exchange object so the per-substage ApplyBoundary refresh
+  //! spans MeshBlock / MPI-rank / AMR coarse-fine boundaries (SyncParabolicGhosts,
+  //! #108/[A1], wired by #113/[A6]); pass nullptr for a legacy single-block-only run
+  //! (then the exchange is skipped and only the antisymmetric/zero-gradient physical
+  //! fill is applied -- byte-identical to the pre-wiring operator).
+  ResistiveBphiOperator(MeshBlockPack *pp, ParameterInput *pin,
+                        const DvceArray5D<Real> &bphi, const DvceArray4D<Real> &eta);
   ~ResistiveBphiOperator();
 
   //! \brief M(u): cylindrical resistive B_phi diffusion into rhs_out(0); 0 in any other
@@ -90,6 +96,12 @@ class ResistiveBphiOperator : public parabolic::ParabolicOperator {
   DvceArray5D<Real> bphi_;      // the live B_phi field (for the explicit-dt loop)
   DvceArray4D<Real> eta_;       // cell-centred magnetic diffusivity (SIM-76 / #20)
   DvceFaceFld5D<Real> bflx_;    // scratch face-centred resistive B_phi flux
+  // per-substage neighbour ghost exchange (#108/[A1], wired by #113/[A6]): owns a unique
+  // MPI communicator + buffers sized to the single B_phi variable, plus coarse scratch
+  // for the SMR/AMR restrict/prolong path.  Built only when `pin` is supplied; nullptr
+  // (and the exchange skipped) for a legacy single-block-only construction.
+  MeshBoundaryValuesCC *pbval_;
+  DvceArray5D<Real> coarse_;    // coarse-mesh scratch for the SMR/AMR c/f exchange path
   // conservative fine->coarse flux correction at AMR/SMR level boundaries (#33); built
   // only on a multilevel mesh, nullptr otherwise -> no-op on a uniform grid.
   MeshBoundaryValuesCC *pbval_flux_;

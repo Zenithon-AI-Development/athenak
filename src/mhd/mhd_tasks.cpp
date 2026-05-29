@@ -30,6 +30,7 @@
 #include "radiation_fld/fld_grey_operator.hpp"
 #include "radiation_fld/fld_multigroup_operator.hpp"
 #include "diffusion/aniso_conduction_operator.hpp"
+#include "diffusion/resistive_bphi_operator.hpp"
 #include "mhd/mhd.hpp"
 #include "dyn_grmhd/dyn_grmhd.hpp"
 
@@ -70,6 +71,15 @@ void MHD::AssembleMHDTasks(std::map<std::string, std::shared_ptr<TaskList>> tl) 
   if (pacond_op != nullptr) {
     id.opsacond = tl["before_timeintegrator"]->AddTask(&MHD::OperatorSplitAnisoConduction,
                                                        this, none);
+  }
+
+  // operator-split CYLINDRICAL resistive B_phi diffusion (RKL2 STS), once per step.
+  // presb_op is built in the MHD ctor (needs `pin` for its own ghost-exchange boundary
+  // object, #108); non-null only when resistive-B_phi operator-split is enabled, so
+  // default runs add no task and are byte-identical (ADR-0004/ADR-0001, #113/[A6]).
+  if (presb_op != nullptr) {
+    id.opsresb = tl["before_timeintegrator"]->AddTask(&MHD::OperatorSplitResistiveBphi,
+                                                      this, none);
   }
 
   // assemble "before_stagen" task list
@@ -178,6 +188,24 @@ TaskStatus MHD::OperatorSplitMultigroupFLD(Driver *pdrive, int stage) {
 TaskStatus MHD::OperatorSplitAnisoConduction(Driver *pdrive, int stage) {
   if (pacond_op == nullptr) { return TaskStatus::complete; }
   parabolic::OperatorSplitStep(pdrive->pparabolic, *pacond_op, u0,
+                               pmy_pack->pmesh->dt);
+  return TaskStatus::complete;
+}
+
+//----------------------------------------------------------------------------------------
+//! \fn TaskStatus MHD::OperatorSplitResistiveBphi
+//! \brief Advance the standalone B_phi field `bphi` one operator-split RKL2 super-step
+//! under the cylindrical resistive B_phi diffusion (the -eta B_phi/r^2 curl-curl op) over
+//! the full hyperbolic dt (#113/[A6]).  Like the FLD operators, OperatorSplitStep wraps
+//! the ResistiveBphiOperator, whose per-substage ApplyBoundary delegates the cross-block/
+//! rank (and AMR c/f) ghost refresh to SyncParabolicGhosts (#108/[A1]) -- keeping the
+//! antisymmetric axis ghost only at the true r=0 domain face -- and whose OperatorAction
+//! runs the conservative refine-boundary flux correction, so it runs on >1 MeshBlock,
+//! >1 MPI rank, and under block-AMR.
+
+TaskStatus MHD::OperatorSplitResistiveBphi(Driver *pdrive, int stage) {
+  if (presb_op == nullptr) { return TaskStatus::complete; }
+  parabolic::OperatorSplitStep(pdrive->pparabolic, *presb_op, bphi,
                                pmy_pack->pmesh->dt);
   return TaskStatus::complete;
 }

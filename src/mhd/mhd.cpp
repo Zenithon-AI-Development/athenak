@@ -27,6 +27,7 @@
 #include "radiation_fld/fld_multigroup_operator.hpp"
 #include "diffusion/aniso_conduction_operator.hpp"
 #include "diffusion/braginskii_transport.hpp"
+#include "diffusion/resistive_bphi_operator.hpp"
 #include "mhd/mhd.hpp"
 
 namespace mhd {
@@ -61,6 +62,8 @@ MHD::MHD(MeshBlockPack *ppack, ParameterInput *pin) :
     bcctest("bcctest",1,1,1,1,1),
     erad("erad",1,1,1,1,1),
     erad_mg("erad_mg",1,1,1,1,1),
+    bphi("bphi",1,1,1,1,1),
+    eta_resb("eta_resb",1,1,1,1),
     fofc("fofc",1,1,1,1) {
   // Total number of MeshBlocks on this rank to be used in array dimensioning
   int nmb = std::max((ppack->nmb_thispack), (ppack->pmesh->nmb_maxperrank));
@@ -246,6 +249,29 @@ MHD::MHD(MeshBlockPack *ppack, ParameterInput *pin) :
     apar.incl_i     = pin->GetOrAddBoolean("mhd","acond_incl_i", true);
     Real agamma = peos->eos_data.gamma;
     pacond_op = new AnisotropicConductionOperator(ppack, pin, u0, bcc0, agamma, apar);
+  }
+
+  // Cylindrical resistive B_phi diffusion (the -eta B_phi/r^2 curl-curl operator) wired
+  // operator-split into the MHD step (#113/[A6], ADR-0004/ADR-0001).  Only built when
+  // explicitly enabled, so default MHD runs add nothing and stay byte-identical.  `bphi`
+  // is a standalone single-component field (B_phi) the operator diffuses, with a cell-
+  // centred magnetic diffusivity `eta_resb` (here a constant fill -- the SIM-76/#20
+  // Resistivity field is substituted in a fully-coupled run).  The operator owns its own
+  // ghost-exchange object (built from `pin`) plus coarse scratch, so it runs multi-block/
+  // MPI/AMR via SyncParabolicGhosts (#108) with the antisymmetric axis ghost preserved
+  // only at the true r=0 face.  Stiff (#109) => super-time-stepped, so it does not limit
+  // the hyperbolic dt (the RKL2 super-step covers the full step).
+  resb_operator_split = pin->GetOrAddBoolean("mhd","resb_operator_split",false);
+  if (resb_operator_split) {
+    auto &indcs = pmy_pack->pmesh->mb_indcs;
+    int ncells1 = indcs.nx1 + 2*(indcs.ng);
+    int ncells2 = (indcs.nx2 > 1)? (indcs.nx2 + 2*(indcs.ng)) : 1;
+    int ncells3 = (indcs.nx3 > 1)? (indcs.nx3 + 2*(indcs.ng)) : 1;
+    Kokkos::realloc(bphi, nmb, 1, ncells3, ncells2, ncells1);
+    Kokkos::realloc(eta_resb, nmb, ncells3, ncells2, ncells1);
+    Real resb_eta = pin->GetOrAddReal("mhd","resb_eta", 1.0);
+    Kokkos::deep_copy(eta_resb, resb_eta);
+    presb_op = new ResistiveBphiOperator(ppack, pin, bphi, eta_resb);
   }
 
   // Orbital advection and shearing box BCs (if requested in input file)
@@ -444,6 +470,7 @@ MHD::~MHD() {
   if (pfld_op != nullptr) {delete pfld_op;}
   if (pmg_op != nullptr) {delete pmg_op;}
   if (pacond_op != nullptr) {delete pacond_op;}
+  if (presb_op != nullptr) {delete presb_op;}
   if (psrc!= nullptr) {delete psrc;}
   if (pcond != nullptr) {delete pcond;}
   if (presist!= nullptr) {delete presist;}

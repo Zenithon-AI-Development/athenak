@@ -134,7 +134,10 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   // ---- advance the operator operator-split by RKL2 super-time-stepping ----
   parabolic::ParabolicIntegrator integ;
   integ.SetFromInput(pin);
-  ResistiveBphiOperator op(pmbp, bphi, etafld);
+  // single-block 1-D radial verification: pass nullptr so no neighbour exchange is built
+  // (the operator applies only its antisymmetric/zero-gradient physical fill -- the
+  // multi-block/MPI/AMR exchange is verified by unit_tests/resb_bphi_multiblock_test).
+  ResistiveBphiOperator op(pmbp, nullptr, bphi, etafld);
   const Real dt_exp = op.ExplicitStableDt();
   const Real dt_super = dt_fac*dt_exp;
   for (int s = 0; s < nsuper; ++s) {

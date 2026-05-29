@@ -14,6 +14,7 @@
 #include <limits>
 
 #include "athena.hpp"
+#include "parameter_input.hpp"
 #include "mesh/mesh.hpp"
 #include "mesh/meshblock_pack.hpp"
 #include "coordinates/coordinates.hpp"
@@ -25,19 +26,38 @@
 //----------------------------------------------------------------------------------------
 //! \brief ResistiveBphiOperator constructor.
 
-ResistiveBphiOperator::ResistiveBphiOperator(MeshBlockPack *pp,
+ResistiveBphiOperator::ResistiveBphiOperator(MeshBlockPack *pp, ParameterInput *pin,
   const DvceArray5D<Real> &bphi, const DvceArray4D<Real> &eta) :
   pmy_pack(pp),
   bphi_(bphi),
   eta_(eta),
   bflx_("resb_bflx", bphi.extent_int(0), bphi.extent_int(1),
         bphi.extent_int(2), bphi.extent_int(3), bphi.extent_int(4)),
+  pbval_(nullptr),
+  coarse_("resb_coarse", 1, 1, 1, 1, 1),
   pbval_flux_(nullptr) {
-  // On a multilevel (SMR/AMR) mesh, register the resistive flux for the conservative
-  // fine->coarse flux correction (#33), so the diffused B_phi (and the area-weighted
-  // poloidal flux it carries) is conserved across refinement boundaries.  (pin is unused
-  // by the boundary-values constructor.)
+  const int nvar = bphi.extent_int(1);   // single B_phi component
+  // own boundary-values object for the per-substage neighbour ghost exchange: unique MPI
+  // communicator for this operator's exchange (avoids tag collision with the MHD field's
+  // pbval), buffers sized to the single diffused B_phi variable (#108/[A1], #113/[A6]).
+  // Only built when `pin` is supplied (the production wiring); legacy single-block-only
+  // callers pass nullptr to skip it (then ApplyBoundary applies only the physical fill).
+  if (pin != nullptr) {
+    pbval_ = new MeshBoundaryValuesCC(pp, pin, false);
+    pbval_->InitializeBuffers(nvar);
+  }
+  // coarse-mesh scratch (only meaningful with SMR/AMR; left 1^5 on a uniform grid, where
+  // SyncParabolicGhosts never touches it)
   if (pp->pmesh->multilevel) {
+    auto &indcs = pp->pmesh->mb_indcs;
+    int n_ccells1 = indcs.cnx1 + 2*(indcs.ng);
+    int n_ccells2 = (indcs.cnx2 > 1) ? (indcs.cnx2 + 2*(indcs.ng)) : 1;
+    int n_ccells3 = (indcs.cnx3 > 1) ? (indcs.cnx3 + 2*(indcs.ng)) : 1;
+    Kokkos::realloc(coarse_, bphi.extent_int(0), nvar, n_ccells3, n_ccells2, n_ccells1);
+    // On a multilevel (SMR/AMR) mesh, register the resistive flux for the conservative
+    // fine->coarse flux correction (#33), so the diffused B_phi (and the area-weighted
+    // poloidal flux it carries) is conserved across refinement boundaries.  (pin is
+    // unused by the boundary-values constructor.)
     pbval_flux_ = new MeshBoundaryValuesCC(pp, nullptr, false);
     pbval_flux_->InitializeBuffers(bflx_.x1f.extent_int(1));
   }
@@ -47,6 +67,7 @@ ResistiveBphiOperator::ResistiveBphiOperator(MeshBlockPack *pp,
 //! \brief ResistiveBphiOperator destructor.
 
 ResistiveBphiOperator::~ResistiveBphiOperator() {
+  if (pbval_ != nullptr) { delete pbval_; }
   if (pbval_flux_ != nullptr) { delete pbval_flux_; }
 }
 
@@ -253,4 +274,12 @@ void ResistiveBphiOperator::ApplyBoundary(DvceArray5D<Real> &u) {
       u(m,n,ke+1+g,j,i) = u(m,n,ke,j,i);
     });
   }
+
+  // After the PHYSICAL fill above, OVERWRITE the ghosts on every INTERNAL block face (and
+  // the coarse/fine boundary ghosts under SMR/AMR) with the neighbour's real B_phi via
+  // the shared synchronous exchange (#108/[A1], wired by #113/[A6]).  Untouched at true
+  // radial domain faces (no neighbour), so the axis keeps its antisymmetric ghost and the
+  // outer radius its Dirichlet-0 ghost -- a radially decomposed column behaves as one
+  // global cylinder.  Skipped (no-op) with pin==nullptr (legacy single-block run).
+  if (pbval_ != nullptr) { pbval_->SyncParabolicGhosts(u, coarse_); }
 }
