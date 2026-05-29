@@ -31,6 +31,7 @@ class ShearingBoxFC;
 class Driver;
 class FLDGreyOperator;
 class FLDMultigroupOperator;
+class AnisotropicConductionOperator;
 
 // function ptr for user-defined MHD boundary functions enrolled in problem generator
 namespace mhd {
@@ -50,6 +51,7 @@ struct MHDTaskIDs {
   TaskID savest;
   TaskID opsfld;
   TaskID opsmgfld;
+  TaskID opsacond;
   TaskID irecv;
   TaskID copyu;
   TaskID flux;
@@ -148,6 +150,17 @@ class MHD {
   DvceArray5D<Real> erad_mg;
   FLDMultigroupOperator *pmg_op = nullptr;
 
+  // Anisotropic (magnetized) Braginskii electron+ion thermal conduction, advanced
+  // operator-split (RKL2 STS) in the MHD step (#112/[A5], ADR-0006/ADR-0001).
+  // Unlike the FLD operators it diffuses the LIVE conserved energy (u0 IEN) field-aligned
+  // along the frozen cell-centred B (bcc0), so no standalone array; `pacond_op` is
+  // non-null only when explicitly enabled, so default MHD runs allocate nothing and stay
+  // byte-identical.  Stiff (#109) => super-time-stepped, so it does not limit the
+  // hyperbolic dt.  The operator owns its own ghost-exchange boundary object so it runs
+  // multi-block/MPI/AMR via SyncParabolicGhosts (#108/[A1]).
+  bool acond_operator_split = false;
+  AnisotropicConductionOperator *pacond_op = nullptr;
+
   // following only used for time-evolving flow
   DvceArray5D<Real> u1;       // conserved variables, second register
   DvceFaceFld4D<Real> b1;     // face-centered magnetic fields, second register
@@ -180,6 +193,8 @@ class MHD {
   TaskStatus OperatorSplitFLD(Driver *d, int stage);
   // ...in "before_timeintegrator" list (operator-split multigroup FLD, #111/[A4])
   TaskStatus OperatorSplitMultigroupFLD(Driver *d, int stage);
+  // ...in "before_timeintegrator" list (operator-split anisotropic conduction, #112/[A5])
+  TaskStatus OperatorSplitAnisoConduction(Driver *d, int stage);
   // ...in "before_stagen_tl" task list
   TaskStatus InitRecv(Driver *d, int stage);
   // ...in "stagen_tl" task list

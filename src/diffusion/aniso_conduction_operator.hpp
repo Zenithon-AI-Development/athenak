@@ -55,11 +55,18 @@
 // and recomputes the expected coefficients from the same braginskii functions).
 //
 // BOUNDARY.  The RKL2 substeps run inside the integrator, so ghosts are refreshed via the
-// ParabolicOperator::ApplyBoundary hook (here a zero-gradient / insulated fill, like
-// ConductionOperator -- zero heat flux through the domain boundary).  The cell-centred B
-// background is filled once (including ghosts) by the caller and is NOT refreshed here.
-// Multi-block / MPI ghost exchange between substeps is left to the consuming issues
-// (#25 verification, #30 Ohmic->electron coupling), as in ConductionOperator.
+// ParabolicOperator::ApplyBoundary hook.  Two steps, in order (mirrors ConductionOperator
+// #108/[A1] and FLDGreyOperator #110/[A3]): (1) a zero-gradient / insulated PHYSICAL fill
+// of all ghost zones, then (2) the shared synchronous multi-block/MPI/AMR neighbour
+// exchange MeshBoundaryValuesCC::SyncParabolicGhosts, which OVERWRITES ghosts on every
+// internal block (and coarse/fine) face with neighbour data, leaving the insulated fill
+// only at true domain boundaries.  This lets the operator span >1 MeshBlock, >1 MPI rank,
+// and block-AMR while staying a single insulated box at its outer edges (#112/[A5]).
+// The cell-centred B background is filled once (incl. ghosts) by the caller, NOT
+// refreshed here.  At true domain boundaries OperatorAction zeroes the boundary
+// face heat flux (the anisotropic parallel flux has a normal component even with a
+// zero-gradient fill); internal/periodic block faces are NOT zeroed, so heat conducts
+// across them.
 
 #include "athena.hpp"
 #include "driver/parabolic_operator.hpp"
@@ -68,6 +75,7 @@
 // forward declarations
 class MeshBlockPack;
 class MeshBoundaryValuesCC;
+class ParameterInput;
 
 namespace anisocond {
 
@@ -170,8 +178,11 @@ class AnisotropicConductionOperator : public parabolic::ParabolicOperator {
   //! \brief Build the operator over the conserved field `cons` it diffuses (rho/mom/E;
   //! also read for the explicit-dt density) and the frozen cell-centred magnetic field
   //! `bcc` (3 components IBX/IBY/IBZ) it aligns the flux to, with adiabatic index `gamma`
-  //! and the physical/unit parameters `par`.
-  AnisotropicConductionOperator(MeshBlockPack *pp, const DvceArray5D<Real> &cons,
+  //! and the physical/unit parameters `par`.  `pin` is used to build the operator's own
+  //! cell-centred boundary-values object (unique MPI communicator) for the per-substage
+  //! multi-block/MPI ghost exchange (#112); pass nullptr for a single-block-only use.
+  AnisotropicConductionOperator(MeshBlockPack *pp, ParameterInput *pin,
+                                const DvceArray5D<Real> &cons,
                                 const DvceArray5D<Real> &bcc, Real gamma,
                                 const anisocond::AnisoCondParams &par);
   ~AnisotropicConductionOperator();
@@ -195,6 +206,13 @@ class AnisotropicConductionOperator : public parabolic::ParabolicOperator {
   Real gamma_;                   // adiabatic index, for T = (gamma-1) eint/rho
   anisocond::AnisoCondParams par_;  // physical + unit-conversion parameters
   DvceFaceFld5D<Real> hflx_;     // scratch face-centred heat flux
+  // per-substage multi-block/MPI/AMR neighbour ghost exchange for the diffused field
+  // (#112/[A5]); owns a unique MPI communicator.  nullptr only if built with pin==nullptr
+  // (legacy single-block-only construction) -> SyncParabolicGhosts skipped.
+  MeshBoundaryValuesCC *pbval_;
+  // coarse-mesh scratch for the restriction/prolongation SyncParabolicGhosts does at
+  // fine/coarse boundaries under SMR/AMR (1^5 and untouched on a uniform grid).
+  DvceArray5D<Real> coarse_;
   // conservative fine->coarse flux correction at AMR/SMR level boundaries (#33); built
   // only on a multilevel mesh, nullptr otherwise -> no-op on a uniform grid.
   MeshBoundaryValuesCC *pbval_flux_;

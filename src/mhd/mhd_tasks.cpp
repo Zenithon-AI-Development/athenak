@@ -29,6 +29,7 @@
 #include "driver/parabolic_integrator.hpp"
 #include "radiation_fld/fld_grey_operator.hpp"
 #include "radiation_fld/fld_multigroup_operator.hpp"
+#include "diffusion/aniso_conduction_operator.hpp"
 #include "mhd/mhd.hpp"
 #include "dyn_grmhd/dyn_grmhd.hpp"
 
@@ -59,6 +60,15 @@ void MHD::AssembleMHDTasks(std::map<std::string, std::shared_ptr<TaskList>> tl) 
   // task and are byte-identical (ADR-0001/ADR-0007, #111/[A4]).
   if (pmg_op != nullptr) {
     id.opsmgfld = tl["before_timeintegrator"]->AddTask(&MHD::OperatorSplitMultigroupFLD,
+                                                       this, none);
+  }
+
+  // operator-split ANISOTROPIC Braginskii conduction (RKL2 STS), once per step.
+  // pacond_op is built in the MHD ctor (needs `pin` for its own ghost-exchange boundary
+  // object, #108); non-null only when aniso conduction operator-split is enabled, so
+  // default runs add no task and are byte-identical (ADR-0006/ADR-0001, #112/[A5]).
+  if (pacond_op != nullptr) {
+    id.opsacond = tl["before_timeintegrator"]->AddTask(&MHD::OperatorSplitAnisoConduction,
                                                        this, none);
   }
 
@@ -149,6 +159,25 @@ TaskStatus MHD::OperatorSplitFLD(Driver *pdrive, int stage) {
 TaskStatus MHD::OperatorSplitMultigroupFLD(Driver *pdrive, int stage) {
   if (pmg_op == nullptr) { return TaskStatus::complete; }
   parabolic::OperatorSplitStep(pdrive->pparabolic, *pmg_op, erad_mg,
+                               pmy_pack->pmesh->dt);
+  return TaskStatus::complete;
+}
+
+//----------------------------------------------------------------------------------------
+//! \fn TaskStatus MHD::OperatorSplitAnisoConduction
+//! \brief Advance the LIVE conserved field `u0` one operator-split RKL2 super-step under
+//! anisotropic (magnetized) Braginskii thermal conduction over the full hyperbolic dt
+//! (#112/[A5]).  Like the FLD operators, parabolic::OperatorSplitStep wraps the
+//! AnisotropicConductionOperator, whose per-substage ApplyBoundary delegates the
+//! cross-block/rank (and AMR c/f) ghost refresh to SyncParabolicGhosts (#108/[A1])
+//! and whose OperatorAction runs the conservative refine-boundary flux correction, so it
+//! runs on >1 MeshBlock, >1 MPI rank, and under block-AMR.  The flux is aligned to the
+//! frozen cell-centred B (bcc0) captured at construction; u0 is already AMR-regrid-
+//! registered as the MHD conserved field, so no standalone-array registration is needed.
+
+TaskStatus MHD::OperatorSplitAnisoConduction(Driver *pdrive, int stage) {
+  if (pacond_op == nullptr) { return TaskStatus::complete; }
+  parabolic::OperatorSplitStep(pdrive->pparabolic, *pacond_op, u0,
                                pmy_pack->pmesh->dt);
   return TaskStatus::complete;
 }

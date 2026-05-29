@@ -187,7 +187,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
       Kokkos::deep_copy(bcc, h_bcc);
     };
 
-    AnisotropicConductionOperator op(pmbp, cons, bcc, gamma, par);
+    AnisotropicConductionOperator op(pmbp, nullptr, cons, bcc, gamma, par);
 
     // The operator evolves E (= IEN), and dE/dt = -div(q) = kappa * d^2 T/dx_d^2 for the
     // active diffusion direction d (the kappa*gm1/rho energy-diffusivity D enters when
@@ -278,7 +278,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
     Kokkos::deep_copy(cons, h_cons);
     Kokkos::deep_copy(bcc, h_bcc);
 
-    AnisotropicConductionOperator op(pmbp, cons, bcc, gamma, par);
+    AnisotropicConductionOperator op(pmbp, nullptr, cons, bcc, gamma, par);
     const Real dt_exp = op.ExplicitStableDt();
     test.CheckTrue(dt_exp > 0.0, "anisotropic conduction explicit dt is positive");
     const Real dt_super = 20.0*dt_exp;
@@ -378,8 +378,8 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
 
     anisocond::AnisoCondParams p_off = par;  p_off.vfs = -1.0;          // unsaturated
     anisocond::AnisoCondParams p_sat = par;  p_sat.vfs = 1.0e-3;     // heavy saturation
-    AnisotropicConductionOperator op_off(pmbp, cons, bcc, gamma, p_off);
-    AnisotropicConductionOperator op_sat(pmbp, cons, bcc, gamma, p_sat);
+    AnisotropicConductionOperator op_off(pmbp, nullptr, cons, bcc, gamma, p_off);
+    AnisotropicConductionOperator op_sat(pmbp, nullptr, cons, bcc, gamma, p_sat);
     Kokkos::deep_copy(work, cons);
     op_off.ApplyBoundary(work);
     op_off.OperatorAction(work, rhs);
