@@ -1,0 +1,121 @@
+# AthenaK input: COMPACT code-unit converging single-mode Richtmyer-Meshkov, the CPU-CI
+# quantitative anchor for Ellison benchmark 3 (Knapp 2020).  Companion to the GPU-only
+# paper-resolution SI run (inputs/maglif_rm_si.athinput, #119/[C2]): it exercises the SAME
+# rod-scalar RM growth-factor observable -- a magnetically driven liner launches a
+# converging shock through a working-fluid gap into an on-axis dense ROD carrying a machined
+# axial (kz) perturbation, which grows by the shock-driven RM feed + Bell-Plesset
+# convergence amplification -- on the per-PR CPU path (issue #144/[VA5]).
+#
+# WHY A SEPARATE COMPACT INPUT (not the SI run on CPU): the SI geometry's long magnetic
+# run-in (the shock crosses the wide D2 fill at ~t=3 before convergence, tlim=4.5, nx1=512)
+# costs tens of minutes on CPU -- far over the per-PR CPU CI budget.  This input keeps the
+# DIMENSIONLESS RM setup that governs the growth factor (a seeded axial kz mode on the rod,
+# Atwood-set shock interaction, convergence) but in the compact code-unit domain of
+# maglif_rm.athinput, so it converges + rebounds in tlim~0.85 at nx1=128 (~3 min on CPU).
+# The observable is the SAME dimensionless rm_growth_factor the GPU test computes.
+#
+# NOTE ON FIDELITY (issue #144): this reduced compact surrogate REPORTS the growth factor
+# against the B3 oracle (scorecard + overlay) but does NOT hard-assert its magnitude.  The
+# CPU budget forbids the long, well-resolved magnetic run-in that the paper-resolution GPU
+# SI run (maglif_rm_si.athinput, nx1=512, tlim=4.5, #119) uses to develop the experimental
+# RM growth; in the compact surrogate the seeded mode is compression-dominated (it does not
+# reach the experimental growth factor 4.8 +/- 1.92), so per the established reduced-_cpu
+# precedent (B4 ICF #140, the GPU velocity-ratio policy #119) the magnitude is reported, not
+# asserted -- the binding magnitude hard-assert is the GPU SI run.  The binding CPU gate is
+# the cheap qualitative signature (converge + rebound, seeded mode present, finiteness).
+# Built with -D PROBLEM=maglif.
+#
+# PHYSICS SCOPE: the converging RM is HYDRODYNAMIC, so the coupled radiation-conduction
+# stack (ADR-0009) is OFF here -- exactly as in the SI anchor run -- for the same reasons:
+# its toy nondimensional coefficients would non-physically DAMP the very RM growth being
+# measured (#116/[B3] documents anisotropic conduction stabilising the mode), and the
+# observable needs no radiation/conduction physics.  The coupled stack is validated
+# separately on CPU (#115/#116/#117).  Cylindrical ideal-MHD (ADR-0004) + the prescribed-I(t)
+# circuit drive (ADR-0005 mode A) is what carries the growth.
+
+<comment>
+problem   = MagLIF compact converging single-mode RM (benchmark 3 CPU anchor, Knapp 2020)
+
+<job>
+basename  = maglif_rm_anchor
+
+<mesh>
+nghost    = 2
+nx1       = 128       # radial zones; dr = 1.0/128 = 7.8e-3 resolves the h0 = 0.025 seed
+x1min     = 0.0       # r = 0 axis
+x1max     = 1.0       # outer radius R_out (driven boundary)
+ix1_bc    = axis      # cylindrical r=0 axisymmetric boundary (issue #16)
+ox1_bc    = user      # circuit-driven B_phi boundary (issue #21)
+
+nx2       = 4         # thin azimuthal (phi) wedge (axisymmetric IC)
+x2min     = 0.0
+x2max     = 1.0
+ix2_bc    = periodic
+ox2_bc    = periodic
+
+nx3       = 32        # axial (z) zones over Lz = 0.6 -> 16 cells / 0.3 wavelength (mode 2)
+x3min     = 0.0
+x3max     = 0.6       # Lz = 0.6 = 2 perturbation wavelengths (lambda = Lz/pert_mode)
+ix3_bc    = periodic
+ox3_bc    = periodic
+
+<meshblock>
+nx1       = 64        # 128/64 = 2 root MeshBlocks along r
+nx2       = 4
+nx3       = 16        # 32/16 = 2 root MeshBlocks along z
+
+<coord>
+system    = cylindrical  # (x1,x2,x3) = (r,phi,z)
+
+<time>
+evolution  = dynamic
+integrator = rk2
+cfl_number = 0.3
+nlim       = 200000
+tlim       = 0.85      # liner converges, shock crosses the fill, rod compresses, converges + rebounds
+ndiag      = 500
+
+<mhd>
+eos         = ideal
+reconstruct = plm
+rsolver     = hlld
+gamma       = 1.6666666666666667
+dfloor      = 1.0e-5
+pfloor      = 1.0e-7
+nscalars    = 1        # passive scalar tagging the ROD material (s=1 rod, 0 elsewhere):
+                       # tracks the rod/working-fluid interface by composition (s=0.5
+                       # contour), robust through convergence -- the SAME observable the
+                       # GPU SI anchor uses (output column r_00).
+# ---- coupled radiation-conduction stack OFF (hydrodynamic RM anchor; see header) ----
+strang_split          = false
+fld_operator_split    = false
+acond_operator_split  = false
+mrad_coupling         = false
+
+<problem>
+# ---- drive (ADR-0005 mode A): magnetically driven liner piston ----
+current_mode     = driven       # driven (mu0*I/2*pi*r) B_phi outer boundary
+current_waveform = constant     # prescribed constant load current
+i0               = 3.0          # load current (code units) -- clean converging implosion
+t_rise           = 1.0          # ramp time (unused for the constant waveform)
+mu0              = 1.0          # code-unit permeability (Heaviside-Lorentz)
+# ---- compact rod target: dense on-axis ROD + working fluid + driven liner + vacuum ----
+r_rod            = 0.15         # on-axis dense rod radius (PERTURBED interface)
+d_rod            = 1.0          # rod density (dense, ~ liner: both "Be" in the experiment)
+r_fuel           = 0.4          # rod/fill -> liner inner radius (working-fluid gap to here)
+r_liner          = 0.6          # liner/vacuum interface (current sheet)
+d_fuel           = 0.05         # working-fluid (light D2 analogue) density
+d_liner          = 1.0          # liner (dense shell) density
+d_vac            = 0.01         # vacuum gap density
+p0               = 1.0e-3       # uniform (low) thermal pressure
+bz0              = 0.1          # axial premagnetization field B_z
+perturbation     = single_mode  # single axial mode on the rod interface
+pert_amp         = 0.025        # radial seed amplitude (kz*h0 = (2pi/0.3)*0.025 = 0.52, Knapp-order)
+pert_mode        = 2            # axial mode number (wavelength = Lz/pert_mode = 0.3)
+pert_phase       = 0.0          # axial phase offset
+
+<output1>
+file_type   = bin
+variable    = mhd_w_bcc
+id          = prim
+dt          = 0.01
