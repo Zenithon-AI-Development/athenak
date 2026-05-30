@@ -1,0 +1,655 @@
+{
+  "B3_rm_growth_factor": {
+    "figure": "knapp_rm_growth_rate.png",
+    "x": "k_z*delta_r (dimensionless)",
+    "y": "growth factor h/h0 (dimensionless)",
+    "experiment_color": "magenta",
+    "points": [
+      {
+        "x": 0.509,
+        "y": 1.259
+      },
+      {
+        "x": 0.951,
+        "y": 4.489
+      },
+      {
+        "x": 3.687,
+        "y": 2.176
+      },
+      {
+        "x": 4.748,
+        "y": 2.72
+      },
+      {
+        "x": 6.241,
+        "y": 3.861
+      },
+      {
+        "x": 9.513,
+        "y": 4.952
+      }
+    ]
+  },
+  "B1_single_mode_amplitude": {
+    "figure": "sinars_mrt_growth_rate.png",
+    "x": "time (ns)",
+    "y": "mode amplitude (mm, log)",
+    "experiment_color": "blue +",
+    "points": [
+      {
+        "t_ns": 1.88,
+        "amp_mm": 0.0197
+      },
+      {
+        "t_ns": 2.16,
+        "amp_mm": 0.3899
+      },
+      {
+        "t_ns": 26.97,
+        "amp_mm": 0.0162
+      },
+      {
+        "t_ns": 36.86,
+        "amp_mm": 0.043
+      },
+      {
+        "t_ns": 39.51,
+        "amp_mm": 0.0537
+      },
+      {
+        "t_ns": 48.57,
+        "amp_mm": 0.1207
+      },
+      {
+        "t_ns": 52.25,
+        "amp_mm": 0.1488
+      },
+      {
+        "t_ns": 54.01,
+        "amp_mm": 0.2231
+      },
+      {
+        "t_ns": 57.35,
+        "amp_mm": 0.3207
+      },
+      {
+        "t_ns": 60.09,
+        "amp_mm": 0.3778
+      },
+      {
+        "t_ns": 66.55,
+        "amp_mm": 0.7006
+      },
+      {
+        "t_ns": 69.9,
+        "amp_mm": 0.9133
+      }
+    ]
+  },
+  "B5_BR_vs_preheat": {
+    "figure": "z2977_rb.png",
+    "x": "laser preheat energy (kJ)",
+    "y": "BR (MG*cm)",
+    "experiment_color": "red circles ('Data')",
+    "points": [
+      {
+        "preheat_kJ": 0.834,
+        "BR_MGcm": 0.457
+      },
+      {
+        "preheat_kJ": 0.854,
+        "BR_MGcm": 0.232
+      },
+      {
+        "preheat_kJ": 0.93,
+        "BR_MGcm": 0.195
+      },
+      {
+        "preheat_kJ": 1.096,
+        "BR_MGcm": 0.214
+      },
+      {
+        "preheat_kJ": 1.235,
+        "BR_MGcm": 0.511
+      }
+    ]
+  },
+  "B3_trajectory_liner_exp": {
+    "figure": "knapp_rm_r_vs_t.png",
+    "x": "time (ns)",
+    "y": "inner liner radius (mm)",
+    "series": "PDV experiment (blue)",
+    "points": [
+      {
+        "t_ns": 2834.9,
+        "r_mm": 4.828
+      },
+      {
+        "t_ns": 2839.8,
+        "r_mm": 4.819
+      },
+      {
+        "t_ns": 2844.8,
+        "r_mm": 4.819
+      },
+      {
+        "t_ns": 2849.8,
+        "r_mm": 4.819
+      },
+      {
+        "t_ns": 2854.8,
+        "r_mm": 4.819
+      },
+      {
+        "t_ns": 2859.7,
+        "r_mm": 4.819
+      },
+      {
+        "t_ns": 2865.3,
+        "r_mm": 4.819
+      },
+      {
+        "t_ns": 2870.2,
+        "r_mm": 4.819
+      },
+      {
+        "t_ns": 2875.2,
+        "r_mm": 4.819
+      },
+      {
+        "t_ns": 2880.2,
+        "r_mm": 4.819
+      },
+      {
+        "t_ns": 2903.4,
+        "r_mm": 4.819
+      },
+      {
+        "t_ns": 2920.5,
+        "r_mm": 4.75
+      },
+      {
+        "t_ns": 2935.4,
+        "r_mm": 4.612
+      },
+      {
+        "t_ns": 2949.3,
+        "r_mm": 4.5
+      },
+      {
+        "t_ns": 2957.6,
+        "r_mm": 4.38
+      },
+      {
+        "t_ns": 2962.5,
+        "r_mm": 4.354
+      },
+      {
+        "t_ns": 2967.5,
+        "r_mm": 4.285
+      },
+      {
+        "t_ns": 2972.5,
+        "r_mm": 4.182
+      },
+      {
+        "t_ns": 2978.0,
+        "r_mm": 4.113
+      },
+      {
+        "t_ns": 2983.5,
+        "r_mm": 3.992
+      },
+      {
+        "t_ns": 2994.0,
+        "r_mm": 3.768
+      },
+      {
+        "t_ns": 3007.8,
+        "r_mm": 3.389
+      },
+      {
+        "t_ns": 3018.9,
+        "r_mm": 3.019
+      },
+      {
+        "t_ns": 3038.8,
+        "r_mm": 2.227
+      },
+      {
+        "t_ns": 3053.2,
+        "r_mm": 1.581
+      }
+    ]
+  },
+  "B3_trajectory_shock_exp": {
+    "figure": "knapp_rm_r_vs_t.png",
+    "x": "time (ns)",
+    "y": "shock radius (mm)",
+    "series": "PDV experiment (green)",
+    "points": [
+      {
+        "t_ns": 2809.4,
+        "r_mm": 1.968
+      },
+      {
+        "t_ns": 2817.2,
+        "r_mm": 3.768
+      },
+      {
+        "t_ns": 2832.6,
+        "r_mm": -0.952
+      },
+      {
+        "t_ns": 2870.2,
+        "r_mm": -1.09
+      },
+      {
+        "t_ns": 2916.7,
+        "r_mm": 1.581
+      },
+      {
+        "t_ns": 2934.3,
+        "r_mm": -0.969
+      },
+      {
+        "t_ns": 2965.8,
+        "r_mm": -1.469
+      },
+      {
+        "t_ns": 2974.7,
+        "r_mm": 1.908
+      },
+      {
+        "t_ns": 2981.9,
+        "r_mm": 3.863
+      },
+      {
+        "t_ns": 2989.1,
+        "r_mm": 3.699
+      },
+      {
+        "t_ns": 2996.2,
+        "r_mm": 3.395
+      },
+      {
+        "t_ns": 3003.4,
+        "r_mm": 3.32
+      },
+      {
+        "t_ns": 3013.9,
+        "r_mm": 2.933
+      },
+      {
+        "t_ns": 3022.2,
+        "r_mm": 0.814
+      },
+      {
+        "t_ns": 3031.1,
+        "r_mm": 3.122
+      },
+      {
+        "t_ns": 3038.2,
+        "r_mm": 2.95
+      },
+      {
+        "t_ns": 3045.4,
+        "r_mm": 2.538
+      },
+      {
+        "t_ns": 3052.6,
+        "r_mm": 0.857
+      },
+      {
+        "t_ns": 3063.7,
+        "r_mm": 3.906
+      },
+      {
+        "t_ns": 3072.0,
+        "r_mm": -1.09
+      },
+      {
+        "t_ns": 3089.1,
+        "r_mm": 3.596
+      },
+      {
+        "t_ns": 3105.7,
+        "r_mm": 5.026
+      },
+      {
+        "t_ns": 3130.0,
+        "r_mm": 4.208
+      },
+      {
+        "t_ns": 3138.8,
+        "r_mm": 2.623
+      },
+      {
+        "t_ns": 3151.0,
+        "r_mm": 1.684
+      }
+    ]
+  },
+  "B4_inner_radius_points_exp": {
+    "figure": "knapp_confine_r_vs_t.png (panel b)",
+    "x": "time (ns)",
+    "y": "inner liner radius (mm)",
+    "series": "radiograph experiment (gray circles w/ errbars)",
+    "confidence": "LOW - overlapping FLASH markers contaminate; verify by eye",
+    "points": [
+      {
+        "t_ns": 3115.0,
+        "r_mm": 0.392,
+        "err_lo_mm": 0.289,
+        "err_hi_mm": 0.494
+      },
+      {
+        "t_ns": 3115.0,
+        "r_mm": 0.524,
+        "err_lo_mm": 0.5,
+        "err_hi_mm": 0.547
+      },
+      {
+        "t_ns": 3115.0,
+        "r_mm": 0.605,
+        "err_lo_mm": 0.552,
+        "err_hi_mm": 0.658
+      },
+      {
+        "t_ns": 3116.6,
+        "r_mm": 0.578,
+        "err_lo_mm": 0.577,
+        "err_hi_mm": 0.579
+      },
+      {
+        "t_ns": 3116.6,
+        "r_mm": 0.572,
+        "err_lo_mm": 0.571,
+        "err_hi_mm": 0.575
+      },
+      {
+        "t_ns": 3118.1,
+        "r_mm": 0.609,
+        "err_lo_mm": 0.603,
+        "err_hi_mm": 0.614
+      },
+      {
+        "t_ns": 3118.1,
+        "r_mm": 0.635,
+        "err_lo_mm": 0.63,
+        "err_hi_mm": 0.641
+      },
+      {
+        "t_ns": 3118.2,
+        "r_mm": 0.552,
+        "err_lo_mm": 0.546,
+        "err_hi_mm": 0.558
+      },
+      {
+        "t_ns": 3118.2,
+        "r_mm": 0.582,
+        "err_lo_mm": 0.576,
+        "err_hi_mm": 0.588
+      },
+      {
+        "t_ns": 3118.3,
+        "r_mm": 0.58,
+        "err_lo_mm": 0.577,
+        "err_hi_mm": 0.581
+      },
+      {
+        "t_ns": 3118.3,
+        "r_mm": 0.586,
+        "err_lo_mm": 0.583,
+        "err_hi_mm": 0.587
+      },
+      {
+        "t_ns": 3118.6,
+        "r_mm": 0.477,
+        "err_lo_mm": 0.477,
+        "err_hi_mm": 0.479
+      },
+      {
+        "t_ns": 3118.7,
+        "r_mm": 0.61,
+        "err_lo_mm": 0.604,
+        "err_hi_mm": 0.615
+      },
+      {
+        "t_ns": 3118.7,
+        "r_mm": 0.553,
+        "err_lo_mm": 0.548,
+        "err_hi_mm": 0.558
+      },
+      {
+        "t_ns": 3118.7,
+        "r_mm": 0.633,
+        "err_lo_mm": 0.629,
+        "err_hi_mm": 0.638
+      },
+      {
+        "t_ns": 3119.1,
+        "r_mm": 0.578,
+        "err_lo_mm": 0.571,
+        "err_hi_mm": 0.585
+      },
+      {
+        "t_ns": 3119.7,
+        "r_mm": 0.631,
+        "err_lo_mm": 0.625,
+        "err_hi_mm": 0.638
+      },
+      {
+        "t_ns": 3120.2,
+        "r_mm": 0.608,
+        "err_lo_mm": 0.602,
+        "err_hi_mm": 0.614
+      },
+      {
+        "t_ns": 3120.2,
+        "r_mm": 0.581,
+        "err_lo_mm": 0.576,
+        "err_hi_mm": 0.585
+      },
+      {
+        "t_ns": 3120.4,
+        "r_mm": 0.611,
+        "err_lo_mm": 0.61,
+        "err_hi_mm": 0.614
+      },
+      {
+        "t_ns": 3120.5,
+        "r_mm": 0.554,
+        "err_lo_mm": 0.553,
+        "err_hi_mm": 0.558
+      },
+      {
+        "t_ns": 3120.5,
+        "r_mm": 0.581,
+        "err_lo_mm": 0.576,
+        "err_hi_mm": 0.585
+      },
+      {
+        "t_ns": 3120.6,
+        "r_mm": 0.552,
+        "err_lo_mm": 0.546,
+        "err_hi_mm": 0.558
+      },
+      {
+        "t_ns": 3120.6,
+        "r_mm": 0.608,
+        "err_lo_mm": 0.602,
+        "err_hi_mm": 0.614
+      },
+      {
+        "t_ns": 3121.1,
+        "r_mm": 0.608,
+        "err_lo_mm": 0.602,
+        "err_hi_mm": 0.614
+      },
+      {
+        "t_ns": 3121.1,
+        "r_mm": 0.58,
+        "err_lo_mm": 0.576,
+        "err_hi_mm": 0.584
+      },
+      {
+        "t_ns": 3121.1,
+        "r_mm": 0.608,
+        "err_lo_mm": 0.603,
+        "err_hi_mm": 0.613
+      },
+      {
+        "t_ns": 3121.6,
+        "r_mm": 0.635,
+        "err_lo_mm": 0.629,
+        "err_hi_mm": 0.641
+      },
+      {
+        "t_ns": 3121.6,
+        "r_mm": 0.636,
+        "err_lo_mm": 0.631,
+        "err_hi_mm": 0.641
+      },
+      {
+        "t_ns": 3121.7,
+        "r_mm": 0.582,
+        "err_lo_mm": 0.581,
+        "err_hi_mm": 0.583
+      },
+      {
+        "t_ns": 3121.8,
+        "r_mm": 0.607,
+        "err_lo_mm": 0.602,
+        "err_hi_mm": 0.611
+      },
+      {
+        "t_ns": 3122.0,
+        "r_mm": 0.635,
+        "err_lo_mm": 0.629,
+        "err_hi_mm": 0.641
+      },
+      {
+        "t_ns": 3122.0,
+        "r_mm": 0.581,
+        "err_lo_mm": 0.576,
+        "err_hi_mm": 0.585
+      },
+      {
+        "t_ns": 3122.2,
+        "r_mm": 0.631,
+        "err_lo_mm": 0.63,
+        "err_hi_mm": 0.634
+      },
+      {
+        "t_ns": 3122.2,
+        "r_mm": 0.637,
+        "err_lo_mm": 0.635,
+        "err_hi_mm": 0.64
+      },
+      {
+        "t_ns": 3122.6,
+        "r_mm": 0.607,
+        "err_lo_mm": 0.607,
+        "err_hi_mm": 0.609
+      },
+      {
+        "t_ns": 3122.8,
+        "r_mm": 0.607,
+        "err_lo_mm": 0.602,
+        "err_hi_mm": 0.611
+      },
+      {
+        "t_ns": 3123.0,
+        "r_mm": 0.481,
+        "err_lo_mm": 0.481,
+        "err_hi_mm": 0.481
+      },
+      {
+        "t_ns": 3123.2,
+        "r_mm": 0.635,
+        "err_lo_mm": 0.629,
+        "err_hi_mm": 0.641
+      },
+      {
+        "t_ns": 3123.4,
+        "r_mm": 0.55,
+        "err_lo_mm": 0.546,
+        "err_hi_mm": 0.555
+      },
+      {
+        "t_ns": 3124.4,
+        "r_mm": 0.557,
+        "err_lo_mm": 0.556,
+        "err_hi_mm": 0.558
+      },
+      {
+        "t_ns": 3125.6,
+        "r_mm": 0.465,
+        "err_lo_mm": 0.464,
+        "err_hi_mm": 0.466
+      },
+      {
+        "t_ns": 3127.2,
+        "r_mm": 0.453,
+        "err_lo_mm": 0.451,
+        "err_hi_mm": 0.457
+      },
+      {
+        "t_ns": 3127.3,
+        "r_mm": 0.417,
+        "err_lo_mm": 0.416,
+        "err_hi_mm": 0.418
+      },
+      {
+        "t_ns": 3127.3,
+        "r_mm": 0.493,
+        "err_lo_mm": 0.492,
+        "err_hi_mm": 0.494
+      },
+      {
+        "t_ns": 3127.3,
+        "r_mm": 0.459,
+        "err_lo_mm": 0.458,
+        "err_hi_mm": 0.46
+      },
+      {
+        "t_ns": 3129.9,
+        "r_mm": 0.514,
+        "err_lo_mm": 0.492,
+        "err_hi_mm": 0.537
+      },
+      {
+        "t_ns": 3129.9,
+        "r_mm": 0.575,
+        "err_lo_mm": 0.55,
+        "err_hi_mm": 0.598
+      },
+      {
+        "t_ns": 3130.0,
+        "r_mm": 0.54,
+        "err_lo_mm": 0.539,
+        "err_hi_mm": 0.542
+      },
+      {
+        "t_ns": 3130.1,
+        "r_mm": 0.575,
+        "err_lo_mm": 0.55,
+        "err_hi_mm": 0.598
+      },
+      {
+        "t_ns": 3130.1,
+        "r_mm": 0.513,
+        "err_lo_mm": 0.492,
+        "err_hi_mm": 0.537
+      },
+      {
+        "t_ns": 3136.1,
+        "r_mm": 0.517,
+        "err_lo_mm": 0.517,
+        "err_hi_mm": 0.519
+      }
+    ]
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "B4_inner_radius_points_exp": {
+    "figure": "knapp_confine_r_vs_t.png (panel b)",
+    "x_axis": "time (ns)",
+    "y_axis": "inner liner radius (mm)",
+    "series": "experiment radiograph (gray open circles)",
+    "qc": "GOOD - 6 circles via Hough; legend box excluded; user-confirmed",
+    "points": [
+      {
+        "t_ns": 3118.5,
+        "r_mm": 0.48,
+        "err_lo_mm": 0.465,
+        "err_hi_mm": 0.495
+      },
+      {
+        "t_ns": 3123.0,
+        "r_mm": 0.435,
+        "err_lo_mm": 0.39,
+        "err_hi_mm": 0.481
+      },
+      {
+        "t_ns": 3125.7,
+        "r_mm": 0.468,
+        "err_lo_mm": 0.429,
+        "err_hi_mm": 0.51
+      },
+      {
+        "t_ns": 3127.3,
+        "r_mm": 0.457,
+        "err_lo_mm": 0.416,
+        "err_hi_mm": 0.494
+      },
+      {
+        "t_ns": 3129.9,
+        "r_mm": 0.537,
+        "err_lo_mm": 0.49,
+        "err_hi_mm": 0.55
+      },
+      {
+        "t_ns": 3136.2,
+        "r_mm": 0.543,
+        "err_lo_mm": 0.517,
+        "err_hi_mm": 0.569
+      }
+    ]
+  }
+}

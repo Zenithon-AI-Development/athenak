@@ -1,0 +1,446 @@
+{
+  "B3_rm_growth_factor": {
+    "figure": "knapp_rm_growth_rate.png",
+    "x_axis": "k_z*delta_r (dimensionless)",
+    "y_axis": "growth factor h/h0 (dimensionless)",
+    "series": "experiment (magenta 'Z Data')",
+    "qc": "GOOD",
+    "points": [
+      {
+        "x": 0.509,
+        "y": 1.259
+      },
+      {
+        "x": 3.687,
+        "y": 2.176
+      },
+      {
+        "x": 4.748,
+        "y": 2.72
+      },
+      {
+        "x": 6.241,
+        "y": 3.861
+      },
+      {
+        "x": 9.513,
+        "y": 4.952
+      }
+    ]
+  },
+  "B1_single_mode_amplitude": {
+    "figure": "sinars_mrt_growth_rate.png",
+    "x_axis": "time (ns)",
+    "y_axis": "mode amplitude (mm, log)",
+    "series": "experiment (blue '+')",
+    "qc": "GOOD",
+    "points": [
+      {
+        "t_ns": 1.88,
+        "amp_mm": 0.0197
+      },
+      {
+        "t_ns": 26.97,
+        "amp_mm": 0.0162
+      },
+      {
+        "t_ns": 36.86,
+        "amp_mm": 0.043
+      },
+      {
+        "t_ns": 39.51,
+        "amp_mm": 0.0537
+      },
+      {
+        "t_ns": 48.57,
+        "amp_mm": 0.1207
+      },
+      {
+        "t_ns": 52.25,
+        "amp_mm": 0.1488
+      },
+      {
+        "t_ns": 54.01,
+        "amp_mm": 0.2231
+      },
+      {
+        "t_ns": 57.35,
+        "amp_mm": 0.3207
+      },
+      {
+        "t_ns": 60.09,
+        "amp_mm": 0.3778
+      },
+      {
+        "t_ns": 66.55,
+        "amp_mm": 0.7006
+      },
+      {
+        "t_ns": 69.9,
+        "amp_mm": 0.9133
+      }
+    ]
+  },
+  "B5_BR_vs_preheat": {
+    "figure": "z2977_rb.png",
+    "x_axis": "laser preheat energy (kJ)",
+    "y_axis": "BR (MG*cm)",
+    "series": "experiment (red 'Data')",
+    "qc": "GOOD",
+    "points": [
+      {
+        "preheat_kJ": 0.834,
+        "BR_MGcm": 0.457
+      },
+      {
+        "preheat_kJ": 0.854,
+        "BR_MGcm": 0.232
+      },
+      {
+        "preheat_kJ": 0.93,
+        "BR_MGcm": 0.195
+      },
+      {
+        "preheat_kJ": 1.096,
+        "BR_MGcm": 0.214
+      },
+      {
+        "preheat_kJ": 1.235,
+        "BR_MGcm": 0.511
+      }
+    ]
+  },
+  "B3_trajectory_liner_exp": {
+    "figure": "knapp_rm_r_vs_t.png",
+    "x_axis": "time (ns)",
+    "y_axis": "inner liner radius (mm)",
+    "series": "experiment PDV (blue)",
+    "qc": "GOOD",
+    "points": [
+      {
+        "t_ns": 2934.9,
+        "r_mm": 4.638
+      },
+      {
+        "t_ns": 2941.0,
+        "r_mm": 4.569
+      },
+      {
+        "t_ns": 2941.5,
+        "r_mm": 4.569
+      },
+      {
+        "t_ns": 2942.1,
+        "r_mm": 4.569
+      },
+      {
+        "t_ns": 2948.7,
+        "r_mm": 4.518
+      },
+      {
+        "t_ns": 2949.3,
+        "r_mm": 4.5
+      },
+      {
+        "t_ns": 2950.4,
+        "r_mm": 4.483
+      },
+      {
+        "t_ns": 2956.4,
+        "r_mm": 4.397
+      },
+      {
+        "t_ns": 2957.0,
+        "r_mm": 4.388
+      },
+      {
+        "t_ns": 2957.6,
+        "r_mm": 4.38
+      },
+      {
+        "t_ns": 2965.8,
+        "r_mm": 4.311
+      },
+      {
+        "t_ns": 2966.9,
+        "r_mm": 4.294
+      },
+      {
+        "t_ns": 2968.1,
+        "r_mm": 4.276
+      },
+      {
+        "t_ns": 2969.7,
+        "r_mm": 4.242
+      },
+      {
+        "t_ns": 2970.3,
+        "r_mm": 4.225
+      },
+      {
+        "t_ns": 2971.9,
+        "r_mm": 4.19
+      },
+      {
+        "t_ns": 2976.3,
+        "r_mm": 4.139
+      },
+      {
+        "t_ns": 2980.8,
+        "r_mm": 4.053
+      },
+      {
+        "t_ns": 3012.8,
+        "r_mm": 3.226
+      },
+      {
+        "t_ns": 3013.4,
+        "r_mm": 3.226
+      },
+      {
+        "t_ns": 3018.3,
+        "r_mm": 3.036
+      },
+      {
+        "t_ns": 3018.9,
+        "r_mm": 3.019
+      },
+      {
+        "t_ns": 3023.3,
+        "r_mm": 2.864
+      },
+      {
+        "t_ns": 3023.9,
+        "r_mm": 2.847
+      },
+      {
+        "t_ns": 3038.8,
+        "r_mm": 2.227
+      },
+      {
+        "t_ns": 3043.2,
+        "r_mm": 2.037
+      },
+      {
+        "t_ns": 3043.8,
+        "r_mm": 2.02
+      },
+      {
+        "t_ns": 3044.3,
+        "r_mm": 2.003
+      },
+      {
+        "t_ns": 3048.2,
+        "r_mm": 1.804
+      },
+      {
+        "t_ns": 3053.2,
+        "r_mm": 1.581
+      }
+    ]
+  },
+  "B3_trajectory_shock_exp": {
+    "figure": "knapp_rm_r_vs_t.png",
+    "x_axis": "time (ns)",
+    "y_axis": "shock radius (mm)",
+    "series": "experiment PDV (green)",
+    "qc": "PARTIAL - green line broken/dashed; physical cull applied",
+    "points": [
+      {
+        "t_ns": 2970.8,
+        "r_mm": 4.104
+      },
+      {
+        "t_ns": 2972.5,
+        "r_mm": 4.07
+      },
+      {
+        "t_ns": 2975.8,
+        "r_mm": 4.001
+      },
+      {
+        "t_ns": 2978.0,
+        "r_mm": 3.958
+      },
+      {
+        "t_ns": 2980.8,
+        "r_mm": 3.898
+      },
+      {
+        "t_ns": 2983.0,
+        "r_mm": 3.846
+      },
+      {
+        "t_ns": 2985.2,
+        "r_mm": 3.794
+      },
+      {
+        "t_ns": 2987.4,
+        "r_mm": 3.742
+      },
+      {
+        "t_ns": 2989.6,
+        "r_mm": 3.691
+      },
+      {
+        "t_ns": 2991.8,
+        "r_mm": 3.63
+      },
+      {
+        "t_ns": 2994.0,
+        "r_mm": 3.57
+      },
+      {
+        "t_ns": 2996.2,
+        "r_mm": 3.519
+      },
+      {
+        "t_ns": 2997.9,
+        "r_mm": 3.475
+      },
+      {
+        "t_ns": 3008.4,
+        "r_mm": 3.131
+      },
+      {
+        "t_ns": 3015.6,
+        "r_mm": 2.881
+      },
+      {
+        "t_ns": 3022.2,
+        "r_mm": 2.606
+      },
+      {
+        "t_ns": 3026.6,
+        "r_mm": 2.313
+      },
+      {
+        "t_ns": 3029.4,
+        "r_mm": 4.139
+      },
+      {
+        "t_ns": 3031.1,
+        "r_mm": 4.13
+      },
+      {
+        "t_ns": 3033.3,
+        "r_mm": 4.139
+      },
+      {
+        "t_ns": 3035.5,
+        "r_mm": 3.002
+      },
+      {
+        "t_ns": 3037.7,
+        "r_mm": 2.959
+      },
+      {
+        "t_ns": 3039.9,
+        "r_mm": 1.667
+      },
+      {
+        "t_ns": 3042.1,
+        "r_mm": 1.546
+      },
+      {
+        "t_ns": 3043.8,
+        "r_mm": 1.434
+      },
+      {
+        "t_ns": 3046.0,
+        "r_mm": 1.305
+      },
+      {
+        "t_ns": 3048.2,
+        "r_mm": 1.15
+      },
+      {
+        "t_ns": 3050.4,
+        "r_mm": 1.003
+      },
+      {
+        "t_ns": 3052.6,
+        "r_mm": 0.857
+      },
+      {
+        "t_ns": 3054.8,
+        "r_mm": 0.736
+      }
+    ]
+  },
+  "B4_inner_radius_points_exp": {
+    "figure": "knapp_confine_r_vs_t.png (panel b)",
+    "x_axis": "time (ns)",
+    "y_axis": "inner liner radius (mm)",
+    "series": "experiment radiograph (gray open circles + errbars)",
+    "qc": "LOW - dense overlap w/ FLASH markers; treat as approximate",
+    "points": [
+      {
+        "t_ns": 3118.3,
+        "r_mm": 0.58,
+        "err_lo_mm": 0.577,
+        "err_hi_mm": 0.581
+      },
+      {
+        "t_ns": 3118.5,
+        "r_mm": 0.478,
+        "err_lo_mm": 0.477,
+        "err_hi_mm": 0.482
+      },
+      {
+        "t_ns": 3120.4,
+        "r_mm": 0.629,
+        "err_lo_mm": 0.625,
+        "err_hi_mm": 0.631
+      },
+      {
+        "t_ns": 3121.2,
+        "r_mm": 0.582,
+        "err_lo_mm": 0.576,
+        "err_hi_mm": 0.585
+      },
+      {
+        "t_ns": 3122.1,
+        "r_mm": 0.638,
+        "err_lo_mm": 0.629,
+        "err_hi_mm": 0.641
+      },
+      {
+        "t_ns": 3122.9,
+        "r_mm": 0.432,
+        "err_lo_mm": 0.43,
+        "err_hi_mm": 0.436
+      },
+      {
+        "t_ns": 3123.3,
+        "r_mm": 0.638,
+        "err_lo_mm": 0.629,
+        "err_hi_mm": 0.641
+      },
+      {
+        "t_ns": 3123.8,
+        "r_mm": 0.552,
+        "err_lo_mm": 0.547,
+        "err_hi_mm": 0.555
+      },
+      {
+        "t_ns": 3124.4,
+        "r_mm": 0.559,
+        "err_lo_mm": 0.556,
+        "err_hi_mm": 0.56
+      },
+      {
+        "t_ns": 3125.6,
+        "r_mm": 0.466,
+        "err_lo_mm": 0.464,
+        "err_hi_mm": 0.47
+      },
+      {
+        "t_ns": 3127.3,
+        "r_mm": 0.458,
+        "err_lo_mm": 0.453,
+        "err_hi_mm": 0.46
+      }
+    ]
+  }
+}
