@@ -88,16 +88,22 @@ benchmark into an experiment-validated one — drop them into any `test_verify_*
     `pending digitization (#NNN)`, never a fabricated band.
 
 Worked examples: `cylindrical/test_verify_maglif_icf_cpu.py` (B4 ICF scalars, #140 [VA1]),
-`cylindrical/test_verify_maglif_mrt_cpu.py` (B1 single-mode MRT growth *curve*, #142 [VA3])
-and `cylindrical/test_verify_maglif_mmrt_cpu.py` (B2 multi-mode MRT growth *curve*, #143
-[VA4]; its curve-anchor dispatch is covered red-first by `test_verify_b2_curve_anchor_cpu.py`).
+`cylindrical/test_verify_maglif_mrt_cpu.py` (B1 single-mode MRT growth *curve*, #142 [VA3];
+the Sinars-2011 curve is digitized + committed in #154 [VA6], so its dispatch is covered
+red-first by `test_verify_b1_curve_anchor_cpu.py`) and
+`cylindrical/test_verify_maglif_mmrt_cpu.py` (B2 multi-mode MRT growth *curve*, #143 [VA4];
+its curve-anchor dispatch is covered red-first by `test_verify_b2_curve_anchor_cpu.py`).
 The curve-comparison engine itself is unit-tested in isolation in
 `test_verify_ground_truth_oracle_cpu.py` (#141 [VA2]); the B1/B2 growth-curve benchmarks
 (#142/#143) plug a `kind: curve` oracle comparison into the same scorecard + overlay path.
-A reduced nondimensional `_cpu` surrogate emits its curve in code units and *reports* the
-verdict (`binding=False`); the absolute experimental comparison is the paper-resolution SI
-run (#120/#122). An un-digitized curve datum stays `pending_digitization` and is reported
-as `PENDING`, never a pass (ADR-0008 — no fabricated points/tolerances).
+A reduced nondimensional `_cpu` surrogate emits its curve in code units; per PRD #138
+("reduce to the dimensionless observable") it is reduced to its dimensionless growth-factor
+trajectory `G(t)=a/a0` mapped onto the experiment's seed amplitude + observation window
+(only the *sim* observable is normalized — no experimental point/tolerance is altered) and
+*reports* the verdict (`binding=False`); the absolute experimental comparison is the
+paper-resolution SI run (#120/#122). An un-digitized curve datum stays
+`pending_digitization` and is reported as `PENDING`, never a pass (ADR-0008 — no fabricated
+points/tolerances).
 
 The B3 converging-RM anchor follows the same report-vs-assert split on *scalar* observables:
 `cylindrical/test_verify_maglif_rm_anchor_cpu.py` (#144 [VA5]) runs a compact code-unit
