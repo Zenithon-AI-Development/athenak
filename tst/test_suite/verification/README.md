@@ -87,9 +87,11 @@ benchmark into an experiment-validated one — drop them into any `test_verify_*
     for a not-yet-digitized curve — the sim curve is still plotted, annotated
     `pending digitization (#NNN)`, never a fabricated band.
 
-Worked examples: `cylindrical/test_verify_maglif_icf_cpu.py` (B4 ICF scalars, #140 [VA1])
-and `cylindrical/test_verify_maglif_mrt_cpu.py` (B1 single-mode MRT growth *curve*, #142
-[VA3]). The curve-comparison engine itself is unit-tested in isolation in
+Worked examples: `cylindrical/test_verify_maglif_icf_cpu.py` (B4 ICF scalars, #140 [VA1]),
+`cylindrical/test_verify_maglif_mrt_cpu.py` (B1 single-mode MRT growth *curve*, #142 [VA3])
+and `cylindrical/test_verify_maglif_mmrt_cpu.py` (B2 multi-mode MRT growth *curve*, #143
+[VA4]; its curve-anchor dispatch is covered red-first by `test_verify_b2_curve_anchor_cpu.py`).
+The curve-comparison engine itself is unit-tested in isolation in
 `test_verify_ground_truth_oracle_cpu.py` (#141 [VA2]); the B1/B2 growth-curve benchmarks
 (#142/#143) plug a `kind: curve` oracle comparison into the same scorecard + overlay path.
 A reduced nondimensional `_cpu` surrogate emits its curve in code units and *reports* the
