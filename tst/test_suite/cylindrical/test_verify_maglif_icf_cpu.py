@@ -1,5 +1,5 @@
 """
-ICF confinement-time verification (FLASH MagLIF benchmark 4, #37).
+ICF confinement-time verification (FLASH MagLIF benchmark 4, #37; oracle-anchored #140).
 
 Runs the integrated MagLIF/Z-pinch problem generator (issue [10a]/#32) as a CLEAN bulk
 implosion -- a dense beryllium liner enclosing low-density deuterium fuel, driven radially
@@ -7,6 +7,29 @@ inward by a prescribed constant load current and run to STAGNATION (no interface
 perturbation is seeded, unlike the instability benchmarks #36/#39/#42).  This is benchmark
 4 of the FLASH MagLIF validation ladder (Ellison et al. 2025, arXiv:2504.10760), whose
 observables are the PDV/radiography inner-radius trajectory and the stagnation density.
+
+Oracle (Layer-1, ADR-0008): the EXPERIMENT, via the committed ground-truth datums in
+``verification/ground_truth/b4_icf_confinement_knapp_2017.json`` (P. F. Knapp et al.,
+Phys. Plasmas 24, 042708, 2017).  This is the FIRST use of the quantitative-anchoring
+substrate (PRD #138, [VA1]/#140): the run reduces to its stagnation scalars (min fuel
+radius, peak fuel density), each is compared against the committed experimental datum via
+``GroundTruthOracle.compare``, the verdicts are recorded in the suite scorecard, and the
+diagnostic plot overlays each scalar's experimental value + tolerance band on the
+simulation result (``experiment_overlay``).  The previously self-anchored numeric
+thresholds (CR/rebound/compression/dwell bars re-anchored to the code's own ideal output)
+are REMOVED; only cheap qualitative gates (finiteness, a convergence-and-rebound sign
+check, mass sanity) remain as fast pre-checks.
+
+This ``_cpu`` benchmark is a REDUCED nondimensional surrogate (1-D radial, toy coupling
+coefficients, ideal-gamma EOS), not the paper-resolution SI replication.  Its convergence
+ratio (~22x) and fuel compression (~500x) are far stronger than the real MagLIF target, so
+it cannot reproduce the ABSOLUTE dimensional stagnation scalars (0.45 mm, ~10 g/cc) within
+their bands.  The two scalar comparisons are therefore REPORTED against the oracle for the
+record -- not hard-asserted -- exactly mirroring the B3 velocity-ratio policy in
+``test_verify_maglif_rm_si_gpu.py``: the absolute-SI hard-assert is the paper-resolution
+SI run (#121 [C4]) with real IONMIX-EOS/opacity coupling (#118).  The confinement-time
+anchor is still ``pending_digitization`` (Knapp 2017 headline result, #121) and is
+reported as PENDING -- never as a pass.
 
 Physics scope (Phase B, #116/[B3], ADR-0009): this benchmark now runs the FULL COUPLED
 radiation-conduction-MHD stack -- cylindrical ideal-MHD (ADR-0004) + the prescribed-I(t)
@@ -49,6 +72,9 @@ import sys
 import numpy as np
 import test_suite.testutils as testutils
 import test_suite.verification.harness as harness
+import test_suite.verification.ground_truth_oracle as gto
+import test_suite.verification.scorecard as scorecard
+import test_suite.verification.experiment_overlay as overlay
 import test_suite.cylindrical.maglif_coupled_energy as cenergy
 
 # bin_convert lives next to athena_read in vis/python; add it by absolute path so the
@@ -62,13 +88,19 @@ D_LINER = 1.85         # beryllium liner density
 R_FUEL = 0.4           # fuel/liner interface radius
 R_LINER = 0.6          # liner/vacuum interface radius
 
-# Verification thresholds (comfortable margins; the qualitative convergence/stagnation/
-# rebound signature is preserved under the coupled stack -- observed adiabatic-MHD run:
-# R_if ~ 0.40 -> 0.045 (convergence ratio ~9) -> rebound to ~0.23; fuel compresses ~75x).
-CR_MIN = 2.0           # require >= 2x convergence of the inner radius (clean implosion)
-REBOUND_MIN = 0.04     # require the inner radius to bounce back >= this after stagnation
-COMPRESS_MIN = 5.0     # require the fuel to compress >= 5x in mean density
-TAU_MIN = 0.05         # require a positive confinement dwell time (CR > 2 interval)
+# --- Provisional SI calibration for REPORTING the reduced-surrogate stagnation scalars
+# against the Knapp 2017 experiment.  These map the toy's code-unit observables onto
+# physical units ONLY for the oracle comparison + overlay; they do NOT gate the test (the
+# comparisons are reported, not hard-asserted -- see the module docstring and the B3
+# velocity-ratio precedent).  The absolute-SI hard-assert is #121's paper-resolution run.
+#   * density: the input already uses d_liner = 1.85 code = solid beryllium 1.85 g/cc, so
+#     1 code density unit = 1 g/cc (grounded, not fabricated).
+#   * length: the toy's initial fuel/liner-contact radius (R_FUEL = 0.4 code) is mapped
+#     to a representative MagLIF target inner radius ~2.3 mm (AR~6 Be liner, OD 5.58 mm
+#     -> inner radius ~2.3 mm; Gomez 2014 / Sefkow 2014); refined to the Knapp-2017
+#     published target in #121.  min_radius then scales with the achieved convergence.
+RHO_CGS = 1.0          # g/cc per code density (solid-Be grounded)
+R_FUEL_MM = 2.3        # representative initial inner radius in mm (provisional, #121)
 
 input_file = os.path.join(testutils._repo_root(), "tst", "inputs", "maglif_icf.athinput")
 bin_dir = os.path.join(testutils.pgen_run_dir("maglif"), "bin")
@@ -94,30 +126,9 @@ def _radius_enclosing(r, cum_mass, target):
     return float(r[j - 1] + f * (r[j] - r[j - 1]))
 
 
-def _interval_below(t, y, thr):
-    """Time span over which y(t) is below thr, with linear edge interpolation."""
-    below = y < thr
-    if not below.any():
-        return 0.0
-    idx = np.where(below)[0]
-    lo, hi = idx[0], idx[-1]
-    # entry: interpolate between lo-1 and lo (if there is a crossing)
-    if lo == 0:
-        t_in = t[0]
-    else:
-        f = (thr - y[lo - 1]) / (y[lo] - y[lo - 1])
-        t_in = t[lo - 1] + f * (t[lo] - t[lo - 1])
-    # exit: interpolate between hi and hi+1 (if there is a crossing)
-    if hi == len(y) - 1:
-        t_out = t[-1]
-    else:
-        f = (thr - y[hi]) / (y[hi + 1] - y[hi])
-        t_out = t[hi] + f * (t[hi + 1] - t[hi])
-    return float(t_out - t_in)
-
-
 def test_verify_maglif_icf():
-    """Run the confined implosion and verify stagnation + rebound + compression."""
+    """Run the confined implosion; gate on the convergence/rebound + mass sanity
+    signature, then report the stagnation scalars against the Knapp-2017 oracle (#140)."""
     try:
         assert testutils.run_pgen("maglif", input_file), "MagLIF ICF run failed."
 
@@ -154,11 +165,6 @@ def test_verify_maglif_icf():
         rho_fuel = np.array(rho_fuel)
         rho_liner = np.array(rho_liner)
 
-        # sanity: the t=0 mean fuel density recovers the input fuel density.
-        assert abs(rho_fuel[0] - D_FUEL) < 0.1 * D_FUEL, (
-            f"t=0 mean fuel density {rho_fuel[0]:.4f} != d_fuel {D_FUEL}"
-        )
-
         # Final snapshot is finite (the implosion ran in + rebounded cleanly, no blow-up).
         fin = bin_convert.read_binary_as_athdf(files[-1])
         for v in ("dens", "velx", "vely", "velz", "eint", "bcc1", "bcc2", "bcc3"):
@@ -167,38 +173,88 @@ def test_verify_maglif_icf():
         imin = int(np.nanargmin(r_if))
         rif0, rif_min = r_if[0], r_if[imin]
 
-        # (1) The liner converges: the inner radius reaches a high-convergence minimum.
-        assert rif_min < rif0 / CR_MIN, (
-            f"liner did not converge: R_if {rif0:.4f} -> min {rif_min:.4f} "
-            f"(need < {rif0 / CR_MIN:.4f}, i.e. CR > {CR_MIN})"
+        # --- Cheap QUALITATIVE gates (sign/shape sanity, no re-anchored magnitudes).
+        # These are the reduced surrogate's binding pre-checks -- they guard against a sim
+        # that never imploded or went unstable; the experimental scalar comparisons below
+        # are reported against the oracle (the absolute-SI hard-assert is #121).
+
+        # (q1) Mass sanity: the t=0 mean fuel density recovers the input fuel density (the
+        # enclosed-mass reduction is wired up correctly).
+        assert abs(rho_fuel[0] - D_FUEL) < 0.1 * D_FUEL, (
+            f"t=0 mean fuel density {rho_fuel[0]:.4f} != d_fuel {D_FUEL}"
         )
 
-        # (2) It stagnates and rebounds: the minimum is interior in time (not at the last
-        # snapshot -- it actually turns around) and the inner radius bounces back.
+        # (q2) Convergence-and-rebound signature: the inner radius actually converged (its
+        # minimum is below the start), the minimum is interior in time (it turned around,
+        # not still imploding at the last snapshot), and it rebounds afterwards -- a clean
+        # confined stagnation.  These are sign checks, not tuned convergence/rebound bars.
+        assert rif_min < rif0, (
+            f"inner radius did not converge: R_if {rif0:.4f} -> min {rif_min:.4f}"
+        )
         assert 0 < imin < len(times) - 1, (
             f"inner radius did not stagnate before the run end (min at snap {imin})"
         )
-        assert r_if[-1] > rif_min + REBOUND_MIN, (
+        assert r_if[-1] > rif_min, (
             f"no rebound after stagnation: R_min={rif_min:.4f} -> R_end={r_if[-1]:.4f}"
-        )
-
-        # (3) The fuel compresses strongly at stagnation.
-        compress = float(np.nanmax(rho_fuel) / D_FUEL)
-        assert compress > COMPRESS_MIN, (
-            f"fuel compression {compress:.1f}x < required {COMPRESS_MIN}x"
-        )
-
-        # (4) A positive confinement time: the dwell during which the inner radius is
-        # below half its initial value (CR > 2) -- the stagnation burn-width proxy.
-        tau_conf = _interval_below(times, r_if, 0.5 * rif0)
-        assert tau_conf > TAU_MIN, (
-            f"confinement time {tau_conf:.4f} <= {TAU_MIN} (no sustained stagnation)"
         )
 
         # The full coupled radiation-conduction-MHD stack ran and kept the species-split
         # energy budget physically sane (erad finite, non-neg, bounded; #116/[B3]).
         cenergy.assert_coupled_energy_sane("maglif_icf")
 
+        # --- QUANTITATIVE ANCHOR (#140): compare the reduced run's stagnation scalars
+        # against the committed Knapp-2017 experimental datums via the oracle.
+        # The reduced 1-D surrogate (CR~22x, ~500x compression) cannot reproduce the
+        # ABSOLUTE dimensional scalars; per the B3 velocity-ratio policy these are
+        # REPORTED against the oracle (scorecard + overlay), not hard-asserted -- the SI
+        # hard-assert is the paper-resolution SI run (#121) with real EOS/opacity (#118).
+        oracle = gto.GroundTruthOracle.from_committed()
+
+        # min fuel-column radius, mapped to mm via the provisional length calibration.
+        min_radius_mm = (rif_min / R_FUEL) * R_FUEL_MM
+        # peak mean fuel density, mapped to g/cc via the solid-Be-grounded density unit.
+        peak_density_gcc = float(np.nanmax(rho_fuel)) * RHO_CGS
+
+        reduced_note = "reduced 1-D surrogate; absolute-SI hard-assert is #121 (EOS #118)"
+        res_radius = oracle.compare("B4", "min_radius", min_radius_mm)
+        res_density = oracle.compare("B4", "peak_density", peak_density_gcc)
+        scorecard.record_result(res_radius, binding=False, note=reduced_note)
+        scorecard.record_result(res_density, binding=False, note=reduced_note)
+        print(f"[B4] {res_radius}  (reported, not asserted: {reduced_note})")
+        print(f"[B4] {res_density}  (reported, not asserted: {reduced_note})")
+
+        # The confinement-time anchor is still pending digitization (Knapp 2017 headline
+        # result, #121): reported as PENDING, never as a pass.
+        assert oracle.get("B4", "confinement_time").is_pending, (
+            "B4 confinement_time unexpectedly has a value; update the scorecard wiring"
+        )
+        scorecard.record_pending("B4", "confinement_time", issue=121)
+
+        # Experiment-overlay diagnostic: sim trajectories (physical units) with each
+        # scalar's experimental value + tolerance band drawn on top.
+        overlay.overlay_scalars(
+            "maglif_icf",
+            times,
+            {
+                "R_if": (r_if / R_FUEL) * R_FUEL_MM,
+                "rho_fuel": rho_fuel * RHO_CGS,
+            },
+            {
+                "R_if": {
+                    "exp_value": res_radius.exp_value, "band": res_radius.band,
+                    "unit": "mm", "sim_value": min_radius_mm,
+                },
+                "rho_fuel": {
+                    "exp_value": res_density.exp_value, "band": res_density.band,
+                    "unit": "g/cc", "sim_value": peak_density_gcc,
+                },
+            },
+            xlabel="t (code units)",
+            title="ICF stagnation scalars vs Knapp 2017 (MagLIF benchmark 4)",
+        )
+
+        # Layer-2 regression guard (ADR-0008): code-unit baseline diff, unchanged so the
+        # B-series coupled-stack baseline stays byte-identical.
         harness.verify(
             "maglif_icf",
             times,
