@@ -2,7 +2,7 @@
   "benchmark": "B4",
   "ellison_id": 4,
   "title": "Inertial confinement of a magnetically driven implosion (ICF confinement time)",
-  "description": "Ellison benchmark 4. A magnetically driven implosion in which the inertial confinement time of the stagnated fuel column is directly measured. The simulation must reproduce the stagnation scalars (minimum fuel radius, peak fuel density) and, ultimately, the confinement time. Stated scalars below are extracted faithfully; the confinement-time result is left pending digitization for #121 (no fabricated points).",
+  "description": "Ellison benchmark 4. A magnetically driven implosion in which the inertial confinement time of the stagnated fuel column is directly measured. The simulation must reproduce the stagnation scalars (minimum fuel radius, peak fuel density) and the confinement time. All three are STATED TEXT SCALARS in Knapp 2017 (not figure-digitized): tau_conf = 14 ns (vs 16 ns from 1D), min radius 0.45 mm, peak density ~10 g/cc. The inner-radius-vs-time trajectory point cloud (figure-only) is digitized separately under digitization_review/.",
   "primary_source": {
     "authors": "P. F. Knapp et al.",
     "paper": "Direct measurement of the inertial confinement time in a magnetically driven implosion",
@@ -28,7 +28,7 @@
       "extraction_method": "stated scalar (issue #107 / Knapp 2017 stagnation result; value stated, not digitized from a figure)",
       "oracle_kind": "experiment",
       "experimental_error": {
-        "value": 0.10,
+        "value": 0.1,
         "kind": "relative",
         "basis": "published per-shot uncertainty not transcribed here; ~10% radiographic placeholder, to be refined from Knapp 2017 in #121"
       },
@@ -53,7 +53,7 @@
       "extraction_method": "stated scalar (issue #107 / Knapp 2017; stated approximately as '~10 g/cc')",
       "oracle_kind": "experiment",
       "experimental_error": {
-        "value": 0.20,
+        "value": 0.2,
         "kind": "relative",
         "basis": "stated approximately ('~10 g/cc', ~1 significant figure); ~20% placeholder, to be refined from Knapp 2017 in #121"
       },
@@ -72,14 +72,30 @@
       "id": "confinement_time",
       "observable": "directly-measured inertial confinement time at stagnation",
       "kind": "scalar",
-      "status": "pending_digitization",
-      "confidence": "low",
-      "extraction_method": "pending_digitization (headline confinement-time result to be extracted faithfully in #121 [C4]; no fabricated value)",
+      "confidence": "medium",
+      "extraction_method": "stated scalar in Knapp 2017 text/abstract: the directly-measured inertial confinement time is 14 ns, compared with 16 ns from 1D simulation. Read from text, not digitized from a figure. Exact published +/- uncertainty not transcribed (full text paywalled, DOI 10.1063/1.4981206); placeholder uncertainty below to be refined when the PDF is in hand.",
       "oracle_kind": "experiment",
       "source": {
         "paper": "Direct measurement of the inertial confinement time in a magnetically driven implosion",
-        "figure": "confinement-time result (text/figure; exact value and uncertainty pinned in #121)",
+        "figure": "stated text/abstract scalar (14 ns measured vs 16 ns 1D); not a figure point",
         "doi": "10.1063/1.4981206"
+      },
+      "value": 14.0,
+      "unit": "ns",
+      "comparison_1d": {
+        "value": 16.0,
+        "unit": "ns",
+        "basis": "1D simulation confinement time stated alongside the measurement in Knapp 2017"
+      },
+      "experimental_error": {
+        "value": 0.14,
+        "kind": "relative",
+        "basis": "PLACEHOLDER ~14% (~2 ns); the 14 vs 16 ns measurement-vs-1D spread implies ~ns-scale precision. Exact published uncertainty to be transcribed from Knapp 2017 full text."
+      },
+      "digitization_error": {
+        "value": 0.0,
+        "kind": "absolute",
+        "basis": "stated text scalar, not digitized from a figure"
       }
     }
   ]
