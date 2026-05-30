@@ -98,3 +98,14 @@ A reduced nondimensional `_cpu` surrogate emits its curve in code units and *rep
 verdict (`binding=False`); the absolute experimental comparison is the paper-resolution SI
 run (#120/#122). An un-digitized curve datum stays `pending_digitization` and is reported
 as `PENDING`, never a pass (ADR-0008 — no fabricated points/tolerances).
+
+The B3 converging-RM anchor follows the same report-vs-assert split on *scalar* observables:
+`cylindrical/test_verify_maglif_rm_anchor_cpu.py` (#144 [VA5]) runs a compact code-unit
+converging RM (`inputs/maglif_rm_anchor.athinput`, coupled stack off) on the per-PR CPU path,
+reduces it to the dimensionless `rm_growth_factor` with the **same definition** as the GPU
+anchor `cylindrical/test_verify_maglif_rm_si_gpu.py` (#119), and *reports* both that growth
+factor and the EOS-sensitive shock/interface velocity ratio against the B3 oracle
+(`binding=False`) — the compact CPU surrogate can't develop the experimental RM growth that
+the paper-resolution GPU SI run (nx1=512, tlim=4.5) does, so the binding magnitude hard-assert
+stays on the GPU run while the binding CPU gate is the cheap qualitative convergence signature
+(converge + rebound, seeded mode dominant, finiteness). The GPU `_gpu` anchor is untouched.
