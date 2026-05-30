@@ -109,3 +109,17 @@ factor and the EOS-sensitive shock/interface velocity ratio against the B3 oracl
 the paper-resolution GPU SI run (nx1=512, tlim=4.5) does, so the binding magnitude hard-assert
 stays on the GPU run while the binding CPU gate is the cheap qualitative convergence signature
 (converge + rebound, seeded mode dominant, finiteness). The GPU `_gpu` anchor is untouched.
+
+The **B2 multi-mode MRT** benchmark has a second, *qualitative-tier* arm on the GPU:
+`cylindrical/test_verify_maglif_mmrt_gpu.py` (#122 [C5]) runs the multi-mode surface-roughness
+implosion at paper resolution (`inputs/maglif_mmrt_si.athinput`, nx1=512 × nx3=128, coupled
+stack **off** — ideal-MHD only, since the operator-split parabolic GPU path segfaults at
+runtime, #139) and validates the **qualitative** limb-modulation behaviour: a synthetic
+side-on radiograph (Abel projection) whose bright-limb modulation is broadband (spectral
+participation ≥ 2 modes, no single-mode collapse), driven-surface-dominant (the MagLIF
+asymmetry: the magnetically-driven outer interface roughens far more than the RT-stabilised
+fuel side), and *grows* under the sustained acceleration. Per the tiered bar (multi-mode MRT
+from roughness is inherently stochastic) the verdict is recorded as `QUALITATIVE-MATCH`
+(`binding=False`) via `scorecard.record` — it is **not** a quantitative curve match; the
+McBride-2012 growth *curve* stays the reduced-`_cpu` reported anchor (#143). Same
+report-vs-assert discipline, on a qualitative observable.
