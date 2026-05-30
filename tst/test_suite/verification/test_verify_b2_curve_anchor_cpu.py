@@ -4,7 +4,8 @@ PRD #138, ADR-0008).
 
 This is a *component* test, not a physics-sim test: it exercises the exact curve-anchor
 dispatch the B2 ``_cpu`` benchmark (``cylindrical/test_verify_maglif_mmrt_cpu.py``) wires
-into -- without running a simulation, so it stays in the fast CPU component band. It proves
+into -- without running a simulation, so it stays in the fast CPU component band. It
+proves
 both dispatch branches the benchmark uses:
 
 * the **pending** branch -- the committed McBride-2012 datum has no digitized points yet

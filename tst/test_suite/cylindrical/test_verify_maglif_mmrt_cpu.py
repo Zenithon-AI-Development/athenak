@@ -55,7 +55,8 @@ the McBride curve is a physical amplitude-vs-time radiograph: per the reduced-su
 policy (B3 velocity-ratio / B4 ICF #140) the absolute experimental curve comparison is the
 paper-resolution run (#122 [C5]), which outputs physical units directly.  The committed B2
 curve datum is still ``pending_digitization`` -- the McBride figure is paywalled and not
-faithfully digitizable from this environment (the same constraint #142 hit for Sinars-2011;
+faithfully digitizable from this environment (the same constraint #142 hit for
+Sinars-2011;
 no fabricated points, per ADR-0008) -- so the curve verdict is REPORTED as PENDING here,
 never as a pass; the diagnostic overlays the experimental curve + band once digitized
 (#122).  The wiring below is the full curve-oracle path: it reports PENDING while pending
@@ -63,9 +64,11 @@ and, once digitized, compares the curve and reports the verdict (binding=False) 
 experimental band overlaid.
 
 The test runs the implosion, checks that (1) the liner converges, (2) the leading front
-moves inward, (3) the broadband roughness grows on the driven surface (sign check), (4) the
+moves inward, (3) the broadband roughness grows on the driven surface (sign check), (4)
+the
 driven surface roughens MORE than the RT-stabilised fuel-side surface (the MagLIF
-asymmetry), (5) the seeded spectrum stays multi-mode (no single-mode collapse), and (6) the
+asymmetry), (5) the seeded spectrum stays multi-mode (no single-mode collapse), and (6)
+the
 synthetic-radiograph modulation grows (sign check), anchors the growth curve against the
 McBride-2012 oracle, then plots the growth-curve overlay + a synthetic radiograph and
 saves/diffs a golden regression baseline.  Auto-collected by run_test_suite.py (the module
@@ -374,7 +377,8 @@ def test_verify_maglif_mmrt():
         # pending_digitization (the McBride figure is paywalled and not faithfully
         # digitizable from this environment -- the same constraint #142 hit for Sinars,
         # no fabricated points per ADR-0008), so it is REPORTED as PENDING here, never as
-        # a pass.  The wiring below is the full curve-oracle path: it reports PENDING while
+        # a pass.  The wiring below is the full curve-oracle path: it reports PENDING
+        # while
         # pending and, once digitized, compares the curve and reports the verdict
         # (binding=False) with the experimental band overlaid.
         oracle = gto.GroundTruthOracle.from_committed()
@@ -400,7 +404,8 @@ def test_verify_maglif_mmrt():
                 for p in res.point_results
             ]
 
-        # Experiment-overlay diagnostic: the sim growth curve (broadband roughness vs time)
+        # Experiment-overlay diagnostic: the sim growth curve (broadband roughness vs
+        # time)
         # with the experimental curve + band overlaid once digitized; until then the sim
         # curve is plotted with a pending-digitization annotation (#122).
         overlay.overlay_curve(
