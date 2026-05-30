@@ -1,102 +1,1070 @@
 {
-  "benchmark": "B3",
-  "ellison_id": 3,
-  "title": "Converging Richtmyer-Meshkov (RM) instability on the magnetically driven Decel platform",
-  "description": "Ellison benchmark 3. A magnetically driven cylindrical Be liner (piston) launches a converging shock through a liquid-deuterium working fluid into an on-axis Be rod carrying a pre-imposed sinusoidal perturbation, producing a Richtmyer-Meshkov instability in convergent geometry. This is the QUANTITATIVE ANCHOR for the Ellison ladder (#119): the open-access Knapp 2020 paper reports PDV-measured shock/interface kinematics and the dimensionless perturbation-growth-vs-interface-displacement curve (its Fig. 8). The simulation must reproduce these dimensionless, convergence-governed observables within the experimental + digitization tolerance band.",
-  "primary_source": {
-    "authors": "P. F. Knapp et al.",
-    "paper": "A novel, magnetically driven convergent Richtmyer-Meshkov platform",
-    "journal": "Phys. Plasmas",
-    "volume": "27",
-    "issue": "9",
-    "article": "092707",
-    "year": 2020,
-    "doi": "10.1063/5.0013194",
-    "report": "SAND2020-10207J",
-    "open_access": "https://www.osti.gov/pages/biblio/1770335"
-  },
-  "setup": {
-    "drive": "magnetically driven solid Be liner (piston), Z longpulse mode, 300 ns current rise",
-    "liner": "Be, inner diameter 4.48 mm (inner radius 2.24 mm), thickness 0.64 mm (outer radius 2.88 mm)",
-    "working_fluid": "liquid deuterium, cryogenic 22 K, initial density 167 mg/cm^3",
-    "target": "on-axis solid Be rod, initial radius 0.8 mm, machined axial (kz) perturbation, wavelength 300 um, amplitude h0 = 15 um (peak-to-peak 30 um), kz*h0 = 0.31",
-    "atwood_number": "A_N = (rho_Be - rho_D)/(rho_Be + rho_D) = 0.53 (from 1D simulation; a setup/normalization parameter, not the experimental oracle)",
-    "facility": "Sandia Z",
-    "geometry": "cylindrically convergent",
-    "phase_of_interest": "first-shock phase (between t=3085 and 3106 ns in Fig. 1(d)), dominated by RM growth"
-  },
-  "data": [
-    {
-      "id": "rm_interface_velocity",
-      "observable": "Post-shock rod/deuterium interface velocity (PDV-measured)",
-      "kind": "scalar",
-      "status": "extracted",
-      "confidence": "high",
-      "extraction_method": "stated numerically in the text (Sec. III): 'the measured interface velocity is v_i = 19.5 +/- 2 km/s'; no figure tracing.",
-      "oracle_kind": "experiment",
-      "value": 19.5,
-      "unit": "km/s",
-      "experimental_error": {"value": 2.0, "kind": "absolute", "basis": "stated +/- 2 km/s PDV measurement uncertainty (Knapp 2020, Sec. III)"},
-      "digitization_error": {"value": 0.0, "kind": "absolute", "basis": "value read directly from the text, not digitized from a figure"},
-      "source": {
+    "benchmark": "B3",
+    "ellison_id": 3,
+    "title": "Converging Richtmyer-Meshkov (RM) instability on the magnetically driven Decel platform",
+    "description": "Ellison benchmark 3. A magnetically driven cylindrical Be liner (piston) launches a converging shock through a liquid-deuterium working fluid into an on-axis Be rod carrying a pre-imposed sinusoidal perturbation, producing a Richtmyer-Meshkov instability in convergent geometry. This is the QUANTITATIVE ANCHOR for the Ellison ladder (#119): the open-access Knapp 2020 paper reports PDV-measured shock/interface kinematics and the dimensionless perturbation-growth-vs-interface-displacement curve (its Fig. 8). The simulation must reproduce these dimensionless, convergence-governed observables within the experimental + digitization tolerance band.",
+    "primary_source": {
+        "authors": "P. F. Knapp et al.",
         "paper": "A novel, magnetically driven convergent Richtmyer-Meshkov platform",
-        "figure": "Sec. III text (PDV); Fig. 1(d) radius-time / load-current plot",
-        "doi": "10.1063/5.0013194"
-      }
+        "journal": "Phys. Plasmas",
+        "volume": "27",
+        "issue": "9",
+        "article": "092707",
+        "year": 2020,
+        "doi": "10.1063/5.0013194",
+        "report": "SAND2020-10207J",
+        "open_access": "https://www.osti.gov/pages/biblio/1770335"
     },
-    {
-      "id": "rm_transmitted_shock_velocity",
-      "observable": "Transmitted shock velocity in the Be rod (PDV-measured)",
-      "kind": "scalar",
-      "status": "extracted",
-      "confidence": "high",
-      "extraction_method": "stated numerically in the text (Sec. III): 'the transmitted shock velocity in the rod is V_S,T = 26.7 +/- 2 km/s'; no figure tracing.",
-      "oracle_kind": "experiment",
-      "value": 26.7,
-      "unit": "km/s",
-      "experimental_error": {"value": 2.0, "kind": "absolute", "basis": "stated +/- 2 km/s PDV measurement uncertainty (Knapp 2020, Sec. III)"},
-      "digitization_error": {"value": 0.0, "kind": "absolute", "basis": "value read directly from the text, not digitized from a figure"},
-      "source": {
-        "paper": "A novel, magnetically driven convergent Richtmyer-Meshkov platform",
-        "figure": "Sec. III text (PDV); Fig. 1(d)",
-        "doi": "10.1063/5.0013194"
-      }
+    "setup": {
+        "drive": "magnetically driven solid Be liner (piston), Z longpulse mode, 300 ns current rise",
+        "liner": "Be, inner diameter 4.48 mm (inner radius 2.24 mm), thickness 0.64 mm (outer radius 2.88 mm)",
+        "working_fluid": "liquid deuterium, cryogenic 22 K, initial density 167 mg/cm^3",
+        "target": "on-axis solid Be rod, initial radius 0.8 mm, machined axial (kz) perturbation, wavelength 300 um, amplitude h0 = 15 um (peak-to-peak 30 um), kz*h0 = 0.31",
+        "atwood_number": "A_N = (rho_Be - rho_D)/(rho_Be + rho_D) = 0.53 (from 1D simulation; a setup/normalization parameter, not the experimental oracle)",
+        "facility": "Sandia Z",
+        "geometry": "cylindrically convergent",
+        "phase_of_interest": "first-shock phase (between t=3085 and 3106 ns in Fig. 1(d)), dominated by RM growth"
     },
-    {
-      "id": "rm_shock_interface_velocity_ratio",
-      "observable": "Dimensionless transmitted-shock to interface velocity ratio V_S,T / v_i (EOS-robust shock-strength anchor)",
-      "kind": "scalar",
-      "status": "extracted",
-      "confidence": "medium",
-      "extraction_method": "ratio of the two PDV-measured velocities stated in the text: 26.7 / 19.5 = 1.37; error propagated from the two +/- 2 km/s bands. Dimensionless, so it is comparable to a code-unit simulation directly and is governed by the shock jump conditions + Atwood number rather than the absolute energy scale.",
-      "oracle_kind": "experiment",
-      "value": 1.369,
-      "unit": "dimensionless",
-      "experimental_error": {"value": 0.16, "kind": "absolute", "basis": "propagated from v_i = 19.5 +/- 2 and V_S,T = 26.7 +/- 2 km/s (ratio uncertainty ~ 1.37*sqrt((2/26.7)^2+(2/19.5)^2))"},
-      "digitization_error": {"value": 0.0, "kind": "absolute", "basis": "derived from stated text values, not digitized"},
-      "source": {
-        "paper": "A novel, magnetically driven convergent Richtmyer-Meshkov platform",
-        "figure": "Sec. III text (PDV velocities)",
-        "doi": "10.1063/5.0013194"
-      }
-    },
-    {
-      "id": "rm_growth_factor",
-      "observable": "Dimensionless RM perturbation-amplitude growth factor over the radiographed first-shock phase (growth vs normalized interface displacement, Fig. 8)",
-      "kind": "scalar",
-      "status": "extracted",
-      "confidence": "low",
-      "extraction_method": "Derived from stated text values, not pixel-traced: the post-shock amplitude is h_ps = 10 um (a 1.5x shock compression of the seeded h0 = 15 um); by the final radiograph (z3244 t2, normalized displacement kz*dr = 11.8) the measured growth satisfies kz*h > 1, i.e. h >~ lambda/2pi = 47.7 um, giving an amplitude growth factor h/h_ps >~ 4.8. The text notes the measured growth briefly exceeds the linear-theory expectation (RM linear growth factor ~8 over the full first-shock phase), so 4.8 is a conservative measured anchor and the band is set wide accordingly.",
-      "oracle_kind": "experiment",
-      "value": 4.8,
-      "unit": "dimensionless",
-      "experimental_error": {"value": 0.4, "kind": "relative", "basis": "the Fig. 8 measurement carries the interface-velocity confidence band (shaded region) and the perturbation is entering the nonlinear regime where the constant-velocity assumption and convergence modify the growth; the measured points bracket linear theory (factor ~8) from below at the radiographed displacements"},
-      "digitization_error": {"value": 0.25, "kind": "relative", "basis": "reading growth amplitude off the Fig. 8 / Fig. 9 log-scale axes at the stated displacements kz*dr = 5.6 and 11.8"},
-      "source": {
-        "paper": "A novel, magnetically driven convergent Richtmyer-Meshkov platform",
-        "figure": "Fig. 8 (seeded-perturbation growth vs dimensionless interface displacement kz*dr); Fig. 9 (mode spectrum, kz*h>1 nonlinear threshold)",
-        "doi": "10.1063/5.0013194"
-      }
-    }
-  ]
+    "data": [
+        {
+            "id": "rm_interface_velocity",
+            "observable": "Post-shock rod/deuterium interface velocity (PDV-measured)",
+            "kind": "scalar",
+            "status": "extracted",
+            "confidence": "high",
+            "extraction_method": "stated numerically in the text (Sec. III): 'the measured interface velocity is v_i = 19.5 +/- 2 km/s'; no figure tracing.",
+            "oracle_kind": "experiment",
+            "value": 19.5,
+            "unit": "km/s",
+            "experimental_error": {
+                "value": 2.0,
+                "kind": "absolute",
+                "basis": "stated +/- 2 km/s PDV measurement uncertainty (Knapp 2020, Sec. III)"
+            },
+            "digitization_error": {
+                "value": 0.0,
+                "kind": "absolute",
+                "basis": "value read directly from the text, not digitized from a figure"
+            },
+            "source": {
+                "paper": "A novel, magnetically driven convergent Richtmyer-Meshkov platform",
+                "figure": "Sec. III text (PDV); Fig. 1(d) radius-time / load-current plot",
+                "doi": "10.1063/5.0013194"
+            }
+        },
+        {
+            "id": "rm_transmitted_shock_velocity",
+            "observable": "Transmitted shock velocity in the Be rod (PDV-measured)",
+            "kind": "scalar",
+            "status": "extracted",
+            "confidence": "high",
+            "extraction_method": "stated numerically in the text (Sec. III): 'the transmitted shock velocity in the rod is V_S,T = 26.7 +/- 2 km/s'; no figure tracing.",
+            "oracle_kind": "experiment",
+            "value": 26.7,
+            "unit": "km/s",
+            "experimental_error": {
+                "value": 2.0,
+                "kind": "absolute",
+                "basis": "stated +/- 2 km/s PDV measurement uncertainty (Knapp 2020, Sec. III)"
+            },
+            "digitization_error": {
+                "value": 0.0,
+                "kind": "absolute",
+                "basis": "value read directly from the text, not digitized from a figure"
+            },
+            "source": {
+                "paper": "A novel, magnetically driven convergent Richtmyer-Meshkov platform",
+                "figure": "Sec. III text (PDV); Fig. 1(d)",
+                "doi": "10.1063/5.0013194"
+            }
+        },
+        {
+            "id": "rm_shock_interface_velocity_ratio",
+            "observable": "Dimensionless transmitted-shock to interface velocity ratio V_S,T / v_i (EOS-robust shock-strength anchor)",
+            "kind": "scalar",
+            "status": "extracted",
+            "confidence": "medium",
+            "extraction_method": "ratio of the two PDV-measured velocities stated in the text: 26.7 / 19.5 = 1.37; error propagated from the two +/- 2 km/s bands. Dimensionless, so it is comparable to a code-unit simulation directly and is governed by the shock jump conditions + Atwood number rather than the absolute energy scale.",
+            "oracle_kind": "experiment",
+            "value": 1.369,
+            "unit": "dimensionless",
+            "experimental_error": {
+                "value": 0.16,
+                "kind": "absolute",
+                "basis": "propagated from v_i = 19.5 +/- 2 and V_S,T = 26.7 +/- 2 km/s (ratio uncertainty ~ 1.37*sqrt((2/26.7)^2+(2/19.5)^2))"
+            },
+            "digitization_error": {
+                "value": 0.0,
+                "kind": "absolute",
+                "basis": "derived from stated text values, not digitized"
+            },
+            "source": {
+                "paper": "A novel, magnetically driven convergent Richtmyer-Meshkov platform",
+                "figure": "Sec. III text (PDV velocities)",
+                "doi": "10.1063/5.0013194"
+            }
+        },
+        {
+            "id": "rm_growth_factor",
+            "observable": "Dimensionless RM perturbation-amplitude growth factor over the radiographed first-shock phase (growth vs normalized interface displacement, Fig. 8)",
+            "kind": "scalar",
+            "status": "extracted",
+            "confidence": "low",
+            "extraction_method": "Derived from stated text values, not pixel-traced: the post-shock amplitude is h_ps = 10 um (a 1.5x shock compression of the seeded h0 = 15 um); by the final radiograph (z3244 t2, normalized displacement kz*dr = 11.8) the measured growth satisfies kz*h > 1, i.e. h >~ lambda/2pi = 47.7 um, giving an amplitude growth factor h/h_ps >~ 4.8. The text notes the measured growth briefly exceeds the linear-theory expectation (RM linear growth factor ~8 over the full first-shock phase), so 4.8 is a conservative measured anchor and the band is set wide accordingly.",
+            "oracle_kind": "experiment",
+            "value": 4.8,
+            "unit": "dimensionless",
+            "experimental_error": {
+                "value": 0.4,
+                "kind": "relative",
+                "basis": "the Fig. 8 measurement carries the interface-velocity confidence band (shaded region) and the perturbation is entering the nonlinear regime where the constant-velocity assumption and convergence modify the growth; the measured points bracket linear theory (factor ~8) from below at the radiographed displacements"
+            },
+            "digitization_error": {
+                "value": 0.25,
+                "kind": "relative",
+                "basis": "reading growth amplitude off the Fig. 8 / Fig. 9 log-scale axes at the stated displacements kz*dr = 5.6 and 11.8"
+            },
+            "source": {
+                "paper": "A novel, magnetically driven convergent Richtmyer-Meshkov platform",
+                "figure": "Fig. 8 (seeded-perturbation growth vs dimensionless interface displacement kz*dr); Fig. 9 (mode spectrum, kz*h>1 nonlinear threshold)",
+                "doi": "10.1063/5.0013194"
+            }
+        },
+        {
+            "id": "rm_liner_trajectory",
+            "observable": "converging-RM inner liner radius vs time (experiment PDV)",
+            "kind": "curve",
+            "status": "digitized",
+            "confidence": "low",
+            "unit": "mm",
+            "x_unit": "ns",
+            "extraction_method": "digitized from Knapp 2020 converging-RM radius-vs-time figure (knapp_rm_r_vs_t.png, 'blue' experiment PDV series), human-QC'd GOOD (30 points, v3 continuity+monotonic trace; the prior trace's spurious upper strand culled). Source figure + reproducible extraction committed under verification/ground_truth/digitization_review/ (figures/knapp_rm_r_vs_t.png, extracted/extracted_points_v3.json key B3_trajectory_liner_exp, fix_b3.py). No fabricated points; per-point error bars are documented estimates (see each point's *_error basis).",
+            "oracle_kind": "experiment",
+            "source": {
+                "paper": "A novel, magnetically driven convergent Richtmyer-Meshkov platform",
+                "figure": "converging-RM radius-vs-time, experiment PDV 'blue' series (knapp_rm_r_vs_t.png)",
+                "doi": "10.1063/5.0013194"
+            },
+            "points": [
+                {
+                    "x": 2834.9,
+                    "y": 4.828,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (blue); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 2934.9,
+                    "y": 4.638,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (blue); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 2941.0,
+                    "y": 4.569,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (blue); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 2941.5,
+                    "y": 4.569,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (blue); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 2942.1,
+                    "y": 4.569,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (blue); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 2948.7,
+                    "y": 4.518,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (blue); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 2949.3,
+                    "y": 4.5,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (blue); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 2950.4,
+                    "y": 4.483,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (blue); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 2956.4,
+                    "y": 4.397,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (blue); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 2957.0,
+                    "y": 4.388,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (blue); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 2957.6,
+                    "y": 4.38,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (blue); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 2965.8,
+                    "y": 4.311,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (blue); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 2966.9,
+                    "y": 4.294,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (blue); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 2968.1,
+                    "y": 4.276,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (blue); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 2969.7,
+                    "y": 4.242,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (blue); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 2971.9,
+                    "y": 4.19,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (blue); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 2976.3,
+                    "y": 4.139,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (blue); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 2980.8,
+                    "y": 4.053,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (blue); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 3012.8,
+                    "y": 3.226,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (blue); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 3013.4,
+                    "y": 3.226,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (blue); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 3018.3,
+                    "y": 3.036,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (blue); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 3018.9,
+                    "y": 3.019,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (blue); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 3023.3,
+                    "y": 2.864,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (blue); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 3023.9,
+                    "y": 2.847,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (blue); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 3038.8,
+                    "y": 2.227,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (blue); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 3043.2,
+                    "y": 2.037,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (blue); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 3043.8,
+                    "y": 2.02,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (blue); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 3044.3,
+                    "y": 2.003,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (blue); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 3048.2,
+                    "y": 1.804,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (blue); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 3053.2,
+                    "y": 1.581,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (blue); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                }
+            ]
+        },
+        {
+            "id": "rm_shock_trajectory",
+            "observable": "converging-RM shock radius vs time (experiment PDV)",
+            "kind": "curve",
+            "status": "digitized",
+            "confidence": "low",
+            "unit": "mm",
+            "x_unit": "ns",
+            "extraction_method": "digitized from Knapp 2020 converging-RM radius-vs-time figure (knapp_rm_r_vs_t.png, 'green' experiment PDV series), human-QC'd GOOD (30 points, v3 continuity+monotonic trace; the prior trace's spurious upper strand culled). Source figure + reproducible extraction committed under verification/ground_truth/digitization_review/ (figures/knapp_rm_r_vs_t.png, extracted/extracted_points_v3.json key B3_trajectory_shock_exp, fix_b3.py). No fabricated points; per-point error bars are documented estimates (see each point's *_error basis).",
+            "oracle_kind": "experiment",
+            "source": {
+                "paper": "A novel, magnetically driven convergent Richtmyer-Meshkov platform",
+                "figure": "converging-RM radius-vs-time, experiment PDV 'green' series (knapp_rm_r_vs_t.png)",
+                "doi": "10.1063/5.0013194"
+            },
+            "points": [
+                {
+                    "x": 2970.8,
+                    "y": 4.104,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (green); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 2972.5,
+                    "y": 4.07,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (green); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 2975.2,
+                    "y": 4.018,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (green); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 2977.5,
+                    "y": 3.966,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (green); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 2980.8,
+                    "y": 3.898,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (green); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 2983.0,
+                    "y": 3.846,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (green); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 2985.2,
+                    "y": 3.794,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (green); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 2988.0,
+                    "y": 3.725,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (green); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 2991.8,
+                    "y": 3.639,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (green); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 2992.9,
+                    "y": 3.605,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (green); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 2995.1,
+                    "y": 3.553,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (green); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 2996.8,
+                    "y": 3.501,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (green); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 3008.4,
+                    "y": 3.131,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (green); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 3013.9,
+                    "y": 2.933,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (green); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 3022.2,
+                    "y": 2.606,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (green); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 3027.2,
+                    "y": 2.295,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (green); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 3032.2,
+                    "y": 2.063,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (green); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 3036.0,
+                    "y": 1.848,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (green); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 3037.7,
+                    "y": 1.77,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (green); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 3039.4,
+                    "y": 1.675,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (green); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 3041.0,
+                    "y": 1.589,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (green); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 3042.1,
+                    "y": 1.52,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (green); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 3043.8,
+                    "y": 1.425,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (green); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 3045.4,
+                    "y": 1.322,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (green); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 3047.1,
+                    "y": 1.219,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (green); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 3048.2,
+                    "y": 1.15,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (green); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 3049.9,
+                    "y": 1.038,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (green); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 3051.5,
+                    "y": 0.935,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (green); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 3053.2,
+                    "y": 0.823,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (green); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                },
+                {
+                    "x": 3054.8,
+                    "y": 0.736,
+                    "experimental_error": {
+                        "value": 0.1,
+                        "kind": "relative",
+                        "basis": "PLACEHOLDER ~10%: Knapp-2020 converging-RM PDV/radiograph radial-trajectory reading uncertainty; exact published per-point error bars not transcribed here -- refine from the paper (SAND2020-10207J, open access)."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated continuity+monotonic-trace pixel reading error on knapp_rm_r_vs_t.png (green); refine if re-digitized."
+                    },
+                    "confidence": "low"
+                }
+            ]
+        }
+    ]
 }

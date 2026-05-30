@@ -108,15 +108,18 @@ def test_render_is_a_table_with_all_verdicts_and_pending_marker():
     assert "#121" in table
 
 
-def test_oracle_pending_b4_confinement_time_round_trips_to_pending_row():
-    """The committed B4 confinement_time is still pending -> compare raises, not pass."""
+def test_oracle_b4_confinement_time_compares_no_longer_pending():
+    """The committed B4 confinement_time is now a stated text scalar (Knapp 2017: 14 ns vs
+    16 ns 1D), no longer pending -> the scalar oracle compares it instead of raising
+    PendingDatumError or recording a pending row (#156, was pending under #121)."""
     oracle = gto.GroundTruthOracle.from_committed()
     datum = oracle.get("B4", "confinement_time")
-    assert datum.is_pending
-    with pytest.raises(gto.PendingDatumError):
-        oracle.compare("B4", "confinement_time", 1.0)
-    row = scorecard.record_pending("B4", "confinement_time", issue=121)
-    assert row.verdict == scorecard.PENDING
+    assert not datum.is_pending
+    assert datum.value == pytest.approx(14.0) and datum.unit == "ns"
+    res = oracle.compare("B4", "confinement_time", 14.0)
+    assert res.passed and res.band > 0.0
+    row = scorecard.record_result(res, binding=False)
+    assert row.verdict == scorecard.PASS
 
 
 def test_overlay_emits_a_figure_with_experiment_band_and_secondary(tmp_path):
