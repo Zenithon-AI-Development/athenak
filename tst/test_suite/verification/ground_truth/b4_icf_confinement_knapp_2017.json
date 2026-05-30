@@ -1,102 +1,210 @@
 {
-  "benchmark": "B4",
-  "ellison_id": 4,
-  "title": "Inertial confinement of a magnetically driven implosion (ICF confinement time)",
-  "description": "Ellison benchmark 4. A magnetically driven implosion in which the inertial confinement time of the stagnated fuel column is directly measured. The simulation must reproduce the stagnation scalars (minimum fuel radius, peak fuel density) and the confinement time. All three are STATED TEXT SCALARS in Knapp 2017 (not figure-digitized): tau_conf = 14 ns (vs 16 ns from 1D), min radius 0.45 mm, peak density ~10 g/cc. The inner-radius-vs-time trajectory point cloud (figure-only) is digitized separately under digitization_review/.",
-  "primary_source": {
-    "authors": "P. F. Knapp et al.",
-    "paper": "Direct measurement of the inertial confinement time in a magnetically driven implosion",
-    "journal": "Phys. Plasmas",
-    "volume": "24",
-    "issue": "4",
-    "article": "042708",
-    "year": 2017,
-    "doi": "10.1063/1.4981206"
-  },
-  "setup": {
-    "drive": "magnetically driven cylindrical implosion",
-    "facility": "Sandia Z"
-  },
-  "data": [
-    {
-      "id": "min_radius",
-      "observable": "minimum fuel column radius at stagnation",
-      "kind": "scalar",
-      "value": 0.45,
-      "unit": "mm",
-      "confidence": "high",
-      "extraction_method": "stated scalar (issue #107 / Knapp 2017 stagnation result; value stated, not digitized from a figure)",
-      "oracle_kind": "experiment",
-      "experimental_error": {
-        "value": 0.1,
-        "kind": "relative",
-        "basis": "published per-shot uncertainty not transcribed here; ~10% radiographic placeholder, to be refined from Knapp 2017 in #121"
-      },
-      "digitization_error": {
-        "value": 0.0,
-        "kind": "absolute",
-        "basis": "stated scalar (not digitized from a figure)"
-      },
-      "source": {
+    "benchmark": "B4",
+    "ellison_id": 4,
+    "title": "Inertial confinement of a magnetically driven implosion (ICF confinement time)",
+    "description": "Ellison benchmark 4. A magnetically driven implosion in which the inertial confinement time of the stagnated fuel column is directly measured. The simulation must reproduce the stagnation scalars (minimum fuel radius, peak fuel density) and the confinement time. All three are STATED TEXT SCALARS in Knapp 2017 (not figure-digitized): tau_conf = 14 ns (vs 16 ns from 1D), min radius 0.45 mm, peak density ~10 g/cc. The inner-radius-vs-time trajectory point cloud (figure-only) is digitized separately under digitization_review/.",
+    "primary_source": {
+        "authors": "P. F. Knapp et al.",
         "paper": "Direct measurement of the inertial confinement time in a magnetically driven implosion",
-        "figure": "stated stagnation scalar (text; not a figure point)",
+        "journal": "Phys. Plasmas",
+        "volume": "24",
+        "issue": "4",
+        "article": "042708",
+        "year": 2017,
         "doi": "10.1063/1.4981206"
-      }
     },
-    {
-      "id": "peak_density",
-      "observable": "peak fuel mass density at stagnation",
-      "kind": "scalar",
-      "value": 10.0,
-      "unit": "g/cc",
-      "confidence": "medium",
-      "extraction_method": "stated scalar (issue #107 / Knapp 2017; stated approximately as '~10 g/cc')",
-      "oracle_kind": "experiment",
-      "experimental_error": {
-        "value": 0.2,
-        "kind": "relative",
-        "basis": "stated approximately ('~10 g/cc', ~1 significant figure); ~20% placeholder, to be refined from Knapp 2017 in #121"
-      },
-      "digitization_error": {
-        "value": 0.0,
-        "kind": "absolute",
-        "basis": "stated scalar (not digitized from a figure)"
-      },
-      "source": {
-        "paper": "Direct measurement of the inertial confinement time in a magnetically driven implosion",
-        "figure": "stated stagnation scalar (text; not a figure point)",
-        "doi": "10.1063/1.4981206"
-      }
+    "setup": {
+        "drive": "magnetically driven cylindrical implosion",
+        "facility": "Sandia Z"
     },
-    {
-      "id": "confinement_time",
-      "observable": "directly-measured inertial confinement time at stagnation",
-      "kind": "scalar",
-      "confidence": "medium",
-      "extraction_method": "stated scalar in Knapp 2017 text/abstract: the directly-measured inertial confinement time is 14 ns, compared with 16 ns from 1D simulation. Read from text, not digitized from a figure. Exact published +/- uncertainty not transcribed (full text paywalled, DOI 10.1063/1.4981206); placeholder uncertainty below to be refined when the PDF is in hand.",
-      "oracle_kind": "experiment",
-      "source": {
-        "paper": "Direct measurement of the inertial confinement time in a magnetically driven implosion",
-        "figure": "stated text/abstract scalar (14 ns measured vs 16 ns 1D); not a figure point",
-        "doi": "10.1063/1.4981206"
-      },
-      "value": 14.0,
-      "unit": "ns",
-      "comparison_1d": {
-        "value": 16.0,
-        "unit": "ns",
-        "basis": "1D simulation confinement time stated alongside the measurement in Knapp 2017"
-      },
-      "experimental_error": {
-        "value": 0.14,
-        "kind": "relative",
-        "basis": "PLACEHOLDER ~14% (~2 ns); the 14 vs 16 ns measurement-vs-1D spread implies ~ns-scale precision. Exact published uncertainty to be transcribed from Knapp 2017 full text."
-      },
-      "digitization_error": {
-        "value": 0.0,
-        "kind": "absolute",
-        "basis": "stated text scalar, not digitized from a figure"
-      }
-    }
-  ]
+    "data": [
+        {
+            "id": "min_radius",
+            "observable": "minimum fuel column radius at stagnation",
+            "kind": "scalar",
+            "value": 0.45,
+            "unit": "mm",
+            "confidence": "high",
+            "extraction_method": "stated scalar (issue #107 / Knapp 2017 stagnation result; value stated, not digitized from a figure)",
+            "oracle_kind": "experiment",
+            "experimental_error": {
+                "value": 0.1,
+                "kind": "relative",
+                "basis": "published per-shot uncertainty not transcribed here; ~10% radiographic placeholder, to be refined from Knapp 2017 in #121"
+            },
+            "digitization_error": {
+                "value": 0.0,
+                "kind": "absolute",
+                "basis": "stated scalar (not digitized from a figure)"
+            },
+            "source": {
+                "paper": "Direct measurement of the inertial confinement time in a magnetically driven implosion",
+                "figure": "stated stagnation scalar (text; not a figure point)",
+                "doi": "10.1063/1.4981206"
+            }
+        },
+        {
+            "id": "peak_density",
+            "observable": "peak fuel mass density at stagnation",
+            "kind": "scalar",
+            "value": 10.0,
+            "unit": "g/cc",
+            "confidence": "medium",
+            "extraction_method": "stated scalar (issue #107 / Knapp 2017; stated approximately as '~10 g/cc')",
+            "oracle_kind": "experiment",
+            "experimental_error": {
+                "value": 0.2,
+                "kind": "relative",
+                "basis": "stated approximately ('~10 g/cc', ~1 significant figure); ~20% placeholder, to be refined from Knapp 2017 in #121"
+            },
+            "digitization_error": {
+                "value": 0.0,
+                "kind": "absolute",
+                "basis": "stated scalar (not digitized from a figure)"
+            },
+            "source": {
+                "paper": "Direct measurement of the inertial confinement time in a magnetically driven implosion",
+                "figure": "stated stagnation scalar (text; not a figure point)",
+                "doi": "10.1063/1.4981206"
+            }
+        },
+        {
+            "id": "confinement_time",
+            "observable": "directly-measured inertial confinement time at stagnation",
+            "kind": "scalar",
+            "confidence": "medium",
+            "extraction_method": "stated scalar in Knapp 2017 text/abstract: the directly-measured inertial confinement time is 14 ns, compared with 16 ns from 1D simulation. Read from text, not digitized from a figure. Exact published +/- uncertainty not transcribed (full text paywalled, DOI 10.1063/1.4981206); placeholder uncertainty below to be refined when the PDF is in hand.",
+            "oracle_kind": "experiment",
+            "source": {
+                "paper": "Direct measurement of the inertial confinement time in a magnetically driven implosion",
+                "figure": "stated text/abstract scalar (14 ns measured vs 16 ns 1D); not a figure point",
+                "doi": "10.1063/1.4981206"
+            },
+            "value": 14.0,
+            "unit": "ns",
+            "comparison_1d": {
+                "value": 16.0,
+                "unit": "ns",
+                "basis": "1D simulation confinement time stated alongside the measurement in Knapp 2017"
+            },
+            "experimental_error": {
+                "value": 0.14,
+                "kind": "relative",
+                "basis": "PLACEHOLDER ~14% (~2 ns); the 14 vs 16 ns measurement-vs-1D spread implies ~ns-scale precision. Exact published uncertainty to be transcribed from Knapp 2017 full text."
+            },
+            "digitization_error": {
+                "value": 0.0,
+                "kind": "absolute",
+                "basis": "stated text scalar, not digitized from a figure"
+            }
+        },
+        {
+            "id": "inner_radius_trajectory",
+            "observable": "inner liner radius vs time at stagnation (experiment radiograph)",
+            "kind": "curve",
+            "status": "digitized",
+            "confidence": "medium",
+            "unit": "mm",
+            "x_unit": "ns",
+            "extraction_method": "digitized from Knapp 2017 inner-radius-vs-time figure (knapp_confine_r_vs_t.png panel b, gray open-circle Experiment radiograph series), human-QC'd GOOD (6 circles via Hough ring-voting; the legend box was explicitly excluded and the 2 rebound points at r~0.54 recovered; user-confirmed). Source figure + reproducible extraction committed under verification/ground_truth/digitization_review/ (figures/knapp_confine_r_vs_t.png, extracted/extracted_points_v3.json key B4_inner_radius_points_exp, fix_b4.py). Per-point experimental error bars are the digitized published bars; digitization error is a documented estimate.",
+            "oracle_kind": "experiment",
+            "source": {
+                "paper": "Direct measurement of the inertial confinement time in a magnetically driven implosion",
+                "figure": "inner-radius-vs-time, Experiment radiograph circles (knapp_confine_r_vs_t.png panel b)",
+                "doi": "10.1063/1.4981206"
+            },
+            "points": [
+                {
+                    "x": 3118.5,
+                    "y": 0.48,
+                    "experimental_error": {
+                        "value": 0.015,
+                        "kind": "absolute",
+                        "basis": "digitized from the published per-point error bar on the Knapp-2017 Fig. (panel b) Experiment radiograph circle (err_lo=0.465, err_hi=0.495 mm); absolute half-bar."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated Hough ring-centroid reading error on knapp_confine_r_vs_t.png (legend box explicitly excluded; user-confirmed 6 circles)."
+                    },
+                    "confidence": "medium"
+                },
+                {
+                    "x": 3123.0,
+                    "y": 0.435,
+                    "experimental_error": {
+                        "value": 0.046,
+                        "kind": "absolute",
+                        "basis": "digitized from the published per-point error bar on the Knapp-2017 Fig. (panel b) Experiment radiograph circle (err_lo=0.390, err_hi=0.481 mm); absolute half-bar."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated Hough ring-centroid reading error on knapp_confine_r_vs_t.png (legend box explicitly excluded; user-confirmed 6 circles)."
+                    },
+                    "confidence": "medium"
+                },
+                {
+                    "x": 3125.7,
+                    "y": 0.468,
+                    "experimental_error": {
+                        "value": 0.042,
+                        "kind": "absolute",
+                        "basis": "digitized from the published per-point error bar on the Knapp-2017 Fig. (panel b) Experiment radiograph circle (err_lo=0.429, err_hi=0.510 mm); absolute half-bar."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated Hough ring-centroid reading error on knapp_confine_r_vs_t.png (legend box explicitly excluded; user-confirmed 6 circles)."
+                    },
+                    "confidence": "medium"
+                },
+                {
+                    "x": 3127.3,
+                    "y": 0.457,
+                    "experimental_error": {
+                        "value": 0.041,
+                        "kind": "absolute",
+                        "basis": "digitized from the published per-point error bar on the Knapp-2017 Fig. (panel b) Experiment radiograph circle (err_lo=0.416, err_hi=0.494 mm); absolute half-bar."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated Hough ring-centroid reading error on knapp_confine_r_vs_t.png (legend box explicitly excluded; user-confirmed 6 circles)."
+                    },
+                    "confidence": "medium"
+                },
+                {
+                    "x": 3129.9,
+                    "y": 0.537,
+                    "experimental_error": {
+                        "value": 0.047,
+                        "kind": "absolute",
+                        "basis": "digitized from the published per-point error bar on the Knapp-2017 Fig. (panel b) Experiment radiograph circle (err_lo=0.490, err_hi=0.550 mm); absolute half-bar."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated Hough ring-centroid reading error on knapp_confine_r_vs_t.png (legend box explicitly excluded; user-confirmed 6 circles)."
+                    },
+                    "confidence": "medium"
+                },
+                {
+                    "x": 3136.2,
+                    "y": 0.543,
+                    "experimental_error": {
+                        "value": 0.026,
+                        "kind": "absolute",
+                        "basis": "digitized from the published per-point error bar on the Knapp-2017 Fig. (panel b) Experiment radiograph circle (err_lo=0.517, err_hi=0.569 mm); absolute half-bar."
+                    },
+                    "digitization_error": {
+                        "value": 0.05,
+                        "kind": "relative",
+                        "basis": "estimated Hough ring-centroid reading error on knapp_confine_r_vs_t.png (legend box explicitly excluded; user-confirmed 6 circles)."
+                    },
+                    "confidence": "medium"
+                }
+            ]
+        }
+    ]
 }

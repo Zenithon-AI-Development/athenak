@@ -129,3 +129,37 @@ from roughness is inherently stochastic) the verdict is recorded as `QUALITATIVE
 (`binding=False`) via `scorecard.record` — it is **not** a quantitative curve match; the
 McBride-2012 growth *curve* stays the reduced-`_cpu` reported anchor (#143). Same
 report-vs-assert discipline, on a qualitative observable.
+
+### Corrected v3 radius-vs-time trajectory anchors (#156 [VA8])
+
+The figure-traced **trajectory** point clouds for B3 (Knapp 2020 converging-RM) and B4
+(Knapp 2017 ICF) were human-QC-corrected to **v3** (B3 shock: spurious upper strand culled
+→ 30 monotonic pts; B4 inner-radius: the 2 rebound points at r≈0.54 recovered and the
+legend box excluded → 6 circles) and committed as `kind: curve` datums:
+`rm_liner_trajectory` / `rm_shock_trajectory` (`b3_*.json`) and `inner_radius_trajectory`
+(`b4_*.json`). B4's per-point experimental error is the **digitized published error bar**
+(`kind: absolute`); B3's is a documented relative placeholder. The corrected v3 points live
+under `ground_truth/digitization_review/extracted/extracted_points_v3.json` with the
+reproducible `fix_b3.py` / `fix_b4.py` extraction and `*_overlay_v3.png` verification plots.
+
+Both benchmarks (`test_verify_maglif_rm_anchor_cpu.py`, `test_verify_maglif_icf_cpu.py`)
+*report* each trajectory against the oracle (`binding=False`) and overlay it via
+`overlay_curve`, reproducing the v3 diagnostic figure. Because a reduced code-unit
+trajectory is incommensurate with the experiment's mm/ns axis, each test maps the **sim
+abscissa** onto the digitized window (`_map_to_window`) so every experimental point overlaps
+for a point-by-point comparison **without extrapolation**; the **ordinate stays physically
+calibrated** (a provisional length scale per test — `R_FUEL_MM`, `R_MM_PER_CODE`), so the
+verdict is an honest reported deviation, not a forced fit. Only the *sim* curve is mapped —
+no experimental point or tolerance is altered (ADR-0008). B4's `confinement_time` (a stated
+text scalar in Knapp 2017: 14 ns measured vs 16 ns 1D) is likewise promoted out of
+`pending_digitization` and *reported* via the scalar oracle (mapped to ns with the
+provisional `NS_PER_CODE` time calibration). The dispatch is covered red-first by
+`test_verify_b3b4_trajectory_anchor_cpu.py`. The absolute-SI binding asserts stay on the
+GPU/SI runs (#119/#120/#121).
+
+> Baseline note (#156): `baselines/maglif_rm_anchor.json` was stale — captured at
+> `tlim=1.0` (101 pts) while the committed input is `tlim=0.85` (→ 86 pts), so the B3 anchor
+> Layer-2 guard failed `101→86` on `main` regardless of this change. It was regenerated to
+> the committed-input length; the new baseline is **byte-identical** to the old on the
+> overlapping first 86 points (no physics drift — only the 15 phantom trailing points were
+> trimmed).
