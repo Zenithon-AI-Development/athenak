@@ -56,7 +56,17 @@ reproduce and **must** carry full provenance (validated on load — a missing fi
 
 ## Currently extracted vs. pending
 
-Faithfully extracted now: **B4** `min_radius` = 0.45 mm and `peak_density` ≈ 10 g/cc
-(stated scalars). All MRT/RM growth curves and B4's confinement-time result are
+Faithfully extracted now:
+- **B4** `min_radius` = 0.45 mm and `peak_density` ≈ 10 g/cc (stated scalars).
+- **B3** (the quantitative anchor, #119/[C2]): `rm_interface_velocity` = 19.5 ± 2 km/s and
+  `rm_transmitted_shock_velocity` = 26.7 ± 2 km/s (PDV-measured, stated in the Knapp 2020
+  text); the dimensionless `rm_shock_interface_velocity_ratio` = 1.369 (ratio of the two);
+  and `rm_growth_factor` = 4.8 (the dimensionless RM amplitude growth over the radiographed
+  first-shock phase, derived from the stated post-shock amplitude h_ps = 10 µm and the
+  measured kz·h > 1 nonlinear-threshold crossing at kz·δr = 11.8). All are read from the
+  paper text, not pixel-traced; the growth-factor band is set wide to honour the
+  digitization/experimental uncertainty (the measurement brackets linear theory).
+
+The remaining MRT growth curves (B1, B2) and B4's confinement-time result stay
 `pending_digitization`, deferred to their Phase-C benchmark issues so the curves are
 digitized at the point of use rather than guessed here.

@@ -88,6 +88,13 @@ class FLDMultigroupOperator : public parabolic::ParabolicOperator {
   //! applied to every group.
   void ApplyBoundary(DvceArray5D<Real> &u) override;
 
+  //! \brief Precompute the per-group extinction chi_g = rho*kappa_R,g from the tabulated
+  //! Rosseland transport opacity.  PUBLIC and NOT in the constructor on purpose: nvcc
+  //! forbids an extended __device__ lambda (the par_for) whose enclosing parent function
+  //! is a constructor or has private/protected access -- so this ordinary public method
+  //! holds the kernel and the ctor merely calls it.
+  void InitChi(const opacity::MultigroupOpacity &table, Real rho_bg, Real te_bg);
+
   // accessors (used by the verification driver / unit test)
   int ngroups() const { return ngroups_; }
   Real c_light() const { return c_; }

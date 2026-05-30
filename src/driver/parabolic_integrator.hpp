@@ -302,6 +302,24 @@ class ParabolicIntegrator {
 };
 
 //----------------------------------------------------------------------------------------
+//! \struct OperatorActionFunctor
+//! \brief Wraps a ParabolicOperator as the RKL2 superstep action M(in) -> out (refresh
+//! `in`'s ghosts via ApplyBoundary, then evaluate OperatorAction).  This MUST be a named,
+//! namespace-scope type rather than a function-local lambda: SuperstepStages is a
+//! template holding KOKKOS_LAMBDA kernels, and nvcc forbids an extended __device__ lambda
+//! whose enclosing template (here SuperstepStages<OpFunc>) has a *function-local* type as
+//! a template argument ("type local to a function cannot be a template argument").
+//! Passing a local lambda as OpFunc (as the old OperatorSplitStep did) therefore failed
+//! to compile under CUDA, leaving the operator-split parabolic stack GPU-incompatible.
+struct OperatorActionFunctor {
+  ParabolicOperator *op;
+  void operator()(DvceArray5D<Real> in, DvceArray5D<Real> out) const {
+    op->ApplyBoundary(in);
+    op->OperatorAction(in, out);
+  }
+};
+
+//----------------------------------------------------------------------------------------
 //! \fn OperatorSplitStep
 //! \brief Advance one ParabolicOperator's `field` over the operator-split step `dt` with
 //! a single adaptive RKL2 superstep.  This is the BODY of the operator-split task
@@ -313,10 +331,7 @@ inline void OperatorSplitStep(const ParabolicIntegrator &integ, ParabolicOperato
                               DvceArray5D<Real> field, Real dt) {
   op.ApplyBoundary(field);
   const Real dt_exp = op.ExplicitStableDt();
-  auto opfunc = [&op](DvceArray5D<Real> in, DvceArray5D<Real> out) {
-    op.ApplyBoundary(in);
-    op.OperatorAction(in, out);
-  };
+  OperatorActionFunctor opfunc{&op};
   integ.Superstep(field, dt, dt_exp, opfunc);
 }
 

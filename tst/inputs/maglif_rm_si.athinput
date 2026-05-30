@@ -1,0 +1,144 @@
+# AthenaK input: SI-DIMENSIONAL converging single-mode Richtmyer-Meshkov (Ellison benchmark 3,
+# the QUANTITATIVE ANCHOR, issue #119/[C2]).  Replicates the Knapp et al. 2020 magnetically
+# driven convergent-RM "Decel" platform (Phys. Plasmas 27, 092707; SAND2020-10207J): a
+# magnetically driven Be liner (piston) launches a converging shock through a liquid-deuterium
+# working fluid into an on-axis Be ROD carrying a machined axial (kz) perturbation, which grows
+# by the shock-driven Richtmyer-Meshkov feed plus Bell-Plesset convergence amplification.
+#
+# DIMENSIONAL SETUP (<units> block, #119): the geometry is the published Knapp 2020 target,
+# expressed in physical CGS in the <problem> block and normalised to code units by the pgen.
+#   length_cgs  = 0.1     -> 1 code length  = 1 mm   (so code radius r  = 10*r mm)
+#   density_cgs = 0.167   -> 1 code density = liquid-D2 density 0.167 g/cm^3
+#   velocity_cgs= 1.0     -> reporting scale only; the validation uses DIMENSIONLESS observables
+#                            (growth factor, V_S,T/v_i velocity ratio, convergence ratio, kz*dr),
+#                            which are governed by the Atwood number + convergence and need no
+#                            absolute-velocity calibration (an ideal-EOS run cannot set the
+#                            absolute km/s scale; real IONMIX-EOS material coupling is later work).
+# The <mesh> extent is in code units (= physical/length_cgs).
+#
+# PHYSICS SCOPE: the converging RM is HYDRODYNAMIC -- the seeded-mode growth is set by the
+# shock-deposited vorticity (RM) plus Bell-Plesset convergence amplification, governed by the
+# Atwood number and the convergence ratio.  It is therefore carried by the cylindrical
+# ideal-MHD core (ADR-0004) + the prescribed-I(t) circuit drive (ADR-0005 mode A), which is
+# exactly what is exercised here.  The coupled radiation-conduction stack (ADR-0009) is OFF
+# for this benchmark for two reasons: (1) with the nondimensional TOY coefficients (real
+# opacity/EOS-derived material coupling is not yet wired into the EOS) it would non-physically
+# DAMP the very RM growth being measured (#116/[B3] documents anisotropic conduction
+# stabilising the mode); and (2) the operator-split parabolic GPU path currently segfaults at
+# runtime (the stack was only ever exercised on CPU; its GPU compile-compatibility is fixed in
+# this PR -- parabolic_integrator.hpp / fld_multigroup_operator -- but a runtime GPU bug
+# remains, a dedicated GPU-port issue).  The coupled stack is validated separately on CPU
+# (units #115, benchmarks #116, per-PR smoke #117).
+#
+# RESOLUTION NOTE: AthenaK does not support 3-D cylindrical SMR/AMR (only the 2-D (r,phi)
+# divergence-preserving Balsara B-prolongation exists, src/coordinates/coordinates.cpp:62 /
+# issue #38).  The Knapp perturbation is AXIAL (kz along z), so z must be resolved -> a 3-D
+# (r,phi,z) mesh, hence AMR is unavailable for this geometry.  "Paper resolution" is therefore
+# reached with a UNIFORM fine radial grid: dr = 3.4mm/512 = 6.6 um resolves the 15 um seed and
+# its growth to >47 um (kz*h>1).  Multi-block (operator-split SyncParabolicGhosts, #108) is used.
+#
+# Built with -D PROBLEM=maglif (a USER pgen, not in the suite binary).  GPU run (athenakdev).
+
+<comment>
+problem   = MagLIF SI converging single-mode Richtmyer-Meshkov (Knapp 2020 / benchmark 3)
+
+<job>
+basename  = maglif_rm_si
+
+<units>
+length_cgs   = 0.1        # cm per code length  -> code length unit = 1 mm
+density_cgs  = 0.167      # g/cm^3 per code density -> code density unit = liquid-D2 density
+velocity_cgs = 1.0        # cm/s per code velocity (reporting only; observables are dimensionless)
+
+<mesh>
+nghost    = 2
+nx1       = 512        # radial zones (uniform); dr = 3.4mm/512 = 6.6 um (resolves 15um seed)
+x1min     = 0.0        # r = 0 axis
+x1max     = 3.4        # outer radius R_out = 3.4 mm (driven boundary, beyond 2.88mm liner)
+ix1_bc    = axis       # cylindrical r=0 axisymmetric boundary (issue #16)
+ox1_bc    = user       # circuit-driven B_phi boundary (issue #21)
+
+nx2       = 4          # thin azimuthal (phi) wedge (axisymmetric IC)
+x2min     = 0.0
+x2max     = 1.0
+ix2_bc    = periodic
+ox2_bc    = periodic
+
+nx3       = 32         # axial (z) zones over Lz = 0.6 mm -> 16 cells / 0.3mm wavelength
+x3min     = 0.0
+x3max     = 0.6        # Lz = 0.6 mm = 2 perturbation wavelengths (lambda = Lz/pert_mode)
+ix3_bc    = periodic
+ox3_bc    = periodic
+
+<meshblock>
+nx1       = 128        # 512/128 = 4 root MeshBlocks along r
+nx2       = 4
+nx3       = 16         # 32/16 = 2 root MeshBlocks along z (8 blocks total)
+
+<coord>
+system    = cylindrical  # (x1,x2,x3) = (r,phi,z)
+
+<time>
+evolution            = dynamic
+integrator           = rk2
+parabolic_integrator = sts        # operator-split parabolic backend (RKL2 STS, ADR-0009)
+cfl_number           = 0.3
+nlim                 = 400000
+tlim                 = 4.5         # shock crosses the D2 fill (~t=3) then implodes the rod
+ndiag                = 500
+
+<mhd>
+eos         = ideal
+reconstruct = plm
+rsolver     = hlld
+gamma       = 1.6666666666666667
+dfloor      = 1.0e-5
+pfloor      = 1.0e-7
+nscalars    = 1            # passive scalar tagging the rod material (s=1 rod, 0 elsewhere):
+                           # tracks the rod/D2 interface by composition (the s=0.5 contour),
+                           # robust through convergence where density cannot separate the
+                           # Be rod from the equally dense Be liner (output column r_00)
+# ---- coupled radiation-conduction stack OFF for the quantitative RM anchor (see header) ----
+# The converging RM growth is hydrodynamic; the toy-coefficient coupled stack would suppress
+# it (and the operator-split parabolic GPU path segfaults at runtime).  Validated on CPU
+# elsewhere (#115/#116/#117).  Left here (defaulted off) to document the wiring.
+strang_split          = false
+fld_operator_split    = false
+acond_operator_split  = false
+mrad_coupling         = false
+
+<problem>
+# ---- drive (ADR-0005 mode A): magnetically driven liner piston ----
+current_mode     = driven
+current_waveform = constant       # prescribed constant load current (Z-like converging drive)
+i0               = 35.0           # load current (code units) -- tuned for convergence ratio ~2
+t_rise           = 1.0
+mu0              = 1.0            # code-unit permeability (Heaviside-Lorentz)
+# ---- Knapp 2020 target geometry, PHYSICAL CGS (normalised by <units>) ----
+r_rod            = 0.08          # on-axis Be rod radius 0.8 mm (PERTURBED interface)
+d_rod            = 1.85          # Be rod density 1.85 g/cm^3
+r_fuel           = 0.224         # rod/fill -> liner inner radius 2.24 mm (D2 fill out to here)
+r_liner          = 0.288         # liner outer radius 2.88 mm (liner = [2.24,2.88]mm)
+d_fuel           = 0.167         # liquid-deuterium working fluid 0.167 g/cm^3
+d_liner          = 1.85          # Be liner density 1.85 g/cm^3
+d_vac            = 0.00167       # low-density vacuum gap (0.01 in code units)
+p0               = 1.67e-4       # cold thermal pressure -> code p0 = 1e-3 (p/u_rho/u_vel^2)
+bz0              = 0.0           # no axial premag on the RM rod (clean hydrodynamic RM)
+# ---- seeded perturbation on the rod (lambda = 300 um, h0 = 15 um, kz*h0 = 0.31) ----
+perturbation     = single_mode
+pert_amp         = 0.0015        # 15 um radial seed amplitude (-> 0.015 code = mm)
+pert_mode        = 2             # lambda = Lz/2 = 0.3 mm = 300 um  (matches Knapp 2020)
+pert_phase       = 0.0
+user_hist        = true
+
+<output1>
+file_type   = bin
+variable    = mhd_w_bcc
+id          = prim
+dt          = 0.05
+
+<output2>
+file_type      = hst
+variable       = mhd
+user_hist_only = true
+dt             = 0.05
