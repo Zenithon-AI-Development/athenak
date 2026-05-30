@@ -59,6 +59,16 @@ benchmark into an experiment-validated one — drop them into any `test_verify_*
   not-yet-digitized datum raises `PendingDatumError`; a datum missing provenance raises
   `ProvenanceError`. The experiment is always the oracle — FLASH/LASNEX values live in a
   datum's optional `secondary_reference` and are never binding.
+  * **Curve datums** (`kind: "curve"`, for the growth-curve benchmarks B1 #120 / B2 #122):
+    the datum carries a `points` list (`{x, y, experimental_error, digitization_error}`)
+    plus a `unit` (y) and `x_unit` (abscissa). Pass the **simulation curve** as
+    `sim = (x_sim, y_sim)`; the oracle interpolates the sim onto the experiment's abscissa
+    over the **overlapping support** `[max(min x), min(max x)]` (no extrapolation), tests
+    each compared point within its own `max(exp_err, dig_err)` band, and returns a
+    `CurveComparisonResult` (`.point_results`, `.n_compared`, `.n_failed`, `.passed`,
+    `.worst_point`). The aggregate passes iff every compared point is in band **and** at
+    least one point overlapped (an empty-support curve is a FAIL, not a vacuous pass).
+    `.worst_point` is a plain `ComparisonResult` you can hand to `scorecard.record_result`.
 * **`scorecard`** — record each verdict (`record_result(res)` / `record_pending(bench,
   obs, issue=NNN)`); the suite emits one verdict table at the end of the session (via
   `conftest.py`'s `pytest_terminal_summary`, written to `plots/scorecard.txt`). Pass
@@ -71,5 +81,6 @@ benchmark into an experiment-validated one — drop them into any `test_verify_*
   the simulation series, in physical units.
 
 Worked example: `cylindrical/test_verify_maglif_icf_cpu.py` (B4 ICF, the first slice using
-this substrate). The curve benchmarks (#142/#143) plug a `kind: curve` oracle comparison
-into the same scorecard + overlay path.
+this substrate). The curve-comparison engine itself is unit-tested in isolation in
+`test_verify_ground_truth_oracle_cpu.py` (#141 [VA2]); the curve benchmarks (#142/#143)
+plug a `kind: curve` oracle comparison into the same scorecard + overlay path.
