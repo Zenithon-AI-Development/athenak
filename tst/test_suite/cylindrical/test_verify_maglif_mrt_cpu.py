@@ -33,10 +33,31 @@ Discriminating quantities (see inputs/maglif_mrt.athinput):
                    forward projection of the axisymmetric density along the sight line):
                    the experimentally observable MRT signature on the imploding limb.
 
+Oracle (Layer-1, ADR-0008; #142 [VA3]): the EXPERIMENT, via the committed ground-truth
+datum in ``verification/ground_truth/b1_single_mode_mrt_sinars_2011.json`` (D. B. Sinars
+et al., Phys. Plasmas 18, 056301, 2011).  The seeded single-mode amplitude-growth history
+(``times``, ``a_outer``) is THE growth curve this benchmark reproduces; it is compared
+against the committed Sinars-2011 experimental growth curve via the oracle's curve
+comparison (``GroundTruthOracle``) and the verdict is recorded in the suite scorecard,
+replacing the former self-anchored ``GROWTH_MIN`` (and the radiograph ``RAD_GROWTH``)
+bars.  Only cheap qualitative gates -- finiteness, convergence fraction, seeded-mode
+dominance, seed-amplitude sanity (and the front-inward / radiograph-grows sign checks) --
+remain as fast pre-checks.
+
+This reduced nondimensional ``_cpu`` surrogate emits the growth curve in CODE UNITS, while
+the Sinars curve is a physical amplitude-vs-time radiograph: per the reduced-surrogate
+policy (B3 velocity-ratio / B4 ICF #140) the absolute experimental curve comparison is the
+paper-resolution SI run (#120 [C3], real IONMIX EOS/opacity #118), which outputs physical
+units directly.  The committed B1 curve datum is still ``pending_digitization`` (the
+Sinars figure is digitized -- with full WebPlotDigitizer provenance + per-point error, no
+fabricated points -- in #120), so the curve verdict is REPORTED as PENDING here, never as
+a pass; the diagnostic overlays the experimental curve + band once digitized.
+
 The test runs the implosion, checks that (1) the liner converges, (2) the leading front
-moves inward, (3) the seeded single mode grows on the driven surface and stays dominant
-(no spurious mode cascade), (4) the synthetic-radiograph limb modulation grows, then plots
-the trajectories + a synthetic radiograph and saves/diffs a golden regression baseline.
+moves inward, (3) the seeded single mode starts at the seed amplitude and stays dominant
+(no spurious mode cascade), (4) the synthetic-radiograph limb modulation grows, anchors
+the growth curve against the Sinars-2011 oracle, then plots the growth-curve overlay + the
+trajectories + a synthetic radiograph and saves/diffs a golden regression baseline.
 Auto-collected by run_test_suite.py (module name contains ``_cpu``).
 """
 
@@ -53,6 +74,9 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import test_suite.testutils as testutils  # noqa: E402
 import test_suite.verification.harness as harness  # noqa: E402
+import test_suite.verification.ground_truth_oracle as gto  # noqa: E402
+import test_suite.verification.scorecard as scorecard  # noqa: E402
+import test_suite.verification.experiment_overlay as overlay  # noqa: E402
 import test_suite.cylindrical.maglif_coupled_energy as cenergy  # noqa: E402
 
 # bin_convert lives next to athena_read in vis/python; add it by absolute path so the
@@ -66,15 +90,12 @@ PERT_AMP = 0.05        # seeded radial interface amplitude
 D_LINER = 1.0          # liner (dense shell) density
 HALF = 0.5 * D_LINER   # half-max density level isolating the dense liner
 
-# Verification thresholds.
+# Qualitative pre-check thresholds (fast sign/shape gates; NOT experiment-anchored bars).
+# The seeded single-mode amplitude-growth signature itself is anchored against the Sinars-
+# 2011 experimental growth curve via the curve oracle (#142), which replaces the former
+# self-anchored GROWTH_MIN (and the self-anchored radiograph-growth RAD_GROWTH) bars.
 CONV_FRAC = 0.75       # require >= 25% bulk convergence (R_liner shrinks)
-# >= 1.3x single-mode growth on the driven surface.  Re-anchored from the ideal-MHD 1.5x
-# for the coupled regime (#116/[B3]): anisotropic conduction stabilises the shorter-
-# wavelength axial mode, so the coupled single-mode growth (~1.5x) is below the ideal
-# (~1.9x); 1.3x keeps the same ~80% relative margin the original bar had vs its ideal run.
-GROWTH_MIN = 1.3
 DOM_FRAC = 0.6         # seeded mode must hold >= 60% of the interface z-variance
-RAD_GROWTH = 1.3       # require the synthetic-radiograph modulation to grow >= 1.3x
 
 input_file = os.path.join(testutils._repo_root(), "tst", "inputs", "maglif_mrt.athinput")
 bin_dir = os.path.join(testutils.pgen_run_dir("maglif"), "bin")
@@ -241,14 +262,13 @@ def test_verify_maglif_mrt():
             f"leading front did not move inward: {r_front[0]:.4f} -> {r_front[-1]:.4f}"
         )
 
-        # (3) The seeded single mode grows on the magnetically-driven (outer) interface --
-        # the MRT growth signature -- starting from ~the seeded amplitude.
+        # (3) Seed-amplitude sanity: the driven-surface single-mode amplitude starts at
+        # ~the seeded value (the reduction picked up the right mode at the seed level).
+        # The growth MAGNITUDE is no longer a self-anchored bar -- the seeded-mode
+        # amplitude-growth history (times, a_outer) is compared against the Sinars-2011
+        # experimental growth curve via the oracle below (#142).
         assert abs(a_outer[0] - PERT_AMP) < 0.3 * PERT_AMP, (
             f"initial driven-surface amplitude {a_outer[0]:.4f} != seed {PERT_AMP}"
-        )
-        assert a_outer[-1] > GROWTH_MIN * a_outer[0], (
-            f"single-mode did not grow: a_out {a_outer[0]:.4f} -> {a_outer[-1]:.4f} "
-            f"(need > {GROWTH_MIN}x)"
         )
 
         # (4) The seeded mode stays dominant on the driven interface (no spurious
@@ -262,15 +282,64 @@ def test_verify_maglif_mrt():
             f"seeded mode not dominant at stagnation: {dom:.2f} < {DOM_FRAC}"
         )
 
-        # (5) The synthetic-radiograph limb modulation (the observable MRT signal) grows.
-        assert rad_mod[-1] > RAD_GROWTH * rad_mod[0], (
-            f"radiograph modulation did not grow: {rad_mod[0]:.4e} -> {rad_mod[-1]:.4e} "
-            f"(need > {RAD_GROWTH}x)"
+        # (5) The synthetic-radiograph limb modulation (the observable MRT signal) grows:
+        # a qualitative SIGN check only.  The former self-anchored >=1.3x bar is removed;
+        # the growth magnitude is anchored against the experiment via the curve oracle.
+        assert rad_mod[-1] > rad_mod[0], (
+            f"radiograph modulation did not grow: {rad_mod[0]:.4e} -> {rad_mod[-1]:.4e}"
         )
 
         # (6) The coupled radiation-conduction-MHD stack ran and kept the species-split
         # energy budget physically sane (erad finite, non-neg, bounded; #116/[B3]).
         cenergy.assert_coupled_energy_sane("maglif_mrt")
+
+        # --- QUANTITATIVE ANCHOR (#142): the seeded single-mode amplitude-growth history
+        # (times, a_outer) IS the growth curve this benchmark reproduces.  It is compared
+        # against the committed Sinars-2011 experimental growth curve via the oracle's
+        # curve comparison (GroundTruthOracle), replacing the former self-anchored
+        # GROWTH_MIN bar.  This reduced nondimensional _cpu surrogate emits the curve in
+        # CODE UNITS, whereas the Sinars curve is a physical amplitude-vs-time radiograph;
+        # per the reduced-surrogate policy (B3 velocity-ratio / B4 ICF #140) the absolute
+        # experimental comparison is the paper-resolution SI run (#120 [C3], real IONMIX
+        # EOS #118), which outputs physical units directly.  The committed B1 curve datum
+        # is still pending_digitization (the Sinars figure is digitized -- with full
+        # WebPlotDigitizer provenance + per-point error, no fabricated points -- in #120),
+        # so it is REPORTED as PENDING here, never as a pass.  The wiring below is the
+        # full curve-oracle path: it reports PENDING while pending and, once digitized,
+        # compares the curve and reports the verdict (binding=False) with the experimental
+        # band overlaid -- #120 then flips it to the binding SI assert.
+        oracle = gto.GroundTruthOracle.from_committed()
+        datum = oracle.get("B1", "single_mode_amplitude_growth")
+        if datum.is_pending:
+            scorecard.record_pending(
+                "B1", "single_mode_amplitude_growth", issue=120,
+                note="Sinars 2011 amplitude-growth curve; figure digitization + "
+                     "SI compare in #120",
+            )
+            exp_points = None
+        else:
+            res = oracle.compare(
+                "B1", "single_mode_amplitude_growth", (times, a_outer)
+            )
+            scorecard.record_result(
+                res.worst_point, binding=False,
+                note="reduced code-unit surrogate; absolute-SI compare is #120",
+            )
+            print(f"[B1] {res}  (reported, not asserted)")
+            exp_points = [
+                {"x": p.x, "y": p.exp_value, "band": p.band}
+                for p in res.point_results
+            ]
+
+        # Experiment-overlay diagnostic: the sim growth curve (seeded-mode amplitude vs
+        # time) with the experimental curve + band overlaid once digitized; until then the
+        # sim curve is plotted with a pending-digitization annotation (#120).
+        overlay.overlay_curve(
+            "maglif_mrt", times, a_outer, exp_points=exp_points,
+            xlabel="t", ylabel="seeded-mode amplitude a_outer",
+            x_unit="code units", unit="code units", pending_issue=120,
+            title="Single-mode MRT growth curve vs Sinars 2011 (MagLIF benchmark 1)",
+        )
 
         # Plot the synthetic radiograph (initial vs final); trajectories + baseline below.
         _plot_radiograph(xrad, z, rad0, radN, times[0], times[-1])

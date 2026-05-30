@@ -145,3 +145,34 @@ def test_overlay_handles_a_scalar_with_no_secondary_reference(tmp_path):
         outdir=str(tmp_path),
     )
     assert os.path.isfile(out)
+
+
+# Curve overlay ([VA3]/#142): the growth-curve analogue of overlay_scalars, used by the
+# single-/multi-mode MRT growth-curve benchmarks (B1 #142 / B2 #143).
+def test_overlay_curve_emits_a_figure_with_experimental_points_and_band(tmp_path):
+    """The curve overlay draws the sim growth curve + digitized exp points/band."""
+    x_sim = [0.0, 0.5, 1.0, 1.5, 2.0]
+    y_sim = [0.05, 0.08, 0.13, 0.22, 0.40]
+    exp_points = [
+        {"x": 0.5, "y": 0.07, "band": 0.02},
+        {"x": 1.0, "y": 0.14, "band": 0.03},
+        {"x": 1.5, "y": 0.20, "band": 0.04},
+    ]
+    out = overlay.overlay_curve(
+        "curve_overlay_selftest", x_sim, y_sim, exp_points,
+        xlabel="t", ylabel="amplitude", x_unit="ns", unit="um",
+        title="curve overlay self-test", outdir=str(tmp_path),
+    )
+    assert os.path.isfile(out)
+    assert os.path.getsize(out) > 0
+
+
+def test_overlay_curve_handles_pending_experiment_without_a_band(tmp_path):
+    """A not-yet-digitized curve still plots the sim curve, annotated pending; no band."""
+    out = overlay.overlay_curve(
+        "curve_overlay_pending", [0.0, 1.0, 2.0], [0.05, 0.1, 0.3],
+        exp_points=None, xlabel="t", ylabel="amplitude",
+        pending_issue=120, outdir=str(tmp_path),
+    )
+    assert os.path.isfile(out)
+    assert os.path.getsize(out) > 0

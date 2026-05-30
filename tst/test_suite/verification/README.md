@@ -79,8 +79,20 @@ benchmark into an experiment-validated one — drop them into any `test_verify_*
 * **`experiment_overlay.overlay_scalars`** — emits `plots/<name>_overlay.png` overlaying
   each scalar's experimental value + tolerance band (and any FLASH secondary, dashed) on
   the simulation series, in physical units.
+  * **`experiment_overlay.overlay_curve`** (#142 [VA3]) — the curve analogue, emitting
+    `plots/<name>_growth_overlay.png`: the simulation growth curve as a marked line with
+    the digitized experimental points + per-point band overlaid. Pass `exp_points` as a
+    list of `{x, y, band}` (the absolute per-point band, e.g. from the oracle's
+    `CurveComparisonResult.point_results`); pass `exp_points=None` (with `pending_issue`)
+    for a not-yet-digitized curve — the sim curve is still plotted, annotated
+    `pending digitization (#NNN)`, never a fabricated band.
 
-Worked example: `cylindrical/test_verify_maglif_icf_cpu.py` (B4 ICF, the first slice using
-this substrate). The curve-comparison engine itself is unit-tested in isolation in
-`test_verify_ground_truth_oracle_cpu.py` (#141 [VA2]); the curve benchmarks (#142/#143)
-plug a `kind: curve` oracle comparison into the same scorecard + overlay path.
+Worked examples: `cylindrical/test_verify_maglif_icf_cpu.py` (B4 ICF scalars, #140 [VA1])
+and `cylindrical/test_verify_maglif_mrt_cpu.py` (B1 single-mode MRT growth *curve*, #142
+[VA3]). The curve-comparison engine itself is unit-tested in isolation in
+`test_verify_ground_truth_oracle_cpu.py` (#141 [VA2]); the B1/B2 growth-curve benchmarks
+(#142/#143) plug a `kind: curve` oracle comparison into the same scorecard + overlay path.
+A reduced nondimensional `_cpu` surrogate emits its curve in code units and *reports* the
+verdict (`binding=False`); the absolute experimental comparison is the paper-resolution SI
+run (#120/#122). An un-digitized curve datum stays `pending_digitization` and is reported
+as `PENDING`, never a pass (ADR-0008 — no fabricated points/tolerances).
