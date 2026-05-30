@@ -48,15 +48,9 @@ FLDMultigroupOperator::FLDMultigroupOperator(MeshBlockPack *pp, ParameterInput *
   pbval_flux_(nullptr),
   pbval_(nullptr),
   coarse_("fld_mg_coarse", 1, 1, 1, 1, 1) {
-  // Precompute the per-group extinction chi_g from the tabulated Rosseland transport
-  // (mass) opacity at the background: chi_g = rho * kappa_R,g(rho, te) [1/length].
-  opacity::MultigroupOpacity tab = table;   // shallow View copy -> device-valid in kernel
-  auto chi = chi_;
-  const Real rho = rho_bg, te = te_bg;
-  const int ng = ngroups_;
-  par_for("fld_mg_chi_init", DevExeSpace(), 0, ng-1, KOKKOS_LAMBDA(const int ig) {
-    chi(ig) = rho*tab.RosselandTransport(ig, rho, te);
-  });
+  // Precompute the per-group extinction chi_g (in a member function, not here: nvcc
+  // forbids the extended-lambda par_for inside a constructor).
+  InitChi(table, rho_bg, te_bg);
 
   // own boundary-values object for the per-substage neighbor ghost exchange: a unique MPI
   // communicator for this operator's exchange, buffers sized to ALL groups (the
@@ -79,6 +73,24 @@ FLDMultigroupOperator::FLDMultigroupOperator(MeshBlockPack *pp, ParameterInput *
     pbval_flux_ = new MeshBoundaryValuesCC(pp, nullptr, false);
     pbval_flux_->InitializeBuffers(rflx_.x1f.extent_int(1));
   }
+}
+
+//----------------------------------------------------------------------------------------
+//! \fn void FLDMultigroupOperator::InitChi()
+//! \brief Precompute the per-group extinction chi_g = rho * kappa_R,g(rho, te) [1/length]
+//! from the tabulated Rosseland transport (mass) opacity at the uniform background.
+//! Separated from the constructor because nvcc rejects an extended __device__ lambda
+//! whose enclosing parent function is a constructor (cannot take its address).
+
+void FLDMultigroupOperator::InitChi(const opacity::MultigroupOpacity &table,
+                                    Real rho_bg, Real te_bg) {
+  opacity::MultigroupOpacity tab = table;   // shallow View copy -> device-valid in kernel
+  auto chi = chi_;
+  const Real rho = rho_bg, te = te_bg;
+  const int ng = ngroups_;
+  par_for("fld_mg_chi_init", DevExeSpace(), 0, ng-1, KOKKOS_LAMBDA(const int ig) {
+    chi(ig) = rho*tab.RosselandTransport(ig, rho, te);
+  });
 }
 
 //----------------------------------------------------------------------------------------

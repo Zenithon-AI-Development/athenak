@@ -305,14 +305,36 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
 
   if (restart) return;
 
-  // ---- target geometry + state (<problem> block) ----
-  Real r_fuel  = pin->GetOrAddReal("problem", "r_fuel", 0.4);
-  Real r_liner = pin->GetOrAddReal("problem", "r_liner", 0.6);
-  Real d_fuel  = pin->GetOrAddReal("problem", "d_fuel", 0.05);
-  Real d_liner = pin->GetOrAddReal("problem", "d_liner", 1.0);
-  Real d_vac   = pin->GetOrAddReal("problem", "d_vac", 0.01);
-  Real p0      = pin->GetOrAddReal("problem", "p0", 1.0e-3);
-  Real bz0     = pin->GetOrAddReal("problem", "bz0", 0.0);   // axial premag field
+  // ---- dimensional (SI/CGS) unit system (<units> block; #119/[C2]) ----
+  // The replication benchmarks (Phase C) are set up against the published SI geometry, so
+  // the <problem> lengths/densities/pressure are expressed in physical units and the pgen
+  // normalises them to code units here.  Three independent CGS scales fix the system:
+  //   length_cgs   -- cm per code length (so a code radius r maps to r*length_cgs cm)
+  //   density_cgs  -- g/cm^3 per code density
+  //   velocity_cgs -- cm/s per code velocity (-> time=length/vel, pressure=density*vel^2)
+  // ALL DEFAULT to 1.0, so a benchmark with no <units> block (every pre-#119 input) sees
+  // an identity normalisation and stays byte-identical.  The <mesh> extent is in code
+  // units; an SI input sets it to (physical extent)/length_cgs to stay consistent here.
+  Real u_len = pin->GetOrAddReal("units", "length_cgs", 1.0);
+  Real u_rho = pin->GetOrAddReal("units", "density_cgs", 1.0);
+  Real u_vel = pin->GetOrAddReal("units", "velocity_cgs", 1.0);
+  Real u_prs = u_rho*u_vel*u_vel;                 // code pressure unit = rho*v^2
+
+  // ---- target geometry + state (<problem>; physical units, normalised by <units>) ----
+  // r_rod > 0 selects the converging Richtmyer-Meshkov geometry (#119/[C2]): a dense
+  // on-axis ROD carrying the seeded perturbation, a working-fluid gap out to r_fuel, then
+  // the driven liner [r_fuel, r_liner) and the vacuum [r_liner, R).  r_rod <= 0 (default)
+  // is the original 3-region fuel/liner/vacuum target (MRT/RM/ICF), byte-identical.
+  Real r_rod   = pin->GetOrAddReal("problem", "r_rod", 0.0) / u_len;
+  Real d_rod   = pin->GetOrAddReal("problem", "d_rod", 1.0) / u_rho;
+  Real r_fuel  = pin->GetOrAddReal("problem", "r_fuel", 0.4) / u_len;
+  Real r_liner = pin->GetOrAddReal("problem", "r_liner", 0.6) / u_len;
+  Real d_fuel  = pin->GetOrAddReal("problem", "d_fuel", 0.05) / u_rho;
+  Real d_liner = pin->GetOrAddReal("problem", "d_liner", 1.0) / u_rho;
+  Real d_vac   = pin->GetOrAddReal("problem", "d_vac", 0.01) / u_rho;
+  Real p0      = pin->GetOrAddReal("problem", "p0", 1.0e-3) / u_prs;
+  Real bz0     = pin->GetOrAddReal("problem", "bz0", 0.0);   // axial premag field (code)
+  bool rod_target = (r_rod > 0.0);
   Real i_init  = drive_source_.Current(0.0);
   Real mu0     = drive_source_.mu0;
 
@@ -321,7 +343,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   //   amp_n cos(2*pi*k_n (z-z0)/Lz + phase_n).
   // none -> 0 modes; single_mode -> 1 mode; roughness -> a band [n_min,n_max].
   std::string pert = pin->GetOrAddString("problem", "perturbation", "none");
-  Real pert_amp    = pin->GetOrAddReal("problem", "pert_amp", 0.0);
+  Real pert_amp    = pin->GetOrAddReal("problem", "pert_amp", 0.0) / u_len;
   int  pert_mode   = pin->GetOrAddInteger("problem", "pert_mode", 1);
   Real pert_phase  = pin->GetOrAddReal("problem", "pert_phase", 0.0);
   int  pert_nmin   = pin->GetOrAddInteger("problem", "pert_nmin", 1);
@@ -394,6 +416,13 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   bool is_ideal = eos.is_ideal;
   auto &u0 = pmbp->pmhd->u0;
   auto &b0 = pmbp->pmhd->b0;
+  // Passive scalar(s): in the converging-RM (rod) target, tag the on-axis ROD material
+  // (s=1 in the rod, 0 elsewhere) so the rod/working-fluid interface can be tracked by
+  // composition -- like the experiment's material-contrast radiography -- robustly
+  // through convergence, where a density threshold cannot separate the rod from the
+  // equally dense (same-material) liner once shocked working fluid piles up between them.
+  int nmhd = pmbp->pmhd->nmhd;
+  int nscal = pmbp->pmhd->nscalars;
 
   par_for("pgen_maglif", DevExeSpace(), 0,(pmbp->nmb_thispack-1),ks,ke,js,je,is,ie,
   KOKKOS_LAMBDA(int m, int k, int j, int i) {
@@ -411,15 +440,31 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
         dr += amp_d(n)*cos(kTwoPiM*k_d(n)*(x3v - z0)/lz + phs_d(n));
       }
     }
-    Real rf = r_fuel + dr;
-    Real rl = r_liner + dr;
-
-    // Density by (perturbed) radial region.
-    Real dens = (x1v < rf) ? d_fuel : ((x1v < rl) ? d_liner : d_vac);
+    // Density by radial region.  In the converging-RM (rod) target the seed displaces the
+    // on-axis ROD interface (r_rod+dr) and the liner interfaces stay clean; otherwise the
+    // seed rigidly displaces both liner interfaces (the original MRT/RM target).
+    Real rr = rod_target ? (r_rod + dr) : 0.0;
+    Real rf = rod_target ? r_fuel : (r_fuel + dr);
+    Real rl = rod_target ? r_liner : (r_liner + dr);
+    Real dens;
+    if (rod_target && x1v < rr) {
+      dens = d_rod;                       // dense on-axis rod (perturbed interface)
+    } else if (x1v < rf) {
+      dens = d_fuel;                       // fuel / working fluid
+    } else if (x1v < rl) {
+      dens = d_liner;                      // driven liner (dense shell)
+    } else {
+      dens = d_vac;                        // vacuum gap (carries the drive B_phi)
+    }
     u0(m,IDN,k,j,i) = dens;
     u0(m,IM1,k,j,i) = 0.0;
     u0(m,IM2,k,j,i) = 0.0;
     u0(m,IM3,k,j,i) = 0.0;
+
+    // Passive-scalar rod tag (conserved s*d): s=1 in the rod, 0 elsewhere.  Advected with
+    // the flow, so the rod/working-fluid interface is the s=0.5 contour at all times.
+    Real s_rod = (rod_target && x1v < rr) ? 1.0 : 0.0;
+    for (int n = 0; n < nscal; ++n) { u0(m, nmhd+n, k, j, i) = s_rod*dens; }
 
     // B_z premag (x3-face, uniform); B_r=0; driven B_phi (x2-face) only in the vacuum
     // OUTSIDE the (perturbed) liner -- the load current is enclosed by the liner.
