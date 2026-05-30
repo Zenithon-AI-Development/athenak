@@ -195,3 +195,144 @@ def test_secondary_code_reference_is_not_the_oracle():
     assert d.secondary_reference["code"] == "FLASH"
     # The binding value is still the experiment.
     assert d.value == pytest.approx(10.0)
+
+
+# --------------------------------------------------------------------------------------
+# Curve-comparison engine ([VA2]/#141): the substrate the growth-curve benchmarks
+# (B1 single-mode MRT #120, B2 multi-mode MRT #122) compare their amplitude-vs-time
+# curves against. The oracle interpolates the simulation curve onto the experiment's
+# abscissa over the overlapping support, tests each point within its own band, and
+# returns per-point results + an aggregate pass/fail. No benchmark is wired here; these
+# tests prove the comparison logic in isolation against synthetic curves.
+# --------------------------------------------------------------------------------------
+
+def _curve_datum(points, *, status=None, drop_source_field=None, x_unit="ns",
+                 unit="um", confidence="medium"):
+    """Build a ``kind: curve`` datum dict (optionally pending / provenance-broken)."""
+    raw = {
+        "id": "growth_curve",
+        "observable": "seeded MRT amplitude vs time",
+        "kind": "curve",
+        "unit": unit,
+        "x_unit": x_unit,
+        "confidence": confidence,
+        "extraction_method": "digitized (WebPlotDigitizer)",
+        "oracle_kind": "experiment",
+        "source": {"paper": "p", "figure": "Fig. 4", "doi": "10.0/x"},
+        "points": points,
+    }
+    if status is not None:
+        raw["status"] = status
+    if drop_source_field is not None:
+        del raw["source"][drop_source_field]
+    return gto.Datum.from_dict("Bcurve", raw)
+
+
+def _pt(x, y, exp=0.2, dig=0.1, kind="absolute"):
+    """One experimental curve point with its per-point error bars."""
+    return {
+        "x": x, "y": y,
+        "experimental_error": {"value": exp, "kind": kind, "basis": "test"},
+        "digitization_error": {"value": dig, "kind": kind, "basis": "test"},
+    }
+
+
+def test_curve_datum_with_points_is_not_pending():
+    """A curve datum carrying digitized points is comparable (value lives in points)."""
+    d = _curve_datum([_pt(1.0, 2.0), _pt(2.0, 4.0)])
+    assert not d.is_pending
+    assert d.kind == "curve"
+
+
+def test_curve_in_band_at_every_point_passes():
+    """Sim curve within each point's band over the whole support -> aggregate PASS."""
+    exp_pts = [_pt(1.0, 1.0), _pt(2.0, 2.0), _pt(3.0, 3.0)]  # band = max(0.2,0.1)=0.2
+    d = _curve_datum(exp_pts)
+    # Sim hugs the experiment (offset 0.1 < 0.2 band) on a denser grid.
+    x_sim = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5]
+    y_sim = [x + 0.1 for x in x_sim]
+    res = d.compare((x_sim, y_sim))
+    assert res.passed
+    assert res.n_compared == 3
+    assert res.n_failed == 0
+    assert "pass" in str(res).lower()
+
+
+def test_curve_out_of_band_on_any_point_fails():
+    """A single point outside its band fails the whole curve verdict."""
+    exp_pts = [_pt(1.0, 1.0), _pt(2.0, 2.0), _pt(3.0, 3.0)]  # band 0.2 each
+    d = _curve_datum(exp_pts)
+    # Within band everywhere except a 1.0 spike at x=2.
+    x_sim = [1.0, 2.0, 3.0]
+    y_sim = [1.0, 3.0, 3.0]
+    res = d.compare((x_sim, y_sim))
+    assert not res.passed
+    assert res.n_failed == 1
+    assert res.n_compared == 3
+    assert "fail" in str(res).lower() or "outside" in str(res).lower()
+
+
+def test_curve_interpolates_sim_onto_experimental_abscissa():
+    """Sim is sampled (linearly interpolated) at the experiment's x, not its own grid."""
+    exp_pts = [_pt(1.0, 1.0), _pt(2.0, 2.0)]
+    d = _curve_datum(exp_pts)
+    # Sim is the line y = x sampled only at the endpoints; interpolation must recover
+    # y(1.5) etc. Here we read the interpolated sim value back off the point results.
+    x_sim = [0.0, 4.0]
+    y_sim = [0.0, 4.0]
+    res = d.compare((x_sim, y_sim))
+    by_x = {p.x: p.sim_value for p in res.point_results}
+    assert by_x[1.0] == pytest.approx(1.0)
+    assert by_x[2.0] == pytest.approx(2.0)
+    assert res.passed
+
+
+def test_curve_compares_only_overlapping_support():
+    """Experimental points outside the sim x-range are not compared (no extrapolation)."""
+    exp_pts = [_pt(1.0, 1.0), _pt(2.0, 2.0), _pt(3.0, 3.0), _pt(4.0, 4.0)]
+    d = _curve_datum(exp_pts)
+    # Sim only covers x in [1.5, 3.2]: only the x=2 and x=3 points overlap.
+    x_sim = [1.5, 2.0, 2.5, 3.0, 3.2]
+    y_sim = [x for x in x_sim]
+    res = d.compare((x_sim, y_sim))
+    assert res.n_compared == 2
+    assert {p.x for p in res.point_results} == {2.0, 3.0}
+    assert res.passed
+
+
+def test_curve_per_point_band_is_max_exp_dig_relative():
+    """Per-point band = max(experimental, digitization) error, relative scales by |y|."""
+    # exp 1% of 100 = 1.0; dig 5% of 100 = 5.0 -> band 5.0 at the y=100 point.
+    d = _curve_datum([_pt(1.0, 100.0, exp=0.01, dig=0.05, kind="relative")])
+    res = d.compare(([0.0, 2.0], [100.0, 100.0]))  # sim = 100 at x=1 after interp
+    p = res.point_results[0]
+    assert p.band == pytest.approx(5.0)
+    # 4.5 deviation is inside band 5.0; 5.5 is outside.
+    inside = d.compare(([0.0, 2.0], [104.5, 104.5]))
+    assert inside.passed
+    outside = d.compare(([0.0, 2.0], [105.5, 105.5]))
+    assert not outside.passed
+
+
+def test_pending_curve_datum_cannot_be_compared():
+    """A curve flagged pending_digitization raises rather than fabricating a verdict."""
+    d = _curve_datum([], status="pending_digitization")
+    assert d.is_pending
+    with pytest.raises(gto.PendingDatumError):
+        d.compare(([0.0, 1.0], [0.0, 1.0]))
+
+
+def test_curve_missing_provenance_raises_on_load():
+    """A curve datum missing its DOI is a provenance error, like a scalar datum."""
+    with pytest.raises(gto.ProvenanceError):
+        _curve_datum([_pt(1.0, 1.0)], drop_source_field="doi")
+
+
+def test_curve_result_stringifies_to_a_legible_verdict():
+    """The aggregate result reads cleanly in an assertion message / the scorecard."""
+    d = _curve_datum([_pt(1.0, 1.0), _pt(2.0, 2.0)])
+    res = d.compare(([1.0, 2.0], [1.0, 5.0]))
+    s = str(res)
+    assert "Bcurve" in s and "growth_curve" in s
+    assert "2" in s  # mentions how many points were compared
+    assert "FAIL" in s
