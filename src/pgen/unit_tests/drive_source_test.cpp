@@ -99,6 +99,36 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   test.CheckNear(ds_tab.Current(-1.0), 0.0, 1.0e-14, 0.0, "tab clamps below to I[0]");
   test.CheckNear(ds_tab.Current(99.0), 30.0, 1.0e-14, 0.0, "tab clamps above to I[last]");
 
+  // (d') committed z2173 load-current trace (issue #160/[P3]): the faithful Be-liner
+  //      drive tst/inputs/z2173_current.dat, read through the SAME ReadCurrentWaveform
+  //      path the maglif pgen uses, must reproduce the PUBLISHED scalar characteristics
+  //      (M. R. Gomez / R. D. McBride et al., PRL 109, 135004, 2012, Fig. 1(d), z2173):
+  //      peak load current ~20 MA at a rise time ~100 ns.  File units: t [ns], I [MA].
+  cir::DriveSource ds_z2173;
+  std::string zfile = pin->GetOrAddString("problem", "z2173_file", "unset");
+  cir::ReadCurrentWaveform(zfile, ds_z2173);
+  test.CheckTrue(ds_z2173.waveform == cir::CurrentWaveform::tabulated,
+                 "z2173 trace loads as a tabulated waveform");
+  const int z_n = static_cast<int>(ds_z2173.i_tab.size());
+  test.CheckTrue(z_n >= 2 && static_cast<int>(ds_z2173.t_tab.size()) == z_n,
+                 "z2173 trace has >= 2 matched (t, I) samples");
+  // peak current = max over the tabulated samples; rise time = its time (onset at t=0).
+  Real z_peak = ds_z2173.i_tab[0];
+  Real z_tpeak = ds_z2173.t_tab[0];
+  for (int p = 0; p < z_n; ++p) {
+    if (ds_z2173.i_tab[p] > z_peak) {
+      z_peak = ds_z2173.i_tab[p];
+      z_tpeak = ds_z2173.t_tab[p];
+    }
+  }
+  // Published anchors with an ABSOLUTE tolerance band (rtol=0, atol set) reflecting the
+  // issue's "~20 MA / ~100 ns" and the QC-pending detailed shape (peak +/- 2 MA; rise
+  // +/- 15 ns).  CheckNear arg order is (actual, expected, rtol, atol, label).
+  test.CheckNear(z_peak, 20.0, 0.0, 2.0, "z2173 peak current ~20 MA (McBride 2012)");
+  test.CheckNear(z_tpeak, 100.0, 0.0, 15.0, "z2173 rise time ~100 ns (McBride 2012)");
+  test.CheckTrue(ds_z2173.t_tab[0] <= 0.0 && ds_z2173.i_tab[0] <= 1.0e-6,
+                 "z2173 trace starts at t=0 with ~zero current (current onset)");
+
   // ======================================================================================
   // Part 2 -- device: the driven / nocurrent B_phi boundary formulas, evaluated at the
   // outer-x1 ghost radii (cylindrical r) from the same CellCenterX helper the real

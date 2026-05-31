@@ -1,0 +1,60 @@
+# z2173 load-current trace for the faithful AR=6 Be-liner MagLIF drive (issue #160/[P3]).
+#
+# PROVENANCE.  Z-machine shot z2173 -- M. R. Gomez / R. D. McBride et al.,
+#   "Penetrating Radiography of Imploding and Stagnating Beryllium Liners on the Z
+#    Accelerator", Phys. Rev. Lett. 109, 135004 (2012).
+#   DOI: 10.1103/PhysRevLett.109.135004    Figure: Fig. 1(d) (load current vs time).
+#   Published characteristics: peak load current ~20 MA, rise time ~100 ns.
+#
+# *** QC FLAG (ADR-0008) -- NOT A PIXEL-TRACE OF Fig. 1(d). ***
+#   The point-by-point shape below is a PARAMETRIZED RECONSTRUCTION of the published
+#   pulse: a sin^2 rise to the published 20 MA peak at the published 100 ns rise time
+#   (the standard Z load-current shape), followed by a gentle post-peak roll-off
+#   (implosion occurs near peak current).  It faithfully reproduces the published SCALAR
+#   characteristics (peak current, rise time) -- which is what the issue-#160 loader test
+#   asserts -- but the detailed inter-point shape is NOT a digitization of the figure.
+#   The committed trace is the DRIVE INPUT (a boundary condition), not a ground-truth
+#   oracle that is asserted against (cf. the B1/B2 amplitude curves, which stay
+#   pending_digitization precisely because they ARE the oracle).  REPLACE the points below
+#   with a faithful WebPlotDigitizer trace of Fig. 1(d) when the figure pixels are
+#   available; flag any pixel-traced points for human QC per ADR-0008.
+#
+# FORMAT (circuit::ReadCurrentWaveform, src/circuit/drive_source.hpp).  Whitespace-delimited
+# ASCII; lines whose first non-blank character is '#' are comments and are skipped:
+#   npts                       (>= 2, number of (t, I) samples)
+#   t_0   I_0                  (time, load current; time strictly ascending)
+#   ...
+# UNITS: time in NANOSECONDS, current in MEGAAMPERES (the natural engineering units of a
+#   Z-machine trace; see tst/inputs/maglif_z2173_si.athinput for how the drive is consumed).
+31
+   0.0     0.0000
+   5.0     0.1231
+  10.0     0.4894
+  15.0     1.0899
+  20.0     1.9098
+  25.0     2.9289
+  30.0     4.1221
+  35.0     5.4601
+  40.0     6.9098
+  45.0     8.4357
+  50.0    10.0000
+  55.0    11.5643
+  60.0    13.0902
+  65.0    14.5399
+  70.0    15.8779
+  75.0    17.0711
+  80.0    18.0902
+  85.0    18.9101
+  90.0    19.5106
+  95.0    19.8769
+ 100.0    20.0000
+ 105.0    19.4000
+ 110.0    18.8000
+ 115.0    18.2000
+ 120.0    17.6000
+ 125.0    17.0000
+ 130.0    16.4000
+ 135.0    15.8000
+ 140.0    15.2000
+ 145.0    14.6000
+ 150.0    14.0000

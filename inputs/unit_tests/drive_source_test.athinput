@@ -20,6 +20,7 @@ basename  = drive_source_test   # problem ID: basename of output filenames
 
 <problem>
 current_file = unset            # overridden with an absolute path by the test wrapper
+z2173_file   = unset            # overridden with the committed z2173 trace abspath (#160/[P3])
 
 <mesh>
 nghost    = 2          # Number of ghost cells
