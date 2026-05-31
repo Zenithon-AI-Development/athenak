@@ -17,6 +17,7 @@
 #include "parameter_input.hpp"
 #include "tasklist/task_list.hpp"
 #include "bvals/bvals.hpp"
+#include "eos/eos_table_3t.hpp"  // tabulated 3T (IONMIX) EOS state on the package (#159)
 
 // forward declarations
 namespace parabolic {
@@ -110,6 +111,16 @@ class MHD {
   ReconstructionMethod recon_method;
   MHD_RSolver rsolver_method;
   EquationOfState *peos;   // chosen EOS
+
+  // Tabulated 3T (IONMIX) real-material EOS state, populated ONLY when eos=tabulated_3t
+  // (issue [P1]/#159, ADR-0002/0007).  `eos_tbl` is the real-material EOS table read from
+  // the .cn4 file (held on the MHD package); `derived_te`/`derived_ti` are the derived,
+  // cached electron/ion temperature fields (ADR-0002 "temperatures are derived, cached
+  // fields") the tabulated cons->prim closure fills.  Empty (and never touched) for the
+  // ideal/isothermal EOS paths, so those stay byte-identical.
+  eos_table_3t::EosTable3T eos_tbl;  // tabulated 3T EOS table (e->T inversion + lookups)
+  DvceArray5D<Real> derived_te;      // derived cached electron temperature T_e(rho,e_ele)
+  DvceArray5D<Real> derived_ti;      // derived cached ion temperature T_i(rho,e_ion)
 
   int nmhd;                // number of mhd variables (5/4 for ideal/isothermal EOS)
   int nscalars;            // number of passive scalars

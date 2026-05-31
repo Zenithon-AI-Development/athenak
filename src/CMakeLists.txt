@@ -48,6 +48,7 @@ add_executable(
         eos/eos.cpp
         eos/ideal_hyd.cpp
         eos/ideal_mhd.cpp
+        eos/tabulated_mhd.cpp
         eos/isothermal_hyd.cpp
         eos/isothermal_mhd.cpp
         eos/ideal_srhyd.cpp

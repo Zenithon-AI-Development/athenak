@@ -14,6 +14,7 @@
 #include "parameter_input.hpp"
 #include "mesh/mesh.hpp"
 #include "eos/eos.hpp"
+#include "eos/ionmix_eos_reader.hpp"  // tabulated 3T (IONMIX) EOS reader (#159)
 #include "diffusion/viscosity.hpp"
 #include "diffusion/resistivity.hpp"
 #include "diffusion/conduction.hpp"
@@ -97,6 +98,25 @@ MHD::MHD(MeshBlockPack *ppack, ParameterInput *pin) :
       nmhd = 4;
     }
 
+  // tabulated 3T (IONMIX) real-material EOS (issue [P1]/#159, ADR-0002/0007).  Reads the
+  // .cn4 table path from <mhd>/eos_table into the EosTable3T held on the package via
+  // ionmix_eos_reader; the live cons->prim closure (eos/tabulated_mhd.cpp) inverts the
+  // per-species energies to T_e/T_i.  Nonrelativistic only (HED/MagLIF code path).
+  } else if (eqn_of_state.compare("tabulated_3t") == 0) {
+    if (pmy_pack->pcoord->is_special_relativistic ||
+        pmy_pack->pcoord->is_general_relativistic) {
+      std::cout <<"### FATAL ERROR in "<< __FILE__ <<" at line "<< __LINE__ << std::endl
+                <<"<mhd> eos = tabulated_3t cannot be used with SR/GR"<< std::endl;
+      std::exit(EXIT_FAILURE);
+    }
+    // .cn4 table path (required) + optional ion mass [g] to relabel the IONMIX number-
+    // density axis as mass density (default 1.0 keeps the native number-density axis).
+    std::string eos_table_file = pin->GetString("mhd","eos_table");
+    Real eos_mass_per_ion = pin->GetOrAddReal("mhd","eos_mass_per_ion",1.0);
+    eos_table_3t::ReadIonmixCn4Eos(eos_table_file, eos_tbl, eos_mass_per_ion);
+    peos = new TabulatedMHD(ppack, pin);
+    nmhd = 5;
+
   // EOS string not recognized
   } else {
     std::cout <<"### FATAL ERROR in "<< __FILE__ <<" at line "<< __LINE__ << std::endl
@@ -156,6 +176,13 @@ MHD::MHD(MeshBlockPack *ppack, ParameterInput *pin) :
     Kokkos::realloc(b0.x1f, nmb, ncells3, ncells2, ncells1+1);
     Kokkos::realloc(b0.x2f, nmb, ncells3, ncells2+1, ncells1);
     Kokkos::realloc(b0.x3f, nmb, ncells3+1, ncells2, ncells1);
+
+    // Derived, cached electron/ion temperature fields for the tabulated 3T EOS, allocated
+    // ONLY when eos=tabulated_3t so the ideal/isothermal paths stay byte-identical.
+    if (eqn_of_state.compare("tabulated_3t") == 0) {
+      Kokkos::realloc(derived_te, nmb, 1, ncells3, ncells2, ncells1);
+      Kokkos::realloc(derived_ti, nmb, 1, ncells3, ncells2, ncells1);
+    }
   }
 
   // allocate memory for conserved variables on coarse mesh
