@@ -1,0 +1,142 @@
+# AthenaK input: PAPER-RESOLUTION single-mode magneto-Rayleigh-Taylor on a driven liner --
+# Ellison benchmark 1 / [C3] (issue #120), the QUANTITATIVE GPU replication.
+#
+# Reuses the integrated MagLIF/Z-pinch problem generator (-D PROBLEM=maglif, issue [10a]/#32):
+# a dense cylindrical liner is SUSTAINEDLY accelerated radially inward by a prescribed constant
+# load current.  The magnetic pressure of the enclosed B_phi field (the light fluid) pushes on
+# the dense liner (the heavy fluid) -- the classic magneto-Rayleigh-Taylor (MRT) unstable
+# configuration on the outer (liner/vacuum) interface.  A SINGLE axial (z) mode is seeded on the
+# liner; under the continuous inward acceleration it grows (the MRT feed), and the radiographic
+# observable is the growth of that single-mode amplitude / the modulation of a synthetic side-on
+# radiograph.  This is FLASH MagLIF validation benchmark 1 (single-mode MRT, the Phase-1
+# convergence point) from Ellison et al. 2025 (arXiv:2504.10760).
+#
+# VALIDATION TIER (#120 [C3]): QUANTITATIVE.  The seeded single-mode amplitude-growth history is
+# compared against the digitized Sinars-2011 experimental growth curve (Phys. Plasmas 18,
+# 056301; committed in verification/ground_truth/b1_single_mode_mrt_sinars_2011.json, #154) via
+# the curve oracle (ADR-0008).  Single-mode MRT is a CLEAN, deterministic instability (one seeded
+# wavelength, fixed phase -- unlike the inherently-stochastic multi-mode benchmark 2), so the
+# DIMENSIONLESS growth-factor trajectory G(t)=a/a0 is comparable point-by-point to the
+# experiment's normalized growth curve and is ASSERTED in-band (binding), not merely reported.
+# The ABSOLUTE mm/ns calibration needs the IONMIX EOS/opacity (#118, not yet wired into the
+# maglif EOS), so the anchor is the dimensionless growth-shape, exactly as benchmark 3
+# (maglif_rm_si.athinput, #119) asserts the dimensionless rm_growth_factor in-band on GPU.
+#
+# PHYSICS SCOPE: the single-mode MRT feed is a magneto-HYDRODYNAMIC instability, set by the
+# inward acceleration (magnetic pressure) and the Atwood number across the liner/vacuum interface
+# -- carried by the cylindrical ideal-MHD core (ADR-0004) + the prescribed-I(t) circuit drive
+# (ADR-0005 mode A).  The coupled radiation-conduction stack (ADR-0009) is OFF here for the same
+# two reasons as benchmarks 2/3 (maglif_mmrt_si / maglif_rm_si): (1) the nondimensional TOY
+# coefficients would non-physically DAMP the MRT growth being measured; and (2) the operator-split
+# parabolic GPU path currently segfaults at runtime (#139) -- GPU runs are ideal-MHD only.  The
+# coupled stack is validated separately on CPU (#115/#116/#117) and the COUPLED single-mode run is
+# the reduced _cpu benchmark (test_verify_maglif_mrt_cpu.py).
+#
+# DRIVE / RUN-IN NOTE (the heart of #120): a compact, violent implosion CRUSHES the seeded mode by
+# numerical diffusion + fast convergence before it can e-fold (the reduced _cpu surrogate is
+# therefore compression-dominated and under-produces the experimental growth).  The experimental
+# MRT growth needs a LONG, WELL-RESOLVED magnetic run-in so the seed stays many cells wide and
+# e-folds many times under sustained acceleration before convergence.  This SI input therefore
+# uses a GENTLER drive (i0=2.0) over a LONGER run-in (tlim=1.6) on a fine grid (nx1=512) so the
+# MRT mode dominates the convergence -- the whole reason the GPU SI run beats the reduced surrogate.
+#
+# RESOLUTION NOTE: AthenaK does not support 3-D cylindrical SMR/AMR (only the 2-D (r,phi) Balsara
+# B-prolongation exists, issue #38).  The MRT seed is AXIAL (kz = pert_mode along z), so z must be
+# resolved -> a 3-D (r,phi,z) mesh, hence AMR is unavailable for this geometry.  "Paper resolution"
+# is therefore a UNIFORM fine grid: nx1=512 radial (dr ~ 2e-3, ~25 cells per seed amplitude) x
+# nx3=128 axial (~42 cells / seeded wavelength Lz/pert_mode).  Multi-block (8 root MeshBlocks)
+# exercises the multi-block boundary sync on GPU.
+#
+# ADR-0004 fixes the axial direction to x3; AthenaK forbids (nx2=1, nx3>1), so the axially-resolved
+# run uses a thin azimuthal (phi) wedge -- the axisymmetric IC replicates the r-z state across phi.
+# Built with -D PROBLEM=maglif (a USER pgen).  GPU run (athenakdev / A100).
+
+<comment>
+problem   = MagLIF single-mode MRT, paper-resolution GPU quantitative replication (benchmark 1)
+
+<job>
+basename  = maglif_mrt_si
+
+<mesh>
+nghost    = 2
+nx1       = 512        # radial zones (uniform paper-resolution); dr ~ 2e-3
+x1min     = 0.0        # r = 0 axis
+x1max     = 1.0        # outer radius R_out (driven boundary)
+ix1_bc    = axis       # cylindrical r=0 axisymmetric boundary (issue #16)
+ox1_bc    = user       # circuit-driven B_phi boundary (issue #21)
+
+nx2       = 4          # thin azimuthal (phi) wedge (axisymmetric IC)
+x2min     = 0.0
+x2max     = 1.0
+ix2_bc    = periodic
+ox2_bc    = periodic
+
+nx3       = 128        # axial (z) zones -- resolves the seeded mode (~42 cells/wavelength)
+x3min     = 0.0
+x3max     = 1.0
+ix3_bc    = periodic
+ox3_bc    = periodic
+
+<meshblock>
+nx1       = 128        # 512/128 = 4 root MeshBlocks along r
+nx2       = 4
+nx3       = 64         # 128/64 = 2 root MeshBlocks along z (8 blocks total)
+
+<coord>
+system    = cylindrical  # (x1,x2,x3) = (r,phi,z)
+
+<time>
+evolution  = dynamic
+integrator = rk2
+cfl_number = 0.3
+nlim       = 800000
+tlim       = 1.6
+ndiag      = 1000
+
+<mhd>
+eos         = ideal
+reconstruct = plm
+rsolver     = hlld
+gamma       = 1.6666666666666667
+dfloor      = 1.0e-5
+pfloor      = 1.0e-7
+# ---- coupled radiation-conduction stack OFF for the GPU quantitative MRT replication ----
+# The single-mode MRT feed is magneto-hydrodynamic; the toy-coefficient coupled stack would
+# suppress it, and the operator-split parabolic GPU path segfaults at runtime (#139).  GPU runs
+# are ideal-MHD only; the COUPLED single-mode run is the reduced _cpu benchmark.  Left here
+# (defaulted off) to document the wiring.
+strang_split          = false
+fld_operator_split    = false
+acond_operator_split  = false
+mrad_coupling         = false
+
+<problem>
+current_mode     = driven       # driven (mu0*I/2*pi*r) B_phi outer boundary
+current_waveform = constant     # prescribed I(t): constant load current -> SUSTAINED acceleration
+i0               = 2.0          # GENTLER load current -> slower convergence, longer MRT run-in
+t_rise           = 1.0          # ramp time (unused for the constant waveform)
+mu0              = 1.0          # code-unit permeability (Heaviside-Lorentz: 1)
+r_fuel           = 0.4          # fuel/liner interface radius
+r_liner          = 0.6          # liner/vacuum interface (current sheet)
+d_fuel           = 0.05         # fuel (inner gas) density
+d_liner          = 1.0          # liner (dense shell) density
+d_vac            = 0.01         # vacuum (outer gap) density
+p0               = 1.0e-3       # uniform (low) thermal pressure
+bz0              = 0.1          # axial premagnetization field B_z
+perturbation     = single_mode  # single axial mode on the liner interface
+pert_amp         = 0.05         # radial interface perturbation amplitude
+pert_mode        = 3            # axial mode number (wavelength = Lz/pert_mode)
+pert_phase       = 0.0          # axial phase offset
+user_hist        = true         # conservation history: mass, etot, ...
+
+<output1>
+file_type   = bin
+variable    = mhd_w_bcc
+id          = prim
+dt          = 0.04
+
+<output2>
+file_type      = hst
+variable       = mhd
+user_hist_only = true
+dt             = 0.04
