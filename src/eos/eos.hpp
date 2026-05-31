@@ -349,6 +349,32 @@ class IdealMHD : public EquationOfState {
 };
 
 //----------------------------------------------------------------------------------------
+//! \class TabulatedMHD
+//! \brief Derived class for the tabulated 3T (IONMIX) real-material EOS in
+//! nonrelativistic MHD (issue [P1]/#159, ADR-0002/0007).  The cons->prim closure carries
+//! electron internal energy density as the first passive scalar (e_ele), recovers the ion
+//! internal energy by subtraction, and inverts each species energy to its temperature via
+//! the tabulated EOS held on the MHD package (eos_table_3t::ConsToPrim2T), caching the
+//! derived T_e/T_i.  The conservative total-energy MHD update itself is unchanged.
+
+class TabulatedMHD : public EquationOfState {
+ public:
+  // Following suppress warnings that Hydro versions are not over-ridden
+  using EquationOfState::ConsToPrim;
+  using EquationOfState::PrimToCons;
+
+  TabulatedMHD(MeshBlockPack *pp, ParameterInput *pin);
+  void ConsToPrim(DvceArray5D<Real> &cons, const DvceFaceFld4D<Real> &b,
+                  DvceArray5D<Real> &prim, DvceArray5D<Real> &bcc,
+                  const bool only_testfloors,
+                  const int il, const int iu, const int jl, const int ju,
+                  const int kl, const int ku) override;
+  void PrimToCons(const DvceArray5D<Real> &prim, const DvceArray5D<Real> &bcc,
+                  DvceArray5D<Real> &cons, const int il, const int iu,
+                  const int jl, const int ju, const int kl, const int ku) override;
+};
+
+//----------------------------------------------------------------------------------------
 //! \class IdealSRMHD
 //! \brief Derived class for ideal gas EOS in special relativistic MHD
 
