@@ -130,6 +130,39 @@ from roughness is inherently stochastic) the verdict is recorded as `QUALITATIVE
 McBride-2012 growth *curve* stays the reduced-`_cpu` reported anchor (#143). Same
 report-vs-assert discipline, on a qualitative observable.
 
+### Faithful Ellison B2: qualitative Stage 1 (#163) + soft quantitative anchor (#155)
+
+`cylindrical/test_verify_maglif_b2_ellison_cpu.py` (#163 [B2-S1]) is the *faithful* Ellison
+benchmark-2 replication — every knob is the published value (AR=6 Be liner #160, measured
+z2173 drive #160, Ellison Eq.16 random-**temperature** seed `perturbation=temperature`
+dT=100 K #161, radiation off). It runs the committed `inputs/maglif_b2_ellison.athinput`
+(the 12.5 µm GPU artifact) at reduced CPU resolution and **hard-asserts** only the
+qualitative MRT morphology signature (multi-mode structure develops for dT>0, stays 1-D for
+the dT=0 control, grows toward stagnation, dominant resolved sub-mm mode, multi-mode
+participation). That qualitative gate is the binding contract — Ellison B2 has no
+amplitude-vs-time curve to digitize and the authors disclaim absolute-time comparison.
+
+The **Stage-2 soft quantitative anchor** (#155 [B2-S2]) rides on that same faithful run and
+is strictly **report-only** (it never asserts, so it cannot fail the test):
+
+* `mcbride_b2_anchor.py` holds the pure reductions: `outer_surface_extrema` (R_spike=max,
+  R_bubble=min of the driven interface), `growth_fraction(R_spike,R_bubble,R0)`,
+  `convergence_x(R_bubble,R0)`, and `linear_law`/`fit_laws` for the McBride printed fits.
+* `growth_fraction = (R_spike-R_bubble)/(R0-R_bubble)` at deepest convergence is compared
+  via the scalar oracle against the committed McBride band **[0.05, 0.15]** (datum
+  `growth_fraction` in `b2_multimode_mrt_mcbride_2012.json`, encoded 0.10 ± 0.05) and
+  recorded `binding=False`; a gf(t) overlay is drawn against the band. A persistent miss is
+  **escalated as a "needs investigation (#155 Stage 3)" note**, never a hard fail (FLASH
+  matched B2, so a miss is a diagnostic signal about our reduced setup, not a regression).
+* The amplitude(µm) `= 450·x − 90` and wavelength(µm) `= 750·x` Fig. 7a/b fit laws are
+  committed in the `fit_laws` block (reachable via `oracle.meta("B2")`, ignored by the
+  datum loader) and the reduced-run values are overlaid against them
+  (`plots/maglif_b2_fit_laws.png`); the *quantitative* law match is reported `PENDING` the
+  paper-resolution dimensional SI run (the laws are only physical for x > 0.2, and the
+  coarse CPU gate under-resolves µm-scale amplitudes). These are *stated published laws*,
+  not figure-digitized points (ADR-0008). Dispatch is covered red-first by
+  `test_verify_b2_growth_fraction_cpu.py`.
+
 ### Corrected v3 radius-vs-time trajectory anchors (#156 [VA8])
 
 The figure-traced **trajectory** point clouds for B3 (Knapp 2020 converging-RM) and B4
