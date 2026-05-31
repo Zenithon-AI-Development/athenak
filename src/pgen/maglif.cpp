@@ -19,15 +19,21 @@
 //! radially inward (the same physics verified in 1-D by issue [9b]/#29, here generalized
 //! to a seeded, axially-resolved target).
 //!
-//! Perturbation seeding (problem/perturbation) displaces the liner interface radii by a
-//! z-dependent amount dr(z) -- both interfaces move rigidly so the shell thickness (and
-//! hence its areal mass) is preserved -- to seed the magneto-Rayleigh-Taylor (MRT) feed:
+//! Perturbation seeding (problem/perturbation) seeds the magneto-Rayleigh-Taylor (MRT)
+//! feed by one of two mechanisms.  The GEOMETRIC modes displace the liner interface radii
+//! by a z-dependent amount dr(z) -- both interfaces move rigidly so the shell thickness
+//! (and hence its areal mass) is preserved:
 //!   * none         -- unperturbed (clean bulk implosion);
 //!   * single_mode  -- one axial mode, dr(z)=A cos(2*pi*n (z-z0)/Lz + phi0);
 //!   * roughness    -- a band of modes [n_min,n_max] with deterministic random phases
 //!                     (a manufactured-surface-roughness spectrum, reproducible by seed).
-//! The axial perturbation is only applied when z (x3) is resolved (a 3-D r-phi-z run);
-//! for a 1-D radial or 2-D r-phi study it is a no-op.
+//! The geometric (axial) perturbation is only applied when z (x3) is resolved (a 3-D
+//! r-phi-z run); for a 1-D radial or 2-D r-phi study it is a no-op.  The TEMPERATURE mode
+//! instead leaves the geometry clean and seeds a random zone-by-zone temperature (Ellison
+//! et al. 2025, arXiv:2504.10760, Eq.16), see pgen/maglif_temperature_seed.hpp:
+//!   * temperature  -- T(r,z)=max(T_min,T_0+exp((r-r_o)/lambda)*N_dT) on the target,
+//!                     applied as a per-zone pressure factor T/T_0 at fixed density (mass
+//!                     conserving; unperturbed at dT=0).  Reproducible by seed.
 //!
 //! Drive wiring (ADR-0005): reuses the circuit::DriveSource + the reusable circuit-driven
 //! B_phi outer-radial user boundary (circuit/drive_bphi_bc.hpp, issue [9a]/#21), just as
@@ -41,6 +47,7 @@
 //! USER pgen: build with -D PROBLEM=maglif (not part of the default suite binary).
 
 #include <cmath>
+#include <cstdint>
 #include <iostream>
 #include <random>
 #include <string>
@@ -57,6 +64,7 @@
 #include "outputs/outputs.hpp"
 #include "circuit/drive_source.hpp"
 #include "circuit/drive_bphi_bc.hpp"
+#include "pgen/maglif_temperature_seed.hpp"
 #include "pgen.hpp"
 
 namespace {
@@ -350,19 +358,31 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   int  pert_nmax   = pin->GetOrAddInteger("problem", "pert_nmax", 8);
   int  pert_seed   = pin->GetOrAddInteger("problem", "pert_seed", 12345);
 
+  // Ellison Eq.16 temperature-seed parameters (perturbation=temperature; #161).  T0/Tmin/
+  // dT are KELVIN and enter only through the dimensionless ratio T/T0, so they are NOT
+  // unit-normalised; the decay length is a physical length and IS normalised by <units>.
+  // The decay reference r_o defaults to the outer liner radius r_liner (Eq.16's r_o).
+  bool temp_seed   = (pert == "temperature");
+  Real pert_T0     = pin->GetOrAddReal("problem", "pert_T0", 293.0);
+  Real pert_Tmin   = pin->GetOrAddReal("problem", "pert_Tmin", 273.0);
+  Real pert_dT     = pin->GetOrAddReal("problem", "pert_dT", 100.0);
+  Real pert_decay  = pin->GetOrAddReal("problem", "pert_decay", 0.05) / u_len;
+  Real pert_r_o    = pin->GetOrAddReal("problem", "pert_decay_r0", -1.0);
+  pert_r_o = (pert_r_o > 0.0) ? (pert_r_o / u_len) : r_liner;   // default = outer liner
+
   int nmodes = 0;
   if (pmy_mesh_->three_d) {           // axial perturbation only when z (x3) is resolved
     if (pert == "single_mode") {
       nmodes = 1;
     } else if (pert == "roughness") {
       nmodes = (pert_nmax >= pert_nmin) ? (pert_nmax - pert_nmin + 1) : 0;
-    } else if (pert != "none") {
+    } else if (pert != "none" && pert != "temperature") {
       std::cout << "### FATAL ERROR in " << __FILE__ << " at line " << __LINE__
                 << std::endl << "unknown problem/perturbation '" << pert
-                << "' (expected none|single_mode|roughness)" << std::endl;
+                << "' (expected none|single_mode|roughness|temperature)" << std::endl;
       exit(EXIT_FAILURE);
     }
-  } else if (pert != "none" && pert_amp != 0.0) {
+  } else if (pert != "none" && pert != "temperature" && pert_amp != 0.0) {
     std::cout << "### WARNING: maglif problem/perturbation='" << pert << "' ignored: "
               << "axial direction x3 is not resolved (nx3=1); run a 3-D (r,phi,z) grid."
               << std::endl;
@@ -405,11 +425,22 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   Real z0 = pmy_mesh_->mesh_size.x3min;
   Real lz = pmy_mesh_->mesh_size.x3max - pmy_mesh_->mesh_size.x3min;
 
+  // Global mesh mins + root-level cell counts, used to map each cell to a GLOBAL cell id
+  // for the temperature seed's per-zone random draw (so the seeded field is reproducible
+  // by pert_seed and identical under any domain decomposition; see the header).
+  Real mx1min = pmy_mesh_->mesh_size.x1min;
+  Real mx2min = pmy_mesh_->mesh_size.x2min;
+  Real mx3min = pmy_mesh_->mesh_size.x3min;
+  std::uint64_t ngx = static_cast<std::uint64_t>(pmy_mesh_->mesh_indcs.nx1);
+  std::uint64_t ngy = static_cast<std::uint64_t>(pmy_mesh_->mesh_indcs.nx2);
+  std::uint64_t tseed = static_cast<std::uint64_t>(
+      static_cast<unsigned>(pert_seed));
+
   auto &indcs = pmy_mesh_->mb_indcs;
   int &is = indcs.is; int &ie = indcs.ie;
   int &js = indcs.js; int &je = indcs.je;
   int &ks = indcs.ks; int &ke = indcs.ke;
-  int nx1 = indcs.nx1, nx3 = indcs.nx3;
+  int nx1 = indcs.nx1, nx2 = indcs.nx2, nx3 = indcs.nx3;
   auto &size = pmbp->pmb->mb_size;
   EOS_Data &eos = pmbp->pmhd->peos->eos_data;
   Real gm1 = eos.gamma - 1.0;
@@ -476,8 +507,32 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
     if (j==je) { b0.x2f(m,k,j+1,i) = bphi; }
     if (k==ke) { b0.x3f(m,k+1,j,i) = bz0; }
 
+    // Ellison Eq.16 temperature seed (perturbation=temperature): a per-zone random
+    // electron+ion temperature applied at FIXED density (mass conserving) as a pressure
+    // factor T(r,z)/T0.  Seeded only on the target material (x1v < r_liner); the envelope
+    // exp((r-r_o)/lambda) decays inward from the outer liner surface, so the vacuum is
+    // unperturbed and the factor is positive (>= Tmin/T0).  dT=0 -> T=T0 -> factor 1 ->
+    // identical to perturbation=none.  This sets a single-temperature (ideal-gas) state;
+    // the per-species e_ele/e_ion split is the tabulated-EOS path ([P1]/[P2]).
+    Real tfac = 1.0;
+    if (temp_seed && x1v < rl) {
+      Real dx1 = size.d_view(m).dx1;
+      Real dx2 = size.d_view(m).dx2;
+      Real dx3 = size.d_view(m).dx3;
+      Real x2v = CellCenterX(j-js, nx2, size.d_view(m).x2min, size.d_view(m).x2max);
+      Real x3v = CellCenterX(k-ks, nx3, size.d_view(m).x3min, size.d_view(m).x3max);
+      std::uint64_t gi = static_cast<std::uint64_t>((x1v - mx1min)/dx1);
+      std::uint64_t gj = static_cast<std::uint64_t>((x2v - mx2min)/dx2);
+      std::uint64_t gk = static_cast<std::uint64_t>((x3v - mx3min)/dx3);
+      std::uint64_t gid = (gk*ngy + gj)*ngx + gi;
+      Real g = maglif_tseed::CellGaussian(gid, tseed);
+      Real tcell = maglif_tseed::EllisonTemperature(x1v, pert_r_o, pert_decay,
+                                                    pert_T0, pert_Tmin, pert_dT, g);
+      tfac = tcell/pert_T0;
+    }
+
     if (is_ideal) {
-      u0(m,IEN,k,j,i) = p0/gm1 + 0.5*(bphi*bphi + bz0*bz0);
+      u0(m,IEN,k,j,i) = (p0*tfac)/gm1 + 0.5*(bphi*bphi + bz0*bz0);
     }
   });
 
