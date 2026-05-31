@@ -183,6 +183,37 @@ is strictly **report-only** (it never asserts, so it cannot fail the test):
   not figure-digitized points (ADR-0008). Dispatch is covered red-first by
   `test_verify_b2_growth_fraction_cpu.py`.
 
+### Faithful Ellison B4 (ICF confinement): dimensional replication (#121)
+
+`cylindrical/test_verify_maglif_b4_icf_si_cpu.py` (#121 [C4]) is the *faithful*,
+**dimensional** counterpart of the idealized code-unit ICF surrogate
+(`test_verify_maglif_icf_cpu.py`, #140). It runs the committed
+`inputs/maglif_b4_icf_si.athinput` — the AR=6 **beryllium** liner enclosing deuterium fuel
+(#160 geometry, solid-Be density unit), the measured z2173 drive (#160), radiation off
+(ideal-MHD core) — at reduced CPU resolution (the #163 faithful-vs-gate pattern, overriding
+only `nx1`/`tlim`). Because the run is dimensional, the stagnation observables emerge
+directly in **mm / g-cc / ns**, so the surrogate's provisional `R_FUEL_MM` / `NS_PER_CODE`
+calibrations are gone.
+
+The **binding** gate is the qualitative confinement signature: the faithful z2173 drive
+implodes the liner to a deep, interior-in-time minimum (stagnation) and it **rebounds**;
+mass is conserved; the final state is finite; and — the red→green **discriminator** — a
+no-drive control (`current_waveform=constant`, `i0=0` → zero load current) does **not**
+converge (the inner radius stays flat, CR≈1.0 vs the faithful run's CR≈11). Note that for
+the **tabulated** waveform `Current(t)` replays the trace and ignores `i0`, so the control
+must switch the waveform to `constant` to zero the drive.
+
+The Knapp-2017 scalars (min radius 0.45 mm, peak density ~10 g/cc, confinement time 14 ns)
+and the v3 inner-radius trajectory are **reported** against the oracle (`binding=False`),
+not hard-asserted — the ideal-gamma EOS without material strength / degenerate-DD pressure
+over-compresses the fuel column (the reduced gate measures ~0.13 mm / ~6 g/cc / ~21 ns), so
+the absolute-SI hard-assert remains the paper-resolution GPU run on the tabulated-EOS
+coupled stack (residuals: IONMIX-EOS IC wiring #118/#162, GPU coupled segfault #139,
+material strength). The **density-vs-radius profile** (acceptance criterion 3) has no
+committed experimental profile datum yet (only the radius-vs-time trajectory is digitized),
+so it is recorded **PENDING** — a digitized Abel-inverted profile is the data-supply step
+that would flip it to a comparison (ADR-0008 forbids fabricating one).
+
 ### Corrected v3 radius-vs-time trajectory anchors (#156 [VA8])
 
 The figure-traced **trajectory** point clouds for B3 (Knapp 2020 converging-RM) and B4

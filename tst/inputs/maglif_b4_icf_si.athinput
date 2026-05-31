@@ -1,0 +1,144 @@
+# AthenaK input: FAITHFUL ICF-confinement implosion on a beryllium liner enclosing
+# deuterium fuel -- Ellison benchmark 4 / [C4] (issue #121), the dimensional replication
+# target for the MagLIF stagnation scalars (Knapp et al., Phys. Plasmas 24, 042708, 2017).
+#
+# This is the FAITHFUL, DIMENSIONAL counterpart of the idealized code-unit ICF surrogate
+# (maglif_icf.athinput / #140), built with the same faithful conventions as the B1/B2
+# replications (maglif_b1_sinars.athinput / #120, maglif_b2_ellison.athinput / #163):
+#   * a representative AR6 BERYLLIUM liner (inner radius 2.32 / outer 2.79 mm; OD 5.58 mm,
+#     aspect ratio about 6 -- the Gomez 2014 / Sefkow 2014 / Knapp 2017 MagLIF target), with
+#     solid-beryllium density 1.85 g/cc as the code density unit (#160/[P3] geometry);
+#   * the REAL measured z2173 Z-machine load current -- the #160/[P3] tabulated drive
+#     (peak about 20 MA at about 100 ns; the Knapp and z2173 shots share the Z driver);
+#   * deuterium fuel pre-loaded inside the liner in pressure equilibrium (a clean contact,
+#     no spurious initial expansion), so the confining cushion arises from ADIABATIC
+#     compression (fuel pressure rises as rho^gamma, stiffer than the magnetic piston, and
+#     rebounds the liner at a finite resolved radius -- the confinement-time signature);
+#   * NO interface perturbation (perturbation none): a 1-D radial bulk stagnation, NOT an
+#     instability run (single-mode MRT is #120, multi-mode MRT is #163).
+#
+# VALIDATION TIER (#121 [C4]): QUANTITATIVE.  The stagnation scalars -- minimum fuel/liner
+# inner radius, peak fuel density, confinement time -- and the inner-radius trajectory are
+# compared against the committed Knapp-2017 experimental datums (verification/ground_truth/
+# b4_icf_confinement_knapp_2017.json) through the scalar + curve oracle (ADR-0008).  The
+# DIMENSIONAL units block below replaces the provisional length/time calibrations the
+# reduced surrogate (#140) flagged as "refined in #121": the observables now emerge directly
+# in mm and g/cc, so the oracle comparison is an honest dimensional deviation, not a fudge.
+#
+# HONEST SCOPE NOTE (the engineering residual to a BINDING quantitative MATCH -- the same
+# three residuals documented for the faithful B1 run, maglif_b1_sinars.athinput / #120):
+#   (a) the IONMIX tabulated 3T EOS/opacity (#118, wired into the LLF solver by #162) is NOT
+#       yet wired into this multi-material maglif IC -- the vacuum gap and low-density fuel
+#       fall below the table's valid density range and the e_ele scalar is not seeded -- so
+#       this faithful run uses the IDEAL-MHD core with radiation OFF, exactly as the faithful
+#       B1/B2 runs.  The confining rebound is the ADIABATIC fuel cushion (the dominant
+#       confinement mechanism in the surrogate); the radiative confinement-time refinement
+#       needs the coupled stack on the tabulated EOS (residual a + the GPU coupled segfault,
+#       issue #139);
+#   (b) the drive current is consumed in code units (no SI current/time calibration, as
+#       documented in maglif_z2173_si.athinput), so the trajectory is compared as a
+#       dimensionless implosion mapped onto the experimental stagnation window;
+#   (c) AthenaK has no material-strength model (deviatoric/yield), and the ideal-gamma EOS
+#       over-compresses the fuel column relative to the real degenerate-DD pressure, so the
+#       absolute stagnation scalars are REPORTED (binding False) against the oracle, not
+#       asserted; the binding gate is the qualitative convergence-and-rebound signature.
+#       The density-vs-radius PROFILE (acceptance criterion 3) has no committed experimental
+#       profile datum yet, so it is recorded PENDING (needs a digitized Abel-inverted
+#       profile), per ADR-0008's no-fabrication rule.
+#
+# IMPORTANT (bin-header reader gotcha): vis/python/bin_convert splits embedded header lines
+# on the equals sign with no maxsplit, so an inline comment or value containing an equals
+# sign crashes the reader.  The embedded header carries the <comment> text line and every
+# param line WITH its inline comment, so those MUST avoid the equals sign (this rich top
+# block of full-line comments is NOT embedded and may use it freely).
+#
+# Built with -D PROBLEM=maglif (a USER pgen).  A run resolves problem/current_file to the
+# committed trace (here a repo-relative path; a runner launching from another directory
+# should override it with the absolute path).  The reduced-resolution check that exercises
+# this exact physical setup at low cost on CPU is the same test's reduced-grid override;
+# the gate is test_verify_maglif_b4_icf_si_cpu.py.
+
+<comment>
+problem   = Ellison B4 faithful ICF confinement, AR6 Be liner plus D fuel, z2173 drive
+
+<job>
+basename  = maglif_b4_icf_si
+
+<units>
+length_cgs   = 0.1        # cm per code length, so code length unit is 1 mm
+density_cgs  = 1.85       # g/cc per code density, so code density unit is solid beryllium
+velocity_cgs = 1.0        # cm/s per code velocity (reporting only; observables downstream)
+
+<mesh>
+nghost    = 2
+nx1       = 512       # radial zones over [0, 3.2] mm, dr 6.25 um (resolves the near-axis fuel)
+x1min     = 0.0       # r 0 axis
+x1max     = 3.2       # outer radius R_out 3.2 mm (driven boundary; beyond r_liner 2.79)
+ix1_bc    = axis      # cylindrical r 0 axisymmetric boundary (issue #16)
+ox1_bc    = user      # circuit-driven B_phi outer boundary (issue #21)
+
+nx2       = 1         # 1-D radial (axisymmetric, no azimuthal structure)
+x2min     = 0.0
+x2max     = 1.0
+ix2_bc    = periodic
+ox2_bc    = periodic
+
+nx3       = 1         # 1-D radial (no axial resolution; clean bulk stagnation)
+x3min     = 0.0
+x3max     = 1.0
+ix3_bc    = periodic
+ox3_bc    = periodic
+
+<meshblock>
+nx1       = 512
+nx2       = 1
+nx3       = 1
+
+<coord>
+system    = cylindrical  # (x1,x2,x3) are (r,phi,z)
+
+<time>
+evolution  = dynamic
+integrator = rk2
+cfl_number = 0.3
+nlim       = 2000000
+tlim       = 70.0        # code time (ns); captures run-in plus stagnation plus first rebound
+ndiag      = 2000
+
+<mhd>
+eos         = ideal      # radiation OFF, ideal-MHD core (tabulated-3T IC wiring is a residual)
+reconstruct = plm
+rsolver     = hlld
+gamma       = 1.6666666666666667
+dfloor      = 1.0e-6
+pfloor      = 1.0e-9
+
+<problem>
+# ---- drive (ADR-0005 mode A): faithful z2173 tabulated load current ----
+current_mode     = driven
+current_waveform = tabulated        # prescribed I(t) replayed from the measured z2173 trace
+current_file     = z2173_current.dat  # committed trace (tst/inputs); peak 20 MA, rise 100 ns
+i0               = 1.0             # unused by the tabulated waveform (the trace sets I); the no-drive control overrides current_waveform constant plus i0 zero
+mu0              = 1.0             # code-unit permeability (Heaviside-Lorentz)
+# ---- AR6 Be liner plus D fuel target geometry, PHYSICAL CGS (normalised by <units>) ----
+r_fuel           = 0.232          # fuel/liner inner radius 2.32 mm (radiography inner radius)
+r_liner          = 0.279          # liner/vacuum outer radius 2.79 mm (OD 5.58 mm, AR about 6)
+d_fuel           = 0.0185         # deuterium fuel density 0.0185 g/cc (maps to 0.01 code)
+d_liner          = 1.85           # solid Be liner density 1.85 g/cc, maps to 1.0 code
+d_vac            = 1.0e-4         # tenuous vacuum gap (r_liner to R_out)
+p0               = 0.05           # uniform thermal pressure g/cc cm2/ns2 (fuel-liner equilibrium)
+bz0              = 0.1            # axial premagnetization field B_z (magneto-insulation)
+perturbation     = none           # clean bulk implosion (no MRT/RM seed; confinement test)
+user_hist        = true           # conservation history: mass, etot, ...
+
+<output1>
+file_type   = bin
+variable    = mhd_w_bcc
+id          = prim
+dt          = 2.0
+
+<output2>
+file_type      = hst
+variable       = mhd
+user_hist_only = true
+dt             = 2.0
