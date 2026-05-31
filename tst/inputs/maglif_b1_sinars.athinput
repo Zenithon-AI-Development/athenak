@@ -1,0 +1,142 @@
+# AthenaK input: FAITHFUL single-mode magneto-Rayleigh-Taylor on an aluminum liner --
+# Ellison benchmark 1 / [C3] (issue #120), the QUANTITATIVE GPU replication target.
+#
+# This REPLACES the idealized code-unit surrogate (maglif_mrt.athinput / #142): every knob
+# here is a faithful, dimensional value, mirroring the faithful Ellison B2 setup
+# (maglif_b2_ellison.athinput / #163) but for the SINGLE-MODE, initially-solid-aluminum
+# Sinars 2010/2011 experiment (Phys. Rev. Lett. 105, 185001; Phys. Plasmas 18, 056301):
+#   * a representative AR6 aluminum liner (r_in 2.8875 / r_out 3.4688 mm) -- the #160/[P3]
+#     dimensional geometry, with solid-Al density 2.7 g/cc as the code density unit;
+#   * the REAL measured z2173 Z-machine load current -- the #160/[P3] tabulated drive
+#     (peak about 20 MA at about 100 ns; the Sinars and z2173 shots share the Z driver);
+#   * a SINGLE seeded axial sinusoid at lambda 400 um (within the published 25 to 400 um
+#     Sinars seeding range), seed amplitude 20 um (the Sinars initial radiographic
+#     amplitude, matching the first committed Sinars datum point 0.0197 mm);
+#   * 12.5 um finest cell (uniform), radiation OFF (ideal-MHD core only).
+#
+# VALIDATION TIER (#120 [C3]): QUANTITATIVE.  The seeded single-mode amplitude-growth
+# history is compared against the digitized Sinars-2011 experimental growth curve
+# (committed in verification/ground_truth/b1_single_mode_mrt_sinars_2011.json, now
+# status digitized via #154) through the curve oracle (ADR-0008).  The GPU benchmark
+# (test_verify_maglif_b1_sinars_gpu.py) reports that comparison in the scorecard.
+#
+# HONEST SCOPE NOTE (the engineering residual to a binding quantitative MATCH):
+#   (a) the IONMIX tabulated 3T EOS is wired into the LLF solver (#162) but NOT yet into
+#       this multi-material maglif IC -- the vacuum gap and low-density fill fall below the
+#       table's valid density range and the e_ele scalar is not seeded -- so this faithful
+#       run uses the ideal-MHD core (radiation OFF), exactly as the faithful B2 run (#163);
+#   (b) the drive current is consumed in code units (no SI current/time calibration, as
+#       documented in maglif_z2173_si.athinput / maglif_rm_si.athinput), so amplitude(t) is
+#       compared as the dimensionless growth factor G(t) mapped onto the experiment window;
+#   (c) AthenaK has no material-strength model (deviatoric/yield) -- an ideal-MHD converging
+#       liner e-folds order-unity times before stagnation, well short of the experiment's
+#       roughly fourfold-decade growth, so the quantitative growth-factor match is REPORTED
+#       (binding False), not asserted; the binding gate is the qualitative MRT signature.
+#
+# RESOLUTION NOTE (as maglif_b2_ellison.athinput): AthenaK has no 3-D cylindrical SMR/AMR
+# (only the 2-D (r,phi) Balsara prolongation, #38), and the seed is AXIAL, so z must be
+# resolved -> a 3-D (r,phi,z) mesh and "12.5 um finest" is a UNIFORM fine grid: nx1 288 over
+# [0, 3.6] mm (dr 12.5 um) x nx3 128 over [0, 1.6] mm (dz 12.5 um; lambda 400 um -> 32
+# cells/wavelength, 4 wavelengths in the box).  ADR-0004 fixes the axial direction to x3
+# (AthenaK forbids nx2 1 with nx3 > 1), so a thin azimuthal (phi) wedge carries the
+# axisymmetric IC; the seeded sinusoid breaks the axisymmetry along z.
+#
+# IMPORTANT (bin-header reader gotcha): vis/python/bin_convert splits embedded header lines
+# on the equals sign with no maxsplit, so an inline comment or value containing an equals
+# sign crashes the reader.  The embedded header carries the <comment> text line and every
+# param line WITH its inline comment, so those MUST avoid the equals sign (this rich top
+# block of full-line comments is NOT embedded and may use it freely).
+#
+# Built with -D PROBLEM=maglif (a USER pgen).  A run resolves problem/current_file to the
+# committed trace (here a repo-relative path; a runner launching from another directory
+# should override it with the absolute path).  The reduced-resolution check that exercises
+# this exact physical setup at low cost on CPU is the same test's reduced-grid override;
+# the GPU paper-resolution gate is test_verify_maglif_b1_sinars_gpu.py.
+
+<comment>
+problem   = Ellison B1 faithful single-mode MRT, AR6 Al liner, z2173 drive, lambda 400 um seed
+
+<job>
+basename  = maglif_b1_sinars
+
+<units>
+length_cgs   = 0.1        # cm per code length, so code length unit is 1 mm
+density_cgs  = 2.7        # g/cc per code density, so code density unit is solid aluminum
+velocity_cgs = 1.0        # cm/s per code velocity (reporting only; observables downstream)
+
+<mesh>
+nghost    = 2
+nx1       = 288       # radial zones (uniform) over [0, 3.6] mm, dr 12.5 um (finest)
+x1min     = 0.0       # r 0 axis
+x1max     = 3.6       # outer radius R_out 3.6 mm (driven boundary; beyond r_out 3.4688)
+ix1_bc    = axis      # cylindrical r 0 axisymmetric boundary (issue #16)
+ox1_bc    = user      # circuit-driven B_phi outer boundary (issue #21)
+
+nx2       = 4         # thin azimuthal (phi) wedge (axisymmetric IC; seed breaks it along z)
+x2min     = 0.0
+x2max     = 1.0
+ix2_bc    = periodic
+ox2_bc    = periodic
+
+nx3       = 128       # axial (z) zones over [0, 1.6] mm, dz 12.5 um (finest)
+x3min     = 0.0
+x3max     = 1.6       # axial domain 1.6 mm (4 seeded wavelengths of 400 um)
+ix3_bc    = periodic
+ox3_bc    = periodic
+
+<meshblock>
+nx1       = 144       # 2 root MeshBlocks along r
+nx2       = 4
+nx3       = 64        # 2 root MeshBlocks along z (4 blocks total)
+
+<coord>
+system    = cylindrical  # (x1,x2,x3) are (r,phi,z)
+
+<time>
+evolution  = dynamic
+integrator = rk2
+cfl_number = 0.3
+nlim       = 800000
+tlim       = 40.0        # code time (ns); captures the run-in where the seeded mode peaks
+ndiag      = 1000
+
+<mhd>
+eos         = ideal      # radiation OFF, ideal-MHD core (tabulated-3T IC wiring is a residual)
+reconstruct = plm
+rsolver     = hlld
+gamma       = 1.6666666666666667
+dfloor      = 1.0e-5
+pfloor      = 1.0e-7
+
+<problem>
+# ---- drive (ADR-0005 mode A): faithful z2173 tabulated load current ----
+current_mode     = driven
+current_waveform = tabulated        # prescribed I(t) replayed from the measured z2173 trace
+current_file     = z2173_current.dat  # committed trace (tst/inputs); peak 20 MA, rise 100 ns
+mu0              = 1.0              # code-unit permeability (Heaviside-Lorentz)
+# ---- AR6 Al liner target geometry, PHYSICAL CGS (normalised by <units>) ----
+r_fuel           = 0.28875         # liner inner radius r_in 2.8875 mm (hollow-interior wall)
+r_liner          = 0.34688         # liner outer radius r_out 3.4688 mm (liner/vacuum)
+d_fuel           = 1.0e-3          # low-density interior fill (hollow tube; setup choice)
+d_liner          = 2.7             # solid Al liner density 2.7 g/cc, maps to 1.0 code
+d_vac            = 1.0e-4          # tenuous vacuum gap (r_out to R_out)
+p0               = 1.0e-4          # cold thermal pressure (setup choice)
+bz0              = 0.0             # no axial premagnetization for this single-mode run
+# ---- seed: single axial sinusoid (Sinars single-mode MRT) ----
+perturbation     = single_mode     # one axial mode on the liner interfaces
+pert_amp         = 0.002           # radial seed amplitude 20 um (CGS cm; Sinars initial)
+pert_mode        = 4               # axial mode number, lambda Lz/4 is 400 um
+pert_phase       = 0.0             # axial phase offset
+user_hist        = true            # conservation history: mass, etot, ...
+
+<output1>
+file_type   = bin
+variable    = mhd_w_bcc
+id          = prim
+dt          = 3.0
+
+<output2>
+file_type      = hst
+variable       = mhd
+user_hist_only = true
+dt             = 3.0

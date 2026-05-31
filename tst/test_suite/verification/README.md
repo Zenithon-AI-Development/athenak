@@ -130,6 +130,26 @@ from roughness is inherently stochastic) the verdict is recorded as `QUALITATIVE
 McBride-2012 growth *curve* stays the reduced-`_cpu` reported anchor (#143). Same
 report-vs-assert discipline, on a qualitative observable.
 
+### Faithful single-mode B1 (Sinars): paper-resolution GPU replication (#120)
+
+`cylindrical/test_verify_maglif_b1_sinars_gpu.py` (#120 [C3]) is the *faithful* single-mode
+MRT replication — the dimensional AR=6 aluminum liner (#160 geometry, solid-Al density unit),
+the measured z2173 drive (#160), a single seeded axial sinusoid at λ=400 µm (within the
+published Sinars 25–400 µm range) at 20 µm seed amplitude, ideal-MHD core, run at the paper
+resolution (12.5 µm finest) on the GPU. It runs the committed `inputs/maglif_b1_sinars.athinput`,
+reduces to the seeded-mode amplitude history, and **reports** (`binding=False`) the
+growth-factor `G(t)=a/a0` against the committed Sinars-2011 curve via the curve oracle. The
+**binding** gate is the qualitative single-mode MRT signature — the liner converges, the seeded
+mode e-folds (calibrated ~3× peak) then is crushed by deep convergence, it carries a sizeable
+share of the interface structure at its peak, the synthetic radiograph limb modulates, and a
+`pert_amp=0` control stays exactly 1-D. The faithful run measures a peak growth factor ~3× vs
+the experiment's ~46×: the quantitative *match* (AC#2) is **reported, not asserted**, because an
+ideal-MHD converging liner e-folds only order-unity times before stagnation. Closing AC#2 needs
+the IONMIX tabulated EOS wired into the multi-material maglif IC (the solver path exists, #162,
+but the vacuum/fill fall below the table's valid density range), an SI current/time calibration,
+and a material-strength model (#P6). Same report-vs-assert discipline as the reduced `_cpu`
+arm (`test_verify_maglif_mrt_cpu.py`, #142), now on the faithful paper-resolution GPU run.
+
 ### Faithful Ellison B2: qualitative Stage 1 (#163) + soft quantitative anchor (#155)
 
 `cylindrical/test_verify_maglif_b2_ellison_cpu.py` (#163 [B2-S1]) is the *faithful* Ellison
