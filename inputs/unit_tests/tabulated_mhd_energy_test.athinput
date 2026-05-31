@@ -1,0 +1,64 @@
+# AthenaK input file for the tabulated 3T (IONMIX) EOS LIVE energy-update test
+# (unit_tests/tabulated_mhd_energy_test, issue [P2]/#162).
+#
+# Unlike the #159 cons->prim unit test, this one RUNS THE DRIVER (nlim>0): the pgen seeds
+# a 1D periodic, field-free, at-rest aluminum plasma with a central electron+ion
+# temperature bump and enrolls a finalize hook.  The driver integrates the live MHD update
+# with rsolver=llf, which routes the hyperbolic gas pressure through the tabulated EOS
+# (#162).  The finalize hook then checks energy + scalar conservation, that the evolved
+# derived temperatures match the table's T(rho,e), and that the tabulated pressure
+# actually drove flow (the RED->GREEN discriminator).
+#
+# <mhd>/eos_table is the path to a real IONMIX cn4 EOS table; the Python wrapper
+# (test_verify_tabulated_mhd_energy_cpu.py) overrides it with the ABSOLUTE path to
+# inputs/ionmix/al-imx-004.cn4 (the binary runs from tst/build_unit/<name>/src).
+
+<comment>
+problem   = Tabulated 3T (IONMIX) EOS live MHD energy-update test
+
+<job>
+basename  = tabulated_mhd_energy_test   # problem ID: basename of output filenames
+
+<mesh>
+nghost    = 2          # Number of ghost cells
+nx1       = 64         # Number of zones in X1-direction
+x1min     = 0.0        # minimum value of X1
+x1max     = 1.0        # maximum value of X1
+ix1_bc    = periodic   # inner-X1 boundary flag
+ox1_bc    = periodic   # outer-X1 boundary flag
+
+nx2       = 1          # Number of zones in X2-direction
+x2min     = -0.5       # minimum value of X2
+x2max     = 0.5        # maximum value of X2
+ix2_bc    = periodic   # inner-X2 boundary flag
+ox2_bc    = periodic   # outer-X2 boundary flag
+
+nx3       = 1          # Number of zones in X3-direction
+x3min     = -0.5       # minimum value of X3
+x3max     = 0.5        # maximum value of X3
+ix3_bc    = periodic   # inner-X3 boundary flag
+ox3_bc    = periodic   # outer-X3 boundary flag
+
+<meshblock>
+nx1       = 64         # Number of cells in each MeshBlock, X1-dir
+nx2       = 1          # Number of cells in each MeshBlock, X2-dir
+nx3       = 1          # Number of cells in each MeshBlock, X3-dir
+
+<time>
+evolution  = dynamic   # dynamic/kinematic/static
+integrator = rk2       # time integration algorithm
+cfl_number = 0.3       # The Courant, Friedrichs, & Lewy (CFL) Number
+nlim       = 50        # cycle limit (drives the live tabulated hyperbolic update)
+tlim       = 1.0e30    # time limit (effectively unlimited; nlim gates the run)
+ndiag      = 25        # cycles between diagnostic output
+
+<mhd>
+eos         = tabulated_3t                     # tabulated 3T (IONMIX) real-material EOS
+eos_table   = inputs/ionmix/al-imx-004.cn4     # IONMIX cn4 table (overridden by the test)
+reconstruct = plm                              # spatial reconstruction (EOS-agnostic)
+rsolver     = llf                              # LLF routes the tabulated pressure (#162)
+gamma       = 1.6666666666666667               # ideal-gamma wave-speed bookkeeping
+nscalars    = 1                                # passive scalar 0 carries e_ele
+
+<problem>
+amp         = 0.5                              # central temperature-bump amplitude (in T)

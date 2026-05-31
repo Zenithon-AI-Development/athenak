@@ -85,6 +85,11 @@ struct HydCons1D {
 };
 struct MHDPrim1D {
   Real d, vx, vy, vz, e, bx, by, bz;
+  // electron internal-energy density (the first passive scalar, ADR-0002), carried only
+  // by the tabulated 3T EOS so the Riemann solver can close the gas pressure
+  // p_gas = p_ele(T_e) + p_ion(T_i) from (rho, e_ele, e_ion = e - e_ele).  Unused (and
+  // left unset) by the ideal/isothermal paths.
+  Real e_ele;
 };
 struct MHDCons1D {
   Real d, mx, my, mz, e, bx, by, bz;
