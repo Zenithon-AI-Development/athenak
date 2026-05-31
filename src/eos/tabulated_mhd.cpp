@@ -48,9 +48,11 @@
 TabulatedMHD::TabulatedMHD(MeshBlockPack *pp, ParameterInput *pin) :
     EquationOfState("mhd", pp, pin) {
   eos_data.is_ideal = false;
-  // gamma is bookkeeping for the ideal-gamma wave-speed estimate the hyperbolic solver
-  // still uses (the tabulated pressure feedback is slice [P2]/#162); it does not enter
-  // the tabulated cons->prim closure below.
+  // [P2]/#162: route the live hyperbolic pressure/wave-speed through the tabulated EOS
+  // (eos_data.eos_tbl, set in the mhd.cpp selector once the table is read).  gamma is now
+  // only the ideal-gamma fast-magnetosonic-speed bookkeeping (asq ~ gamma*p_tab in the
+  // LLF/newdt wave-speed estimate); it does not enter the tabulated pressure closure.
+  eos_data.is_tabulated = true;
   eos_data.gamma = pin->GetOrAddReal("mhd","gamma",(5.0/3.0));
   eos_data.iso_cs = 0.0;
   eos_data.use_e = true;   // evolve internal energy density

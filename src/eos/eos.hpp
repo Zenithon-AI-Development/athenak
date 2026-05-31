@@ -17,6 +17,8 @@
 #include "athena.hpp"
 #include "mesh/meshblock.hpp"
 #include "parameter_input.hpp"
+#include "eos/eos_table_3t.hpp"     // tabulated 3T EOS table (held by value in EOS_Data)
+#include "eos/cons_to_prim_2t.hpp"  // ConsToPrim2T: tabulated gas-pressure closure
 
 //----------------------------------------------------------------------------------------
 //! \struct EOSData
@@ -28,16 +30,35 @@ struct EOS_Data {
   Real gamma;        // ratio of specific heats for ideal gas
   Real iso_cs;       // isothermal sound speed
   bool is_ideal;     // flag to denote ideal gas EOS
+  bool is_tabulated = false;  // flag to denote the tabulated 3T (IONMIX) MHD EOS (#162)
   bool use_e, use_t; // use internal energy density (e) or temperature (t) as primitive
   Real dfloor, pfloor, tfloor, sfloor;  // density, pressure, temperature, entropy floors
   Real gamma_max;    // ceiling on Lorentz factor in SR/GR
   Real sigma_max;    // ceiling on magnetization in MHD
+  // tabulated 3T EOS table, populated only when is_tabulated (a shallow copy of the table
+  // held on the MHD package); copied by value into kernels exactly like the rest of this
+  // struct (the View handles are device-valid).  Empty/unused for ideal/isothermal.
+  eos_table_3t::EosTable3T eos_tbl;
 
   // IDEAL GAS PRESSURE: converts primitive variable (either internal energy density e
   // or temperature e/d) into pressure.
   KOKKOS_INLINE_FUNCTION
   Real IdealGasPressure(const Real eint) const {
     return ((gamma-1.0)*eint);
+  }
+
+  // TABULATED 3T GAS PRESSURE (#162, ADR-0002): closes the hyperbolic pressure for the
+  // tabulated EOS as p_gas = p_ele(rho,T_e) + p_ion(rho,T_i), the species pressures at
+  // their own table-inverted temperatures.  Inputs are the cell's mass density, the
+  // internal energy density eint = e_ele + e_ion (the use_e primitive), and the electron
+  // internal energy density e_ele (the first passive scalar); the ion energy is recovered
+  // by subtraction.  This is the per-interface analogue of the ConsToPrim2T closure the
+  // cons->prim path already uses, so the live hyperbolic pressure/wave speed is the
+  // tabulated pressure rather than the ideal-gamma value (gamma stays wave-speed
+  // bookkeeping only).
+  KOKKOS_INLINE_FUNCTION
+  Real TabulatedGasPressure(const Real rho, const Real eint, const Real e_ele) const {
+    return eos_table_3t::ConsToPrim2T(eos_tbl, rho, e_ele, (eint - e_ele)).p_gas;
   }
 
   // NON-RELATIVISTIC IDEAL GAS HYDRO: inlined sound speed function

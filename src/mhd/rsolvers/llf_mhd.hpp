@@ -44,9 +44,17 @@ void LLF(TeamMember_t const &member, const EOS_Data &eos,
     wri.by = br(iby,i);
     wri.bz = br(ibz,i);
 
-    if (eos.is_ideal) {
+    if (eos.is_ideal || eos.is_tabulated) {
       wli.e = wl(IEN,i);
       wri.e = wr(IEN,i);
+    }
+    // tabulated 3T EOS (#162): the electron internal-energy density rides the first
+    // passive scalar (prim value e_ele/rho at row IEN+1 == nmhd; ADR-0002), reconstructed
+    // into wl/wr alongside the MHD primitives.  Pass it through so the single-state
+    // solver can close the tabulated gas pressure p_gas(rho, e_ele, e_ion = e - e_ele).
+    if (eos.is_tabulated) {
+      wli.e_ele = wl(IEN+1,i)*wl(IDN,i);
+      wri.e_ele = wr(IEN+1,i)*wr(IDN,i);
     }
 
     // Extract normal magnetic field
@@ -61,7 +69,7 @@ void LLF(TeamMember_t const &member, const EOS_Data &eos,
     flx(m,ivx,k,j,i) = flux.mx;
     flx(m,ivy,k,j,i) = flux.my;
     flx(m,ivz,k,j,i) = flux.mz;
-    if (eos.is_ideal) {flx(m,IEN,k,j,i) = flux.e;}
+    if (eos.is_ideal || eos.is_tabulated) {flx(m,IEN,k,j,i) = flux.e;}
     ey(m,k,j,i) = flux.by;
     ez(m,k,j,i) = flux.bz;
   });
