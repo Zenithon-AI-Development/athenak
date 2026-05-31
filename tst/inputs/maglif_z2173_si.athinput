@@ -1,0 +1,113 @@
+# AthenaK input: SI-DIMENSIONAL faithful MagLIF Be-liner drive (issue #160/[P3]).
+#
+# The faithful Ellison/McBride benchmark setup -- an AR=6 beryllium liner driven by the
+# REAL measured z2173 Z-machine load current -- replacing the idealized code-unit surrogate
+# (current_waveform=constant, i0=O(1), code-unit geometry) the benchmarks have only ever run.
+# This slice (#160) commits the DRIVE + GEOMETRY; the random-temperature multi-mode seed is
+# #161/[P4] and the tabulated-3T EOS wiring is #159/[P1] + #162/[P2] (this template keeps the
+# ideal EOS + a single-mode seed placeholder, documented below).
+#
+# TARGET (M. R. Gomez / R. D. McBride et al., Phys. Rev. Lett. 109, 135004, 2012; AR=6 Be
+# liner, z2173): a beryllium liner shell driven from the outside by the load current, with a
+# low-density gas fill inside.  Aspect ratio AR = r_out/(r_out - r_in) = 3.4688/0.5813 ~ 6.
+#   r_in  (liner inner radius) = 2.8875 mm   -> fuel/liner interface (problem/r_fuel)
+#   r_out (liner outer radius) = 3.4688 mm   -> liner/vacuum interface (problem/r_liner)
+#   axial domain               = 1.6  mm     -> <mesh> x3 extent
+#
+# DRIVE (ADR-0005 mode A): current_waveform=tabulated reading the committed z2173 trace
+# tst/inputs/z2173_current.dat (peak ~20 MA at ~100 ns; see that file's provenance + QC flag).
+# The trace's columns are (time [ns], current [MA]); the drive is consumed as the
+# (code-time, code-current) waveform.  As in inputs/maglif_rm_si.athinput, the ABSOLUTE
+# SI->code current/field/time calibration of the drive awaits the EOS-set field and time
+# units (tabulated-3T EOS, #159/#162) and the downstream benchmark calibration -- the
+# GEOMETRY here is fully dimensional (mm via length_cgs), which is the scope of this slice.
+#
+# DIMENSIONAL SETUP (<units> block, #119):
+#   length_cgs  = 0.1     -> 1 code length  = 1 mm   (problem lengths are CGS cm)
+#   density_cgs = 1.85    -> 1 code density = solid Be 1.85 g/cm^3 (so d_liner = 1.0 code)
+#   velocity_cgs= 1.0     -> reporting scale only (absolute km/s calibration is downstream)
+#
+# Built with -D PROBLEM=maglif (a USER pgen, not in the suite binary).  A run resolves
+# problem/current_file to the committed trace (here a repo-relative path; a runner launching
+# from another directory should override it with the absolute path).
+
+<comment>
+problem   = MagLIF SI AR=6 Be liner, faithful z2173 tabulated drive (McBride 2012)
+
+<job>
+basename  = maglif_z2173_si
+
+<units>
+length_cgs   = 0.1        # cm per code length  -> code length unit = 1 mm
+density_cgs  = 1.85       # g/cm^3 per code density -> code density unit = solid Be
+velocity_cgs = 1.0        # cm/s per code velocity (reporting only; observables downstream)
+
+<mesh>
+nghost    = 2
+nx1       = 256       # radial zones (uniform) over [0, 3.6] mm -> dr = 14 um
+x1min     = 0.0       # r = 0 axis
+x1max     = 3.6       # outer radius R_out = 3.6 mm (driven boundary; beyond r_out = 3.4688)
+ix1_bc    = axis      # cylindrical r=0 axisymmetric boundary (issue #16)
+ox1_bc    = user      # circuit-driven B_phi outer boundary (issue #21)
+
+nx2       = 4         # thin azimuthal (phi) wedge (axisymmetric IC)
+x2min     = 0.0
+x2max     = 1.0
+ix2_bc    = periodic
+ox2_bc    = periodic
+
+nx3       = 32        # axial (z) zones over Lz = 1.6 mm
+x3min     = 0.0
+x3max     = 1.6       # axial domain 1.6 mm (McBride radiographed axial extent)
+ix3_bc    = periodic
+ox3_bc    = periodic
+
+<meshblock>
+nx1       = 128       # 256/128 = 2 root MeshBlocks along r
+nx2       = 4
+nx3       = 16        # 32/16 = 2 root MeshBlocks along z (4 blocks total)
+
+<coord>
+system    = cylindrical  # (x1,x2,x3) = (r,phi,z)
+
+<time>
+evolution  = dynamic
+integrator = rk2
+cfl_number = 0.3
+nlim       = 400000
+tlim       = 120.0       # code time (= ns); covers the rise through peak current (~100 ns)
+ndiag      = 500
+
+<mhd>
+eos         = ideal      # tabulated-3T EOS wiring is #159/[P1] + #162/[P2]; ideal here
+reconstruct = plm
+rsolver     = hlld
+gamma       = 1.6666666666666667
+dfloor      = 1.0e-5
+pfloor      = 1.0e-7
+
+<problem>
+# ---- drive (ADR-0005 mode A): faithful z2173 tabulated load current ----
+current_mode     = driven
+current_waveform = tabulated        # prescribed I(t) replayed from the measured z2173 trace
+current_file     = z2173_current.dat  # committed trace (tst/inputs/); peak ~20 MA, rise ~100 ns
+mu0              = 1.0              # code-unit permeability (Heaviside-Lorentz)
+# ---- AR=6 Be liner target geometry, PHYSICAL CGS (normalised by <units>) ----
+r_fuel           = 0.28875         # liner inner radius r_in = 2.8875 mm (fuel/liner interface)
+r_liner          = 0.34688         # liner outer radius r_out = 3.4688 mm (liner/vacuum)
+d_fuel           = 1.0e-3          # low-density gas fill (setup choice; not a z2173 datum)
+d_liner          = 1.85            # solid Be liner density 1.85 g/cm^3 (-> 1.0 code)
+d_vac            = 1.0e-4          # tenuous vacuum gap [r_out, R_out]
+p0               = 1.0e-4          # cold thermal pressure (setup choice)
+bz0              = 0.0             # no axial premagnetization for this liner-stability run
+# ---- seed: single-mode placeholder; the faithful Ellison multi-mode seed is #161/[P4] ----
+perturbation     = single_mode
+pert_amp         = 0.001           # 10 um radial seed amplitude (0.01 mm -> 0.001 cm)
+pert_mode        = 4              # axial mode (wavelength = Lz/4 = 0.4 mm)
+pert_phase       = 0.0
+
+<output1>
+file_type   = bin
+variable    = mhd_w_bcc
+id          = prim
+dt          = 5.0
