@@ -1,48 +1,169 @@
 {
-  "benchmark": "B2",
-  "ellison_id": 2,
-  "title": "Multi-mode magneto-Rayleigh-Taylor (MRT) growth on a Be liner",
-  "description": "Ellison benchmark 2. Multi-mode MRT on an initially solid beryllium liner imploded on the 20-MA Z accelerator (100- or 200-ns current rise). Penetrating radiography resolves the evolving, azimuthally-correlated MRT structure prior to and during stagnation. The simulation must qualitatively reproduce the multi-mode structure and amplitude growth.",
-  "primary_source": {
-    "authors": "R. D. McBride et al.",
-    "paper": "Penetrating Radiography of Imploding and Stagnating Beryllium Liners on the Z Accelerator",
-    "journal": "Phys. Rev. Lett.",
-    "volume": "109",
-    "article": "135004",
-    "year": 2012,
-    "doi": "10.1103/PhysRevLett.109.135004"
-  },
-  "companion_source": {
-    "authors": "R. D. McBride et al.",
-    "paper": "Beryllium liner implosion experiments on the Z accelerator in preparation for magnetized liner inertial fusion",
-    "journal": "Phys. Plasmas",
-    "volume": "20",
-    "issue": "5",
-    "article": "056309",
-    "year": 2013,
-    "doi": "10.1063/1.4803079"
-  },
-  "setup": {
-    "liner_material": "beryllium (initially solid)",
-    "drive_peak_current_MA": 20,
-    "drive_rise_time_ns": [100, 200],
-    "facility": "Sandia Z",
-    "note": "broadband (multi-mode) surface seeding; azimuthally-correlated MRT structure near stagnation"
-  },
-  "data": [
-    {
-      "id": "multimode_amplitude_growth",
-      "observable": "multi-mode MRT amplitude growth (dominant-mode envelope) vs time",
-      "kind": "curve",
-      "status": "pending_digitization",
-      "confidence": "low",
-      "extraction_method": "pending_digitization (curve to be digitized in #122 [C5]; no fabricated points)",
-      "oracle_kind": "experiment",
-      "source": {
-        "paper": "Penetrating Radiography of Imploding and Stagnating Beryllium Liners on the Z Accelerator",
-        "figure": "stagnation radiograph / azimuthal-correlation figure (exact panel pinned on digitization, #122)",
-        "doi": "10.1103/PhysRevLett.109.135004"
-      }
-    }
+ "benchmark": "B2",
+ "ellison_id": 2,
+ "title": "Multi-mode magneto-Rayleigh-Taylor (MRT) growth on a Be liner",
+ "description": "Ellison benchmark 2 (arXiv:2504.10760 sec 3.2). Multi-mode MRT on a solid Be liner (AR=6) imploded by the published z2173 drive on Sandia Z, multi-mode-seeded by a random zone-by-zone temperature perturbation, radiation off. Validation is STAGED: Stage 1 (hard) = qualitative radiograph-morphology match exactly as Ellison; Stage 2 (soft) = quantitative anchor to McBride 2012 fit laws vs convergence. See validation_stages + data[].",
+ "primary_source": {
+  "authors": "R. D. McBride et al.",
+  "paper": "Penetrating Radiography of Imploding and Stagnating Beryllium Liners on the Z Accelerator",
+  "journal": "Phys. Rev. Lett.",
+  "volume": "109",
+  "article": "135004",
+  "year": 2012,
+  "doi": "10.1103/PhysRevLett.109.135004"
+ },
+ "companion_source": {
+  "authors": "R. D. McBride et al.",
+  "paper": "Beryllium liner implosion experiments on the Z accelerator in preparation for magnetized liner inertial fusion",
+  "journal": "Phys. Plasmas",
+  "volume": "20",
+  "issue": "5",
+  "article": "056309",
+  "year": 2013,
+  "doi": "10.1063/1.4803079"
+ },
+ "setup": {
+  "liner_material": "beryllium (initially solid)",
+  "liner_inner_radius_mm": 2.8875,
+  "liner_outer_radius_mm": 3.4688,
+  "aspect_ratio": 6,
+  "drive": "published z2173 current trace (McBride PRL 109,135004 Fig.1(d)); ~20 MA, 100-ns rise",
+  "seed_model": "random zone-by-zone Gaussian temperature perturbation (Ellison Eq.16): T0=293K, T_min=273K floor, exponential radial decay; multi-mode/broadband",
+  "seed_delta_T_K": 100,
+  "amr_finest_resolution_um": 12.5,
+  "axial_domain_mm": 1.6,
+  "radiation": "off (Ellison: negligible impact in this regime)",
+  "facility": "Sandia Z",
+  "ellison_radiograph_times_ns": [
+   100.4,
+   120.5,
+   149.8,
+   159.1,
+   162.1,
+   164.9,
+   179.1
   ]
+ },
+ "data": [
+  {
+   "id": "multimode_growth_fraction",
+   "observable": "MRT amplitude as a fraction of distance moved: (R_spike-R_bubble)/(R_outer(0)-R_bubble), in the nonlinear regime",
+   "kind": "band",
+   "value_range": [
+    0.05,
+    0.15
+   ],
+   "units": "dimensionless",
+   "status": "digitized",
+   "confidence": "high",
+   "extraction_method": "Verbatim from McBride 2012 primary text: amplitude growth 'expressed as a fraction of the distance moved ... is nearly constant, and is in the range of 0.05-0.15'. Not pixel-traced; no fabrication. Dimensionless, timing- and drive-independent.",
+   "oracle_kind": "experiment",
+   "stage": "stage2_soft",
+   "source": {
+    "paper": "McBride et al. PRL 109,135004 (2012)",
+    "location": "text accompanying Fig.7(a)",
+    "doi": "10.1103/PhysRevLett.109.135004"
+   }
+  },
+  {
+   "id": "multimode_amplitude_law",
+   "observable": "MRT amplitude (R_spike-R_bubble) vs normalized distance moved x=1-R_bubble(t)/R_outer(0)",
+   "kind": "linear_law",
+   "law": "amplitude_um = 450*x - 90",
+   "x_definition": "x = 1 - R_bubble(t)/R_outer(0)  (R(t)=bubble radius, R(0)=initial outer radius)",
+   "x_valid_range": [
+    0.4,
+    0.95
+   ],
+   "units": "micrometers",
+   "status": "digitized",
+   "confidence": "high",
+   "extraction_method": "Printed fit-law annotation transcribed verbatim from McBride 2012 Fig.7(a): '450*[1-R(t)/R(0)]-90'. No pixel-tracing of data points; faithful by construction. Experimental point scatter (~+/-30-60 um) defines the tolerance band.",
+   "oracle_kind": "experiment",
+   "stage": "stage2_soft",
+   "source": {
+    "paper": "McBride et al. PRL 109,135004 (2012)",
+    "figure": "Fig.7(a)",
+    "doi": "10.1103/PhysRevLett.109.135004"
+   }
+  },
+  {
+   "id": "multimode_wavelength_law",
+   "observable": "dominant MRT wavelength vs normalized distance moved x=1-R/R0",
+   "kind": "linear_law",
+   "law": "wavelength_um = 750*x",
+   "units": "micrometers",
+   "status": "digitized",
+   "confidence": "high",
+   "extraction_method": "Printed fit-law annotation transcribed verbatim from McBride 2012 Fig.7(b): '750*[1-R(t)/R(0)]'. No pixel-tracing.",
+   "oracle_kind": "experiment",
+   "stage": "stage2_soft",
+   "source": {
+    "paper": "McBride et al. PRL 109,135004 (2012)",
+    "figure": "Fig.7(b)",
+    "doi": "10.1103/PhysRevLett.109.135004"
+   }
+  },
+  {
+   "id": "fig6_radii_vs_time_supporting",
+   "observable": "inner / bubble / spike radii vs time (supporting only; used to reconstruct amplitude(t) for plots, NOT a binding gate)",
+   "kind": "points",
+   "status": "machine_extracted_needs_human_qc",
+   "confidence": "low",
+   "extraction_method": "Pixel-traced from McBride 2012 Fig.6 render by an automated agent; FLAGGED for human QC per ADR-0008 (autonomous image-read fabrication hazard). Supporting/illustrative only; the binding/soft anchors above are the transcribed fit laws + text fraction, not these points.",
+   "oracle_kind": "experiment",
+   "stage": "supporting",
+   "x_axis": "time (ns)",
+   "y_axis": "radius (mm)",
+   "points": {
+    "t_ns": [
+     142.1,
+     149.1,
+     151.7,
+     156.5,
+     159.8,
+     164.6,
+     167.0
+    ],
+    "r_spike_mm": [
+     2.02,
+     1.72,
+     1.65,
+     1.33,
+     1.13,
+     0.7,
+     0.57
+    ],
+    "r_bubble_mm": [
+     1.9,
+     1.53,
+     1.47,
+     1.13,
+     0.82,
+     0.29,
+     0.21
+    ],
+    "r_inner_mm": [
+     1.52,
+     1.09,
+     0.98,
+     0.59,
+     0.46,
+     0.0,
+     0.0
+    ]
+   },
+   "source": {
+    "paper": "McBride et al. PRL 109,135004 (2012)",
+    "figure": "Fig.6",
+    "doi": "10.1103/PhysRevLett.109.135004"
+   }
+  }
+ ],
+ "validation_stages": {
+  "stage1_hard": "qualitative radiograph-morphology match exactly as Ellison sec 3.2 (largest-mode amplitude, approximate dominant wavelength, macroscopic multimode structure) at matched convergence; BINDING.",
+  "stage2_soft": "quantitative anchor to McBride 2012 primary fit laws (report-only, not binding).",
+  "stage3_escalate": "if stage2 persistently misses, flag for human investigation rather than block.",
+  "note": "Ellison B2 itself is purely qualitative (stage 1). Stage 2 extends beyond Ellison using McBride's own published fit laws; abscissa is convergence (1-R/R0), NOT absolute time, so it is immune to the shot-to-shot timing scatter Ellison cites as limiting absolute-time comparison."
+ }
 }
