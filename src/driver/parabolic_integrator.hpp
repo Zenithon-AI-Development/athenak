@@ -155,6 +155,93 @@ inline ParabolicMethod ParseMethod(ParameterInput *pin) {
 }
 
 //----------------------------------------------------------------------------------------
+//! \brief RKL2 stage kernels as NAMED, namespace-scope functors launched DIRECTLY via
+//! Kokkos::parallel_for (NOT through the par_for wrapper) -- both are REQUIRED for the
+//! GPU (CUDA) path (the operator-split parabolic GPU segfault, #139).
+//!
+//! Root cause: SuperstepStages is a template member function defined in this header, so
+//! it is instantiated in MULTIPLE translation units (mhd_tasks.cpp and every pgen that
+//! drives an operator-split step).  AthenaK's `par_for` wrapper (athena.hpp) wraps the
+//! callable it is given inside its OWN extended __device__ KOKKOS_LAMBDA.  With
+//! relocatable device code OFF (Kokkos_ENABLE_CUDA_RELOCATABLE_DEVICE_CODE=OFF, the
+//! default), nvcc emits a host launch-stub for that extended lambda PER TU; when the SAME
+//! instantiation (`par_for<RKL2 stage kernel>`) is emitted from several TUs the stubs
+//! collide and the kernel function pointer resolves to NULL at launch -> a jump to 0x0
+//! inside Kokkos::Impl::ParallelFor<...>::execute() on the very first superstep.  The
+//! concrete physics operators escape this only because each of their `par_for<lambda>`
+//! kernels has a closure type unique to a single .cpp.
+//!
+//! The robust fix is to eliminate the extended lambda from this template path entirely:
+//! make each stage kernel a concrete NAMED functor (a regular __global__ template
+//! instantiation, dedup-safe across TUs the way all Kokkos functors are) and hand it
+//! straight to Kokkos::parallel_for over a flat RangePolicy, decoding the multidim index
+//! inside operator() exactly as par_for does.  The per-cell arithmetic and the flat
+//! iteration order are byte-for-byte identical to the original lambdas, so CPU results
+//! are unchanged.  (This is the runtime sibling of the compile-time fix #119 made by
+//! hoisting OperatorActionFunctor to namespace scope.)
+
+//! \struct RKL2Stage1Functor1D : Y_1 = Y_0 + mu_tilde_1 dt M(Y_0)  (1D field, index = i).
+struct RKL2Stage1Functor1D {
+  DvceArray1D<Real> ym1, y0, my0;
+  Real mt1, dt;
+  KOKKOS_INLINE_FUNCTION
+  void operator()(const int i) const {
+    ym1(i) = y0(i) + mt1*dt*my0(i);
+  }
+};
+
+//! \struct RKL2StageJFunctor1D : stage-j RKL2 recursion  (1D field, index = i).
+struct RKL2StageJFunctor1D {
+  DvceArray1D<Real> ynew, ym1, ym2, y0, mym1, my0;
+  Real mu, nu, one_m, mut, dt, gt;
+  KOKKOS_INLINE_FUNCTION
+  void operator()(const int i) const {
+    ynew(i) = mu*ym1(i) + nu*ym2(i) + one_m*y0(i) + mut*dt*mym1(i) + gt*dt*my0(i);
+  }
+};
+
+//! \struct RKL2Stage1Functor5D : Y_1 = Y_0 + mu_tilde_1 dt M(Y_0)  (5D conserved field).
+//! The flat thread index `idx` over [0, nmb*nvar*n3*n2*n1) is decoded into (m,n,k,j,i)
+//! exactly as par_for's 5D 1D-RangePolicy mapping (all lower bounds are 0 here).
+struct RKL2Stage1Functor5D {
+  DvceArray5D<Real> ym1, y0, my0;
+  Real mt1, dt;
+  int nvar, n3, n2, n1;
+  KOKKOS_INLINE_FUNCTION
+  void operator()(const int idx) const {
+    const int nnkji = nvar*n3*n2*n1;
+    const int nkji  = n3*n2*n1;
+    const int nji   = n2*n1;
+    int m = idx/nnkji;
+    int n = (idx - m*nnkji)/nkji;
+    int k = (idx - m*nnkji - n*nkji)/nji;
+    int j = (idx - m*nnkji - n*nkji - k*nji)/n1;
+    int i = (idx - m*nnkji - n*nkji - k*nji - j*n1);
+    ym1(m,n,k,j,i) = y0(m,n,k,j,i) + mt1*dt*my0(m,n,k,j,i);
+  }
+};
+
+//! \struct RKL2StageJFunctor5D : stage-j RKL2 recursion  (5D conserved field).
+struct RKL2StageJFunctor5D {
+  DvceArray5D<Real> ynew, ym1, ym2, y0, mym1, my0;
+  Real mu, nu, one_m, mut, dt, gt;
+  int nvar, n3, n2, n1;
+  KOKKOS_INLINE_FUNCTION
+  void operator()(const int idx) const {
+    const int nnkji = nvar*n3*n2*n1;
+    const int nkji  = n3*n2*n1;
+    const int nji   = n2*n1;
+    int m = idx/nnkji;
+    int n = (idx - m*nnkji)/nkji;
+    int k = (idx - m*nnkji - n*nkji)/nji;
+    int j = (idx - m*nnkji - n*nkji - k*nji)/n1;
+    int i = (idx - m*nnkji - n*nkji - k*nji - j*n1);
+    ynew(m,n,k,j,i) = mu*ym1(m,n,k,j,i) + nu*ym2(m,n,k,j,i) + one_m*y0(m,n,k,j,i)
+                      + mut*dt*mym1(m,n,k,j,i) + gt*dt*my0(m,n,k,j,i);
+  }
+};
+
+//----------------------------------------------------------------------------------------
 //! \class ParabolicIntegrator
 //! \brief Pluggable interface advancing a parabolic operator over an operator-split
 //! superstep.  The shipped backend is RKL2 super-time-stepping; the selection is made
@@ -198,11 +285,12 @@ class ParabolicIntegrator {
     Kokkos::deep_copy(y0, u);
     op(y0, my0);                                   // M(Y_0), reused every stage
 
-    // Stage 1: Y_1 = Y_0 + mu_tilde_1 dt M(Y_0).
+    // Stage 1: Y_1 = Y_0 + mu_tilde_1 dt M(Y_0).  Launch the named functor DIRECTLY (no
+    // par_for wrapper) so this header-template path carries no extended __device__ lambda
+    // (#139); the flat range [0,n) maps thread idx -> i directly.
     const Real mt1 = RKL2_MuTilde1(s);
-    par_for("rkl2_stage1", DevExeSpace(), 0, n-1, KOKKOS_LAMBDA(const int i) {
-      ym1(i) = y0(i) + mt1*dt*my0(i);
-    });
+    Kokkos::parallel_for("rkl2_stage1", Kokkos::RangePolicy<>(DevExeSpace(), 0, n),
+                         RKL2Stage1Functor1D{ym1, y0, my0, mt1, dt});
     Kokkos::deep_copy(ym2, y0);                    // Y_{j-2} for j=2 is Y_0
 
     // Stages 2..s.
@@ -211,9 +299,9 @@ class ParabolicIntegrator {
       const RKL2Stage c = RKL2Coeffs(j, s);
       const Real mu = c.mu, nu = c.nu, mut = c.mu_tilde, gt = c.gamma_tilde;
       const Real one_m = 1.0 - mu - nu;
-      par_for("rkl2_stagej", DevExeSpace(), 0, n-1, KOKKOS_LAMBDA(const int i) {
-        ynew(i) = mu*ym1(i) + nu*ym2(i) + one_m*y0(i) + mut*dt*mym1(i) + gt*dt*my0(i);
-      });
+      Kokkos::parallel_for("rkl2_stagej", Kokkos::RangePolicy<>(DevExeSpace(), 0, n),
+                           RKL2StageJFunctor1D{ynew, ym1, ym2, y0, mym1, my0,
+                                               mu, nu, one_m, mut, dt, gt});
       Kokkos::deep_copy(ym2, ym1);
       Kokkos::deep_copy(ym1, ynew);
     }
@@ -261,13 +349,14 @@ class ParabolicIntegrator {
     Kokkos::deep_copy(y0, u);
     op(y0, my0);                                   // M(Y_0), reused every stage
 
-    // Stage 1: Y_1 = Y_0 + mu_tilde_1 dt M(Y_0).
+    // Stage 1: Y_1 = Y_0 + mu_tilde_1 dt M(Y_0).  Launch the named functor DIRECTLY over
+    // a flat 1D RangePolicy [0, nmb*nvar*n3*n2*n1) (the functor decodes m,n,k,j,i), so
+    // this header-template path carries no extended __device__ lambda (#139).
+    const int nmnkji = nmb*nvar*n3*n2*n1;
     const Real mt1 = RKL2_MuTilde1(s);
-    par_for("rkl2_5d_stage1", DevExeSpace(),
-    0, nmb-1, 0, nvar-1, 0, n3-1, 0, n2-1, 0, n1-1,
-    KOKKOS_LAMBDA(const int m, const int n, const int k, const int j, const int i) {
-      ym1(m,n,k,j,i) = y0(m,n,k,j,i) + mt1*dt*my0(m,n,k,j,i);
-    });
+    Kokkos::parallel_for("rkl2_5d_stage1",
+                         Kokkos::RangePolicy<>(DevExeSpace(), 0, nmnkji),
+                         RKL2Stage1Functor5D{ym1, y0, my0, mt1, dt, nvar, n3, n2, n1});
     Kokkos::deep_copy(ym2, y0);                    // Y_{j-2} for j=2 is Y_0
 
     // Stages 2..s.
@@ -276,12 +365,11 @@ class ParabolicIntegrator {
       const RKL2Stage c = RKL2Coeffs(jstg, s);
       const Real mu = c.mu, nu = c.nu, mut = c.mu_tilde, gt = c.gamma_tilde;
       const Real one_m = 1.0 - mu - nu;
-      par_for("rkl2_5d_stagej", DevExeSpace(),
-      0, nmb-1, 0, nvar-1, 0, n3-1, 0, n2-1, 0, n1-1,
-      KOKKOS_LAMBDA(const int m, const int n, const int k, const int j, const int i) {
-        ynew(m,n,k,j,i) = mu*ym1(m,n,k,j,i) + nu*ym2(m,n,k,j,i) + one_m*y0(m,n,k,j,i)
-                          + mut*dt*mym1(m,n,k,j,i) + gt*dt*my0(m,n,k,j,i);
-      });
+      Kokkos::parallel_for("rkl2_5d_stagej",
+                           Kokkos::RangePolicy<>(DevExeSpace(), 0, nmnkji),
+                           RKL2StageJFunctor5D{ynew, ym1, ym2, y0, mym1, my0,
+                                               mu, nu, one_m, mut, dt, gt,
+                                               nvar, n3, n2, n1});
       Kokkos::deep_copy(ym2, ym1);
       Kokkos::deep_copy(ym1, ynew);
     }
