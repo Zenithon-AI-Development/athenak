@@ -1,0 +1,128 @@
+# AthenaK input: FAITHFUL Ellison benchmark 2 Stage-1 setup (issue #163/[B2-S1]).
+#
+# The faithful qualitative multi-mode magneto-Rayleigh-Taylor (MRT) replication of Ellison
+# et al. 2025 (arXiv:2504.10760, sec 3.2; validated vs McBride 2012/2013) -- REPLACING the
+# code-unit surrogate (maglif_mmrt.athinput / #122), which differed from Ellison B2 on every
+# knob (constant i0:3.0 drive, geometric roughness seed, code-unit geometry, radiation ON).
+# This input sets EVERY knob to the published Ellison B2 value:
+#   * AR:6 beryllium liner (r_in 2.8875 / r_out 3.4688 mm) -- the #160/[P3] geometry;
+#   * the REAL measured z2173 Z-machine load current -- the #160/[P3] tabulated drive;
+#   * the Ellison Eq.16 RANDOM-TEMPERATURE seed (delta_T 100 K) -- the #161/[P4] seed
+#     (perturbation:temperature), NOT a manufactured geometric surface-roughness spectrum;
+#   * 12.5 um finest cell (uniform);
+#   * RADIATION OFF (no operator-split parabolic / FLD block -- ideal-MHD core only).
+#
+# Ellison's verbatim B2 success criterion is QUALITATIVE: "the prominent characteristics of
+# the MRT features are in good agreement... the amplitude of the largest mode, the
+# approximate wavelength of the largest mode, and general qualitative agreement in the
+# macroscopic multimode behavior."  Stage 1 (#163) is this qualitative morphology gate; the
+# soft quantitative anchor to the McBride fit laws is Stage 2 (#155 [B2-S2]).
+#
+# GEOMETRY MAPPING (as maglif_z2173_si.athinput / #160): length_cgs 0.1 -> 1 code length is
+# 1 mm; <problem> lengths are CGS cm.  AR is r_out/(r_out-r_in), 3.4688/0.5813 ~= 5.97 ~= 6.
+# DRIVE (ADR-0005 mode A): current_waveform:tabulated replays the committed z2173 trace
+# tst/inputs/z2173_current.dat (peak ~20 MA at ~100 ns; columns (t [ns], I [MA]) consumed as
+# the (code-time, code-current) waveform -- the absolute SI current/field/time calibration is
+# downstream, as documented in maglif_z2173_si.athinput / maglif_rm_si.athinput).
+#
+# RESOLUTION NOTE (as maglif_mmrt_si.athinput): AthenaK has no 3-D cylindrical SMR/AMR (only
+# the 2-D (r,phi) Balsara prolongation, #38), and the temperature seed is AXIAL, so z must be
+# resolved -> a 3-D (r,phi,z) mesh and "12.5 um finest" is a UNIFORM fine grid: nx1 288 over
+# [0, 3.6] mm (dr 12.5 um) x nx3 128 over [0, 1.6] mm (dz 12.5 um).  ADR-0004 fixes the axial
+# direction to x3 (AthenaK forbids nx2 1 with nx3 > 1), so a thin azimuthal (phi) wedge carries
+# the axisymmetric IC; the per-zone temperature seed breaks the axisymmetry along z.
+#
+# IMPORTANT (bin-header reader gotcha): vis/python/bin_convert splits embedded header lines on
+# "=" with no maxsplit, so an inline comment or value containing "=" crashes the reader.  The
+# embedded header carries the <comment> block's text line and every <problem>/<mesh>/... param
+# line WITH its inline comment, so those MUST avoid "=" (this rich top block of '#' full-line
+# comments is NOT embedded and may use "=" freely).
+#
+# Built with -D PROBLEM=maglif (a USER pgen).  A run resolves problem/current_file to the
+# committed trace (here a repo-relative path; a runner launching from another directory should
+# override it with the absolute path).  The reduced-resolution CPU regression gate that
+# exercises this exact physical setup is tst/test_suite/cylindrical/
+# test_verify_maglif_b2_ellison_cpu.py (it overrides only nx*/tlim, not the drive/seed/geometry).
+
+<comment>
+problem   = Ellison B2 Stage-1 faithful AR6 Be liner, z2173 drive, Eq.16 dT 100 K seed
+
+<job>
+basename  = maglif_b2_ellison
+
+<units>
+length_cgs   = 0.1        # cm per code length, so code length unit is 1 mm
+density_cgs  = 1.85       # g/cc per code density, so code density unit is solid Be
+velocity_cgs = 1.0        # cm/s per code velocity (reporting only; observables downstream)
+
+<mesh>
+nghost    = 2
+nx1       = 288       # radial zones (uniform) over [0, 3.6] mm, dr 12.5 um (finest)
+x1min     = 0.0       # r 0 axis
+x1max     = 3.6       # outer radius R_out 3.6 mm (driven boundary; beyond r_out 3.4688)
+ix1_bc    = axis      # cylindrical r 0 axisymmetric boundary (issue #16)
+ox1_bc    = user      # circuit-driven B_phi outer boundary (issue #21)
+
+nx2       = 4         # thin azimuthal (phi) wedge (axisymmetric IC; seed breaks it along z)
+x2min     = 0.0
+x2max     = 1.0
+ix2_bc    = periodic
+ox2_bc    = periodic
+
+nx3       = 128       # axial (z) zones over [0, 1.6] mm, dz 12.5 um (finest)
+x3min     = 0.0
+x3max     = 1.6       # axial domain 1.6 mm (McBride radiographed axial extent)
+ix3_bc    = periodic
+ox3_bc    = periodic
+
+<meshblock>
+nx1       = 144       # 2 root MeshBlocks along r
+nx2       = 4
+nx3       = 64        # 2 root MeshBlocks along z (4 blocks total)
+
+<coord>
+system    = cylindrical  # (x1,x2,x3) are (r,phi,z)
+
+<time>
+evolution  = dynamic
+integrator = rk2
+cfl_number = 0.3
+nlim       = 400000
+tlim       = 120.0       # code time (ns); covers the rise through peak current (~100 ns)
+ndiag      = 500
+
+<mhd>
+eos         = ideal      # radiation OFF, ideal-MHD core (Stage-1 scope; tabulated-3T is #120/#121)
+reconstruct = plm
+rsolver     = hlld
+gamma       = 1.6666666666666667
+dfloor      = 1.0e-5
+pfloor      = 1.0e-7
+
+<problem>
+# ---- drive (ADR-0005 mode A): faithful z2173 tabulated load current ----
+current_mode     = driven
+current_waveform = tabulated        # prescribed I(t) replayed from the measured z2173 trace
+current_file     = z2173_current.dat  # committed trace (tst/inputs); peak ~20 MA, rise ~100 ns
+mu0              = 1.0              # code-unit permeability (Heaviside-Lorentz)
+# ---- AR6 Be liner target geometry, PHYSICAL CGS (normalised by <units>) ----
+r_fuel           = 0.28875         # liner inner radius r_in 2.8875 mm (fuel/liner interface)
+r_liner          = 0.34688         # liner outer radius r_out 3.4688 mm (liner/vacuum)
+d_fuel           = 1.0e-3          # low-density gas fill (setup choice; not a z2173 datum)
+d_liner          = 1.85            # solid Be liner density 1.85 g/cc, maps to 1.0 code
+d_vac            = 1.0e-4          # tenuous vacuum gap (r_out to R_out)
+p0               = 1.0e-4          # cold thermal pressure (setup choice)
+bz0              = 0.0             # no axial premagnetization for this liner-stability run
+# ---- seed: Ellison Eq.16 random-temperature multi-mode seed (#161/[P4]) ----
+perturbation     = temperature     # per-zone random T(r,z), decays inward from outer liner
+pert_dT          = 100.0           # delta_T 100 K (Ellison B2 value)
+pert_T0          = 293.0           # ambient temperature T0 [K]
+pert_Tmin        = 273.0           # temperature floor Tmin [K]
+pert_decay       = 0.058130        # decay length lambda, liner thickness 0.5813 mm (CGS cm)
+pert_seed        = 20173           # PRNG seed (reproducible; z2173 mnemonic)
+
+<output1>
+file_type   = bin
+variable    = mhd_w_bcc
+id          = prim
+dt          = 5.0
