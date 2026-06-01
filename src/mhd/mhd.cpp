@@ -11,9 +11,11 @@
 #include <algorithm>
 
 #include "athena.hpp"
+#include "globals.hpp"
 #include "parameter_input.hpp"
 #include "mesh/mesh.hpp"
 #include "eos/eos.hpp"
+#include "eos/ionmix_eos_reader.hpp"  // tabulated 3T (IONMIX) EOS reader (#159)
 #include "diffusion/viscosity.hpp"
 #include "diffusion/resistivity.hpp"
 #include "diffusion/conduction.hpp"
@@ -97,6 +99,29 @@ MHD::MHD(MeshBlockPack *ppack, ParameterInput *pin) :
       nmhd = 4;
     }
 
+  // tabulated 3T (IONMIX) real-material EOS (issue [P1]/#159, ADR-0002/0007).  Reads the
+  // .cn4 table path from <mhd>/eos_table into the EosTable3T held on the package via
+  // ionmix_eos_reader; the live cons->prim closure (eos/tabulated_mhd.cpp) inverts the
+  // per-species energies to T_e/T_i.  Nonrelativistic only (HED/MagLIF code path).
+  } else if (eqn_of_state.compare("tabulated_3t") == 0) {
+    if (pmy_pack->pcoord->is_special_relativistic ||
+        pmy_pack->pcoord->is_general_relativistic) {
+      std::cout <<"### FATAL ERROR in "<< __FILE__ <<" at line "<< __LINE__ << std::endl
+                <<"<mhd> eos = tabulated_3t cannot be used with SR/GR"<< std::endl;
+      std::exit(EXIT_FAILURE);
+    }
+    // .cn4 table path (required) + optional ion mass [g] to relabel the IONMIX number-
+    // density axis as mass density (default 1.0 keeps the native number-density axis).
+    std::string eos_table_file = pin->GetString("mhd","eos_table");
+    Real eos_mass_per_ion = pin->GetOrAddReal("mhd","eos_mass_per_ion",1.0);
+    eos_table_3t::ReadIonmixCn4Eos(eos_table_file, eos_tbl, eos_mass_per_ion);
+    peos = new TabulatedMHD(ppack, pin);
+    // hand the populated table to the EOS data so the live hyperbolic pressure/wave-speed
+    // (LLF Riemann solver + newdt) can close p_gas from the table (#162); the cons->prim
+    // closure reads the package member pmhd->eos_tbl directly.
+    peos->eos_data.eos_tbl = eos_tbl;
+    nmhd = 5;
+
   // EOS string not recognized
   } else {
     std::cout <<"### FATAL ERROR in "<< __FILE__ <<" at line "<< __LINE__ << std::endl
@@ -156,6 +181,13 @@ MHD::MHD(MeshBlockPack *ppack, ParameterInput *pin) :
     Kokkos::realloc(b0.x1f, nmb, ncells3, ncells2, ncells1+1);
     Kokkos::realloc(b0.x2f, nmb, ncells3, ncells2+1, ncells1);
     Kokkos::realloc(b0.x3f, nmb, ncells3+1, ncells2, ncells1);
+
+    // Derived, cached electron/ion temperature fields for the tabulated 3T EOS, allocated
+    // ONLY when eos=tabulated_3t so the ideal/isothermal paths stay byte-identical.
+    if (eqn_of_state.compare("tabulated_3t") == 0) {
+      Kokkos::realloc(derived_te, nmb, 1, ncells3, ncells2, ncells1);
+      Kokkos::realloc(derived_ti, nmb, 1, ncells3, ncells2, ncells1);
+    }
   }
 
   // allocate memory for conserved variables on coarse mesh
@@ -346,6 +378,15 @@ MHD::MHD(MeshBlockPack *ppack, ParameterInput *pin) :
   if (evolution_t.compare("stationary") != 0) {
     // determine if FOFC is enabled
     use_fofc = pin->GetOrAddBoolean("mhd","fofc",false);
+    // FOFC's first-order LLF fallback does not yet carry the tabulated 3T electron-energy
+    // scalar into the single-state solver, so it would not close the tabulated gas
+    // pressure (#162).  FATAL rather than silently fall back to an ideal-gamma pressure.
+    if (use_fofc && peos->eos_data.is_tabulated) {
+      std::cout << "### FATAL ERROR in " << __FILE__ << " at line " << __LINE__
+        << std::endl << "<mhd> fofc=true not yet supported with eos=tabulated_3t (#162)"
+        << std::endl;
+      std::exit(EXIT_FAILURE);
+    }
 
     // select reconstruction method (default PLM)
     std::string xorder = pin->GetOrAddString("mhd","reconstruct","plm");
@@ -437,6 +478,19 @@ MHD::MHD(MeshBlockPack *ppack, ParameterInput *pin) :
 
     // Non-relativistic dynamic solvers
     } else if (evolution_t.compare("dynamic") == 0) {
+      // The tabulated 3T EOS (#162) routes the hyperbolic gas pressure through the table
+      // ONLY in the LLF solver (the one NR-MHD solver that takes the internal energy and
+      // the pressure independently); HLLE/HLLD bake the ideal-gamma relation
+      // e=p/(gamma-1) into their Roe-averaged wave structure, so they would silently fall
+      // back to an ideal-gamma (here zero, iso_cs=0) pressure.  Warn rather than FATAL so
+      // a nlim=0 construction/inspection run (no Riemann solver call) still works.
+      if (peos->eos_data.is_tabulated && rsolver.compare("llf") != 0 &&
+          global_variable::my_rank == 0) {
+        std::cout << "### WARNING in " << __FILE__ << ": <mhd> eos=tabulated_3t routes"
+                  << " the tabulated gas pressure through the hyperbolic update only with"
+                  << " rsolver=llf; rsolver='" << rsolver << "' will use an ideal-gamma"
+                  << " (iso_cs=0) pressure in the flux." << std::endl;
+      }
       // LLF solver
       if (rsolver.compare("llf") == 0) {
         rsolver_method = MHD_RSolver::llf;

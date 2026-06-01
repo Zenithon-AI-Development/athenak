@@ -18,7 +18,10 @@
     "drive_peak_current_MA": 20,
     "drive_rise_time_ns": 100,
     "facility": "Sandia Z",
-    "seeded_perturbation_wavelengths_um": [25, 400],
+    "seeded_perturbation_wavelengths_um": [
+      25,
+      400
+    ],
     "perturbation_note": "single-mode sinusoidal seeds in the 25-400 um wavelength range"
   },
   "data": [
@@ -26,15 +29,184 @@
       "id": "single_mode_amplitude_growth",
       "observable": "seeded single-mode MRT perturbation amplitude vs time",
       "kind": "curve",
-      "status": "pending_digitization",
+      "status": "digitized",
       "confidence": "low",
-      "extraction_method": "pending_digitization (curve to be digitized in #120 [C3]; no fabricated points)",
+      "unit": "mm",
+      "x_unit": "ns",
+      "extraction_method": "digitized (WebPlotDigitizer) from Sinars 2011 single-mode MRT amplitude-vs-time figure (blue '+' experiment series), human-QC'd GOOD (11 points); source figure + reproducible extraction committed under verification/ground_truth/digitization_review/ (figures/sinars_mrt_growth_rate.png, extracted/extracted_points_v3.json key B1_single_mode_amplitude). No fabricated points; per-point error bars are documented estimates (see each point's *_error basis).",
       "oracle_kind": "experiment",
       "source": {
         "paper": "Measurements of magneto-Rayleigh-Taylor instability growth during the implosion of initially solid metal liners",
-        "figure": "single-mode MRT amplitude-vs-time radiograph figure (exact panel pinned on digitization, #120)",
+        "figure": "single-mode MRT amplitude-vs-time radiograph figure, experiment ('+') series (sinars_mrt_growth_rate.png)",
         "doi": "10.1063/1.3560911"
-      }
+      },
+      "points": [
+        {
+          "x": 1.88,
+          "y": 0.0197,
+          "experimental_error": {
+            "value": 0.15,
+            "kind": "relative",
+            "basis": "PLACEHOLDER ~15%: Sinars 2011 radiographic single-mode amplitude measurement uncertainty; exact published per-point error bars not transcribed (paywalled, DOI 10.1063/1.3560911) -- refine from the paper"
+          },
+          "digitization_error": {
+            "value": 0.07,
+            "kind": "relative",
+            "basis": "estimated WebPlotDigitizer reading error on the log-scaled amplitude axis of sinars_mrt_growth_rate.png (marker-centroid / pixel resolution); refine if re-digitized"
+          },
+          "confidence": "low"
+        },
+        {
+          "x": 26.97,
+          "y": 0.0162,
+          "experimental_error": {
+            "value": 0.15,
+            "kind": "relative",
+            "basis": "PLACEHOLDER ~15%: Sinars 2011 radiographic single-mode amplitude measurement uncertainty; exact published per-point error bars not transcribed (paywalled, DOI 10.1063/1.3560911) -- refine from the paper"
+          },
+          "digitization_error": {
+            "value": 0.07,
+            "kind": "relative",
+            "basis": "estimated WebPlotDigitizer reading error on the log-scaled amplitude axis of sinars_mrt_growth_rate.png (marker-centroid / pixel resolution); refine if re-digitized"
+          },
+          "confidence": "low"
+        },
+        {
+          "x": 36.86,
+          "y": 0.043,
+          "experimental_error": {
+            "value": 0.15,
+            "kind": "relative",
+            "basis": "PLACEHOLDER ~15%: Sinars 2011 radiographic single-mode amplitude measurement uncertainty; exact published per-point error bars not transcribed (paywalled, DOI 10.1063/1.3560911) -- refine from the paper"
+          },
+          "digitization_error": {
+            "value": 0.07,
+            "kind": "relative",
+            "basis": "estimated WebPlotDigitizer reading error on the log-scaled amplitude axis of sinars_mrt_growth_rate.png (marker-centroid / pixel resolution); refine if re-digitized"
+          },
+          "confidence": "low"
+        },
+        {
+          "x": 39.51,
+          "y": 0.0537,
+          "experimental_error": {
+            "value": 0.15,
+            "kind": "relative",
+            "basis": "PLACEHOLDER ~15%: Sinars 2011 radiographic single-mode amplitude measurement uncertainty; exact published per-point error bars not transcribed (paywalled, DOI 10.1063/1.3560911) -- refine from the paper"
+          },
+          "digitization_error": {
+            "value": 0.07,
+            "kind": "relative",
+            "basis": "estimated WebPlotDigitizer reading error on the log-scaled amplitude axis of sinars_mrt_growth_rate.png (marker-centroid / pixel resolution); refine if re-digitized"
+          },
+          "confidence": "low"
+        },
+        {
+          "x": 48.57,
+          "y": 0.1207,
+          "experimental_error": {
+            "value": 0.15,
+            "kind": "relative",
+            "basis": "PLACEHOLDER ~15%: Sinars 2011 radiographic single-mode amplitude measurement uncertainty; exact published per-point error bars not transcribed (paywalled, DOI 10.1063/1.3560911) -- refine from the paper"
+          },
+          "digitization_error": {
+            "value": 0.07,
+            "kind": "relative",
+            "basis": "estimated WebPlotDigitizer reading error on the log-scaled amplitude axis of sinars_mrt_growth_rate.png (marker-centroid / pixel resolution); refine if re-digitized"
+          },
+          "confidence": "low"
+        },
+        {
+          "x": 52.25,
+          "y": 0.1488,
+          "experimental_error": {
+            "value": 0.15,
+            "kind": "relative",
+            "basis": "PLACEHOLDER ~15%: Sinars 2011 radiographic single-mode amplitude measurement uncertainty; exact published per-point error bars not transcribed (paywalled, DOI 10.1063/1.3560911) -- refine from the paper"
+          },
+          "digitization_error": {
+            "value": 0.07,
+            "kind": "relative",
+            "basis": "estimated WebPlotDigitizer reading error on the log-scaled amplitude axis of sinars_mrt_growth_rate.png (marker-centroid / pixel resolution); refine if re-digitized"
+          },
+          "confidence": "low"
+        },
+        {
+          "x": 54.01,
+          "y": 0.2231,
+          "experimental_error": {
+            "value": 0.15,
+            "kind": "relative",
+            "basis": "PLACEHOLDER ~15%: Sinars 2011 radiographic single-mode amplitude measurement uncertainty; exact published per-point error bars not transcribed (paywalled, DOI 10.1063/1.3560911) -- refine from the paper"
+          },
+          "digitization_error": {
+            "value": 0.07,
+            "kind": "relative",
+            "basis": "estimated WebPlotDigitizer reading error on the log-scaled amplitude axis of sinars_mrt_growth_rate.png (marker-centroid / pixel resolution); refine if re-digitized"
+          },
+          "confidence": "low"
+        },
+        {
+          "x": 57.35,
+          "y": 0.3207,
+          "experimental_error": {
+            "value": 0.15,
+            "kind": "relative",
+            "basis": "PLACEHOLDER ~15%: Sinars 2011 radiographic single-mode amplitude measurement uncertainty; exact published per-point error bars not transcribed (paywalled, DOI 10.1063/1.3560911) -- refine from the paper"
+          },
+          "digitization_error": {
+            "value": 0.07,
+            "kind": "relative",
+            "basis": "estimated WebPlotDigitizer reading error on the log-scaled amplitude axis of sinars_mrt_growth_rate.png (marker-centroid / pixel resolution); refine if re-digitized"
+          },
+          "confidence": "low"
+        },
+        {
+          "x": 60.09,
+          "y": 0.3778,
+          "experimental_error": {
+            "value": 0.15,
+            "kind": "relative",
+            "basis": "PLACEHOLDER ~15%: Sinars 2011 radiographic single-mode amplitude measurement uncertainty; exact published per-point error bars not transcribed (paywalled, DOI 10.1063/1.3560911) -- refine from the paper"
+          },
+          "digitization_error": {
+            "value": 0.07,
+            "kind": "relative",
+            "basis": "estimated WebPlotDigitizer reading error on the log-scaled amplitude axis of sinars_mrt_growth_rate.png (marker-centroid / pixel resolution); refine if re-digitized"
+          },
+          "confidence": "low"
+        },
+        {
+          "x": 66.55,
+          "y": 0.7006,
+          "experimental_error": {
+            "value": 0.15,
+            "kind": "relative",
+            "basis": "PLACEHOLDER ~15%: Sinars 2011 radiographic single-mode amplitude measurement uncertainty; exact published per-point error bars not transcribed (paywalled, DOI 10.1063/1.3560911) -- refine from the paper"
+          },
+          "digitization_error": {
+            "value": 0.07,
+            "kind": "relative",
+            "basis": "estimated WebPlotDigitizer reading error on the log-scaled amplitude axis of sinars_mrt_growth_rate.png (marker-centroid / pixel resolution); refine if re-digitized"
+          },
+          "confidence": "low"
+        },
+        {
+          "x": 69.9,
+          "y": 0.9133,
+          "experimental_error": {
+            "value": 0.15,
+            "kind": "relative",
+            "basis": "PLACEHOLDER ~15%: Sinars 2011 radiographic single-mode amplitude measurement uncertainty; exact published per-point error bars not transcribed (paywalled, DOI 10.1063/1.3560911) -- refine from the paper"
+          },
+          "digitization_error": {
+            "value": 0.07,
+            "kind": "relative",
+            "basis": "estimated WebPlotDigitizer reading error on the log-scaled amplitude axis of sinars_mrt_growth_rate.png (marker-centroid / pixel resolution); refine if re-digitized"
+          },
+          "confidence": "low"
+        }
+      ]
     }
   ]
 }

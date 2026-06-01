@@ -88,16 +88,22 @@ benchmark into an experiment-validated one — drop them into any `test_verify_*
     `pending digitization (#NNN)`, never a fabricated band.
 
 Worked examples: `cylindrical/test_verify_maglif_icf_cpu.py` (B4 ICF scalars, #140 [VA1]),
-`cylindrical/test_verify_maglif_mrt_cpu.py` (B1 single-mode MRT growth *curve*, #142 [VA3])
-and `cylindrical/test_verify_maglif_mmrt_cpu.py` (B2 multi-mode MRT growth *curve*, #143
-[VA4]; its curve-anchor dispatch is covered red-first by `test_verify_b2_curve_anchor_cpu.py`).
+`cylindrical/test_verify_maglif_mrt_cpu.py` (B1 single-mode MRT growth *curve*, #142 [VA3];
+the Sinars-2011 curve is digitized + committed in #154 [VA6], so its dispatch is covered
+red-first by `test_verify_b1_curve_anchor_cpu.py`) and
+`cylindrical/test_verify_maglif_mmrt_cpu.py` (B2 multi-mode MRT growth *curve*, #143 [VA4];
+its curve-anchor dispatch is covered red-first by `test_verify_b2_curve_anchor_cpu.py`).
 The curve-comparison engine itself is unit-tested in isolation in
 `test_verify_ground_truth_oracle_cpu.py` (#141 [VA2]); the B1/B2 growth-curve benchmarks
 (#142/#143) plug a `kind: curve` oracle comparison into the same scorecard + overlay path.
-A reduced nondimensional `_cpu` surrogate emits its curve in code units and *reports* the
-verdict (`binding=False`); the absolute experimental comparison is the paper-resolution SI
-run (#120/#122). An un-digitized curve datum stays `pending_digitization` and is reported
-as `PENDING`, never a pass (ADR-0008 — no fabricated points/tolerances).
+A reduced nondimensional `_cpu` surrogate emits its curve in code units; per PRD #138
+("reduce to the dimensionless observable") it is reduced to its dimensionless growth-factor
+trajectory `G(t)=a/a0` mapped onto the experiment's seed amplitude + observation window
+(only the *sim* observable is normalized — no experimental point/tolerance is altered) and
+*reports* the verdict (`binding=False`); the absolute experimental comparison is the
+paper-resolution SI run (#120/#122). An un-digitized curve datum stays
+`pending_digitization` and is reported as `PENDING`, never a pass (ADR-0008 — no fabricated
+points/tolerances).
 
 The B3 converging-RM anchor follows the same report-vs-assert split on *scalar* observables:
 `cylindrical/test_verify_maglif_rm_anchor_cpu.py` (#144 [VA5]) runs a compact code-unit
@@ -123,3 +129,121 @@ from roughness is inherently stochastic) the verdict is recorded as `QUALITATIVE
 (`binding=False`) via `scorecard.record` — it is **not** a quantitative curve match; the
 McBride-2012 growth *curve* stays the reduced-`_cpu` reported anchor (#143). Same
 report-vs-assert discipline, on a qualitative observable.
+
+### Faithful single-mode B1 (Sinars): paper-resolution GPU replication (#120)
+
+`cylindrical/test_verify_maglif_b1_sinars_gpu.py` (#120 [C3]) is the *faithful* single-mode
+MRT replication — the dimensional AR=6 aluminum liner (#160 geometry, solid-Al density unit),
+the measured z2173 drive (#160), a single seeded axial sinusoid at λ=400 µm (within the
+published Sinars 25–400 µm range) at 20 µm seed amplitude, ideal-MHD core, run at the paper
+resolution (12.5 µm finest) on the GPU. It runs the committed `inputs/maglif_b1_sinars.athinput`,
+reduces to the seeded-mode amplitude history, and **reports** (`binding=False`) the
+growth-factor `G(t)=a/a0` against the committed Sinars-2011 curve via the curve oracle. The
+**binding** gate is the qualitative single-mode MRT signature — the liner converges, the seeded
+mode e-folds (calibrated ~3× peak) then is crushed by deep convergence, it carries a sizeable
+share of the interface structure at its peak, the synthetic radiograph limb modulates, and a
+`pert_amp=0` control stays exactly 1-D. The faithful run measures a peak growth factor ~3× vs
+the experiment's ~46×: the quantitative *match* (AC#2) is **reported, not asserted**, because an
+ideal-MHD converging liner e-folds only order-unity times before stagnation. Closing AC#2 needs
+the IONMIX tabulated EOS wired into the multi-material maglif IC (the solver path exists, #162,
+but the vacuum/fill fall below the table's valid density range), an SI current/time calibration,
+and a material-strength model (#P6). Same report-vs-assert discipline as the reduced `_cpu`
+arm (`test_verify_maglif_mrt_cpu.py`, #142), now on the faithful paper-resolution GPU run.
+
+### Faithful Ellison B2: qualitative Stage 1 (#163) + soft quantitative anchor (#155)
+
+`cylindrical/test_verify_maglif_b2_ellison_cpu.py` (#163 [B2-S1]) is the *faithful* Ellison
+benchmark-2 replication — every knob is the published value (AR=6 Be liner #160, measured
+z2173 drive #160, Ellison Eq.16 random-**temperature** seed `perturbation=temperature`
+dT=100 K #161, radiation off). It runs the committed `inputs/maglif_b2_ellison.athinput`
+(the 12.5 µm GPU artifact) at reduced CPU resolution and **hard-asserts** only the
+qualitative MRT morphology signature (multi-mode structure develops for dT>0, stays 1-D for
+the dT=0 control, grows toward stagnation, dominant resolved sub-mm mode, multi-mode
+participation). That qualitative gate is the binding contract — Ellison B2 has no
+amplitude-vs-time curve to digitize and the authors disclaim absolute-time comparison.
+
+The **Stage-2 soft quantitative anchor** (#155 [B2-S2]) rides on that same faithful run and
+is strictly **report-only** (it never asserts, so it cannot fail the test):
+
+* `mcbride_b2_anchor.py` holds the pure reductions: `outer_surface_extrema` (R_spike=max,
+  R_bubble=min of the driven interface), `growth_fraction(R_spike,R_bubble,R0)`,
+  `convergence_x(R_bubble,R0)`, and `linear_law`/`fit_laws` for the McBride printed fits.
+* `growth_fraction = (R_spike-R_bubble)/(R0-R_bubble)` at deepest convergence is compared
+  via the scalar oracle against the committed McBride band **[0.05, 0.15]** (datum
+  `growth_fraction` in `b2_multimode_mrt_mcbride_2012.json`, encoded 0.10 ± 0.05) and
+  recorded `binding=False`; a gf(t) overlay is drawn against the band. A persistent miss is
+  **escalated as a "needs investigation (#155 Stage 3)" note**, never a hard fail (FLASH
+  matched B2, so a miss is a diagnostic signal about our reduced setup, not a regression).
+* The amplitude(µm) `= 450·x − 90` and wavelength(µm) `= 750·x` Fig. 7a/b fit laws are
+  committed in the `fit_laws` block (reachable via `oracle.meta("B2")`, ignored by the
+  datum loader) and the reduced-run values are overlaid against them
+  (`plots/maglif_b2_fit_laws.png`); the *quantitative* law match is reported `PENDING` the
+  paper-resolution dimensional SI run (the laws are only physical for x > 0.2, and the
+  coarse CPU gate under-resolves µm-scale amplitudes). These are *stated published laws*,
+  not figure-digitized points (ADR-0008). Dispatch is covered red-first by
+  `test_verify_b2_growth_fraction_cpu.py`.
+
+### Faithful Ellison B4 (ICF confinement): dimensional replication (#121)
+
+`cylindrical/test_verify_maglif_b4_icf_si_cpu.py` (#121 [C4]) is the *faithful*,
+**dimensional** counterpart of the idealized code-unit ICF surrogate
+(`test_verify_maglif_icf_cpu.py`, #140). It runs the committed
+`inputs/maglif_b4_icf_si.athinput` — the AR=6 **beryllium** liner enclosing deuterium fuel
+(#160 geometry, solid-Be density unit), the measured z2173 drive (#160), radiation off
+(ideal-MHD core) — at reduced CPU resolution (the #163 faithful-vs-gate pattern, overriding
+only `nx1`/`tlim`). Because the run is dimensional, the stagnation observables emerge
+directly in **mm / g-cc / ns**, so the surrogate's provisional `R_FUEL_MM` / `NS_PER_CODE`
+calibrations are gone.
+
+The **binding** gate is the qualitative confinement signature: the faithful z2173 drive
+implodes the liner to a deep, interior-in-time minimum (stagnation) and it **rebounds**;
+mass is conserved; the final state is finite; and — the red→green **discriminator** — a
+no-drive control (`current_waveform=constant`, `i0=0` → zero load current) does **not**
+converge (the inner radius stays flat, CR≈1.0 vs the faithful run's CR≈11). Note that for
+the **tabulated** waveform `Current(t)` replays the trace and ignores `i0`, so the control
+must switch the waveform to `constant` to zero the drive.
+
+The Knapp-2017 scalars (min radius 0.45 mm, peak density ~10 g/cc, confinement time 14 ns)
+and the v3 inner-radius trajectory are **reported** against the oracle (`binding=False`),
+not hard-asserted — the ideal-gamma EOS without material strength / degenerate-DD pressure
+over-compresses the fuel column (the reduced gate measures ~0.13 mm / ~6 g/cc / ~21 ns), so
+the absolute-SI hard-assert remains the paper-resolution GPU run on the tabulated-EOS
+coupled stack (residuals: IONMIX-EOS IC wiring #118/#162, GPU coupled segfault #139,
+material strength). The **density-vs-radius profile** (acceptance criterion 3) has no
+committed experimental profile datum yet (only the radius-vs-time trajectory is digitized),
+so it is recorded **PENDING** — a digitized Abel-inverted profile is the data-supply step
+that would flip it to a comparison (ADR-0008 forbids fabricating one).
+
+### Corrected v3 radius-vs-time trajectory anchors (#156 [VA8])
+
+The figure-traced **trajectory** point clouds for B3 (Knapp 2020 converging-RM) and B4
+(Knapp 2017 ICF) were human-QC-corrected to **v3** (B3 shock: spurious upper strand culled
+→ 30 monotonic pts; B4 inner-radius: the 2 rebound points at r≈0.54 recovered and the
+legend box excluded → 6 circles) and committed as `kind: curve` datums:
+`rm_liner_trajectory` / `rm_shock_trajectory` (`b3_*.json`) and `inner_radius_trajectory`
+(`b4_*.json`). B4's per-point experimental error is the **digitized published error bar**
+(`kind: absolute`); B3's is a documented relative placeholder. The corrected v3 points live
+under `ground_truth/digitization_review/extracted/extracted_points_v3.json` with the
+reproducible `fix_b3.py` / `fix_b4.py` extraction and `*_overlay_v3.png` verification plots.
+
+Both benchmarks (`test_verify_maglif_rm_anchor_cpu.py`, `test_verify_maglif_icf_cpu.py`)
+*report* each trajectory against the oracle (`binding=False`) and overlay it via
+`overlay_curve`, reproducing the v3 diagnostic figure. Because a reduced code-unit
+trajectory is incommensurate with the experiment's mm/ns axis, each test maps the **sim
+abscissa** onto the digitized window (`_map_to_window`) so every experimental point overlaps
+for a point-by-point comparison **without extrapolation**; the **ordinate stays physically
+calibrated** (a provisional length scale per test — `R_FUEL_MM`, `R_MM_PER_CODE`), so the
+verdict is an honest reported deviation, not a forced fit. Only the *sim* curve is mapped —
+no experimental point or tolerance is altered (ADR-0008). B4's `confinement_time` (a stated
+text scalar in Knapp 2017: 14 ns measured vs 16 ns 1D) is likewise promoted out of
+`pending_digitization` and *reported* via the scalar oracle (mapped to ns with the
+provisional `NS_PER_CODE` time calibration). The dispatch is covered red-first by
+`test_verify_b3b4_trajectory_anchor_cpu.py`. The absolute-SI binding asserts stay on the
+GPU/SI runs (#119/#120/#121).
+
+> Baseline note (#156): `baselines/maglif_rm_anchor.json` was stale — captured at
+> `tlim=1.0` (101 pts) while the committed input is `tlim=0.85` (→ 86 pts), so the B3 anchor
+> Layer-2 guard failed `101→86` on `main` regardless of this change. It was regenerated to
+> the committed-input length; the new baseline is **byte-identical** to the old on the
+> overlapping first 86 points (no physics drift — only the 15 phantom trailing points were
+> trimmed).

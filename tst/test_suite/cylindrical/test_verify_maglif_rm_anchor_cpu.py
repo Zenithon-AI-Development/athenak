@@ -35,6 +35,12 @@ implosion), and the seeded single mode is present and dominant on the rod interf
 spurious cascade).  The coupled radiation-conduction stack is OFF (the RM is hydrodynamic;
 see the input header).  The existing GPU ``test_verify_maglif_rm_si_gpu.py`` anchor is
 left untouched.  Auto-collected by ``run_test_suite.py`` (module name contains ``_cpu``).
+
+The corrected v3 radius-vs-time TRAJECTORY anchors (#156) -- the human-QC'd Knapp-2020 PDV
+liner (blue) and shock (green) point clouds (``rm_liner_trajectory`` /
+``rm_shock_trajectory``; the prior trace's spurious upper strand culled) -- are likewise
+REPORTED against the oracle (binding=False) and overlaid on the sim's tracked
+liner/shock trajectories, reproducing the v3 diagnostic figure.
 """
 
 # Modules
@@ -61,14 +67,59 @@ LAMBDA_CODE = LZ / PERT_MODE      # perturbation wavelength = 0.3 code units
 KZ = 2.0 * np.pi / LAMBDA_CODE    # axial mode wavenumber (1/code-length)
 PERT_AMP = 0.025         # seeded radial amplitude (must match <problem> pert_amp)
 R_LINER_INNER = 0.4      # liner inner radius (= <problem> r_fuel); the fill outer bound
+D_LINER = 1.0            # liner (dense shell) density (= <problem> d_liner)
 # Knapp 2020 final radiographed dimensionless interface displacement (Fig. 9, kz*dr=11.8)
 # -- the displacement the committed rm_growth_factor anchor is at; the sim growth is
 # measured at the SAME displacement (capped at the max kz*dr the compact run-in reaches).
 KZDR_EXP = 11.8
 
+# --- Provisional length calibration for REPORTING the corrected v3 trajectory curves
+# (#156) against the Knapp-2020 experiment.  Maps the toy's code-unit radii to mm ONLY for
+# the trajectory overlay + curve comparison; it does NOT gate the test (the comparisons
+# are reported, not hard-asserted, like the growth-factor/velocity-ratio anchors).  The
+# liner inner radius (R_LINER_INNER = 0.4 code) is mapped to the Knapp-2020 platform liner
+# inner radius ~4.8 mm (the initial point of the digitized experiment liner trajectory);
+# refined to the published target in #119/#120.
+R_MM_PER_CODE = 4.8 / R_LINER_INNER     # ~12 mm per code length (provisional, #119/#120)
+
 # Qualitative binding gates (sign/shape sanity; magnitudes are reported via the oracle).
 CONV_FRAC = 0.85         # require the rod to converge by >= 15% (R_rod shrinks)
 DOM_FRAC = 0.5           # seeded mode holds >= 50% of the rod-interface z-variance
+
+
+def _map_to_window(t_code, x_lo, x_hi):
+    """Linearly map a code-unit abscissa onto the experimental ``[x_lo, x_hi]`` window.
+
+    The reduced surrogate's trajectory lives on a code-unit time axis incommensurate with
+    the experiment's ns abscissa.  Mapping the sim abscissa onto the digitized window lets
+    the curve oracle compare the two point-by-point WITHOUT extrapolation; the ORDINATE is
+    left physically calibrated (R_MM_PER_CODE), so the verdict is an honest reported
+    deviation -- not a forced fit.
+    """
+    t = np.asarray(t_code, dtype=float)
+    span = float(t.max() - t.min())
+    if span <= 0.0:
+        return np.full_like(t, 0.5 * (x_lo + x_hi))
+    return x_lo + (t - t.min()) / span * (x_hi - x_lo)
+
+
+def _liner_inner_radius(data):
+    """Inner edge of the dense imploding liner shell (the experiment's blue trajectory).
+
+    The liner is the OUTER dense region (the on-axis rod is also dense but is tagged by
+    the rod scalar s~1, and the working-fluid gap between them is light).  Phi/z-average
+    the density + rod scalar and return the innermost radius that is dense (> 0.5 d_liner)
+    AND not rod material (s < 0.5) -- i.e. the liner/fill contact.  nan if no feature.
+    """
+    r = np.asarray(data["x1v"], dtype=float)
+    dn = np.asarray(data["dens"], dtype=float)
+    s = np.asarray(data["s_00"], dtype=float)
+    dn_p = dn.mean(axis=(0, 1)) if dn.ndim == 3 else dn.mean(axis=0)
+    s_p = s.mean(axis=(0, 1)) if s.ndim == 3 else s.mean(axis=0)
+    liner = (s_p < 0.5) & (dn_p > 0.5 * D_LINER)
+    idx = np.where(liner)[0]
+    return float(r[idx[0]]) if idx.size else np.nan
+
 
 input_file = os.path.join(
     testutils._repo_root(), "tst", "inputs", "maglif_rm_anchor.athinput"
@@ -171,7 +222,7 @@ def test_verify_maglif_rm_anchor():
         assert len(files) > 8, f"too few RM snapshots: {len(files)}"
 
         z = None
-        times, r_rod, eta, r_shock = [], [], [], []
+        times, r_rod, eta, r_shock, r_liner = [], [], [], [], []
         for fp in files:
             d = bin_convert.read_binary_as_athdf(fp)
             if z is None:
@@ -182,10 +233,12 @@ def test_verify_maglif_rm_anchor():
             r_rod.append(rmean)
             eta.append(_mode_amp(rr, z, PERT_MODE, LZ))
             r_shock.append(_shock_radius(d, rmean))
+            r_liner.append(_liner_inner_radius(d))
         times = np.array(times)
         r_rod = np.array(r_rod)
         eta = np.array(eta)
         r_shock = np.array(r_shock)
+        r_liner = np.array(r_liner)
 
         # Final snapshot is finite and stable (the implosion ran in cleanly, no blow-up).
         fin = bin_convert.read_binary_as_athdf(files[-1])
@@ -291,6 +344,40 @@ def test_verify_maglif_rm_anchor():
             xlabel="kz*dr (normalized interface displacement)",
             title="B3 converging-RM growth factor vs Knapp 2020 (CPU anchor, #144)",
         )
+
+        # --- Corrected v3 TRAJECTORY anchors (#156): overlay the human-QC'd Knapp-2020
+        # experiment PDV liner (blue, 30 pts) and shock (green, 30 pts) radius-vs-time
+        # point clouds on the sim's tracked trajectories and REPORT each curve comparison.
+        # The sim run-in abscissa is mapped onto each digitized window so the points
+        # overlap for a point-by-point oracle comparison (no extrapolation); the radius is
+        # calibrated (R_MM_PER_CODE, anchored at the liner inner radius), so the verdicts
+        # are honest reported deviations -- binding=False, like the growth-factor anchor.
+        ci = slice(i_shock, i_conv + 1)             # the converging run-in
+
+        def _report_trajectory(datum_id, sim_r_code, label):
+            finite = np.isfinite(sim_r_code[ci])
+            if int(finite.sum()) < 2:
+                return
+            t_run = times[ci][finite]
+            r_run_mm = sim_r_code[ci][finite] * R_MM_PER_CODE
+            d_traj = oracle.get("B3", datum_id)
+            xe = [float(p["x"]) for p in d_traj.points]
+            t_map = _map_to_window(t_run, min(xe), max(xe))
+            res = oracle.compare("B3", datum_id, (t_map, r_run_mm))
+            if res.worst_point is not None:
+                scorecard.record_result(res.worst_point, binding=False, note=reduced_note)
+            exp_pts = [{"x": p.x, "y": p.exp_value, "band": p.band}
+                       for p in res.point_results]
+            overlay.overlay_curve(
+                f"maglif_rm_anchor_{label}", t_map, r_run_mm, exp_points=exp_pts,
+                xlabel="t (mapped onto experiment window)", ylabel=f"{label} radius",
+                x_unit="ns", unit="mm",
+                title=f"B3 {label} trajectory vs Knapp 2020 (v3 corrected, #156)")
+            print(f"[B3] {label} trajectory: {res.n_compared} v3 pts compared; "
+                  f"worst {res.worst_point}  (reported)")
+
+        _report_trajectory("rm_liner_trajectory", r_liner, "liner")
+        _report_trajectory("rm_shock_trajectory", r_shock, "shock")
 
         # Layer-2 regression guard (ADR-0008): code-unit baseline diff of trajectories.
         harness.verify(

@@ -136,8 +136,14 @@ TaskStatus MHD::NewTimeStep(Driver *pdriver, int stage) {
         Real &w_by = bcc0_(m,IBY,k,j,i);
         Real &w_bz = bcc0_(m,IBZ,k,j,i);
         Real cf;
-        if (eos.is_ideal) {
-          Real p = eos.IdealGasPressure(w0_(m,IEN,k,j,i));
+        if (eos.is_ideal || eos.is_tabulated) {
+          // ideal-gamma pressure, or the tabulated p_gas(rho, e_ele, e_ion) so the
+          // tabulated EOS gets a finite fast-magnetosonic timestep (#162); e_ele rides
+          // the first passive scalar (prim value e_ele/rho at IEN+1 == nmhd, ADR-0002).
+          Real p = eos.is_tabulated
+                 ? eos.TabulatedGasPressure(w_d, w0_(m,IEN,k,j,i),
+                                            w0_(m,IEN+1,k,j,i)*w_d)
+                 : eos.IdealGasPressure(w0_(m,IEN,k,j,i));
           cf = eos.IdealMHDFastSpeed(w_d, p, w_bx, w_by, w_bz);
           max_dv1 = fabs(w0_(m,IVX,k,j,i)) + cf;
           cf = eos.IdealMHDFastSpeed(w_d, p, w_by, w_bz, w_bx);

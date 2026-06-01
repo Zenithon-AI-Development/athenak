@@ -1,0 +1,58 @@
+# AthenaK input for the maglif temperature-seed unit test
+# (unit_tests/maglif_temperature_seed_test, issue [P4]/#161).
+#
+# Minimal harness driver: all checks run in ProblemGenerator::UserProblem and the program
+# exits before any time integration (nlim = tlim = 0).  A single physics block is required
+# by MeshBlockPack::AddPhysics; a tiny <z4c> setup is used (as in sample_unit_test) because
+# it needs no matter initial conditions, no EOS, and no external data tables -- the test
+# samples the Eq.16 helper over a 1-D index sweep, independent of the mesh.
+
+<comment>
+problem   = maglif Ellison Eq.16 temperature-seed unit test
+
+<job>
+basename  = maglif_temperature_seed_test
+
+<mesh>
+nghost    = 2
+nx1       = 8
+x1min     = -1.0
+x1max     = 1.0
+ix1_bc    = outflow
+ox1_bc    = outflow
+
+nx2       = 8
+x2min     = -1.0
+x2max     = 1.0
+ix2_bc    = outflow
+ox2_bc    = outflow
+
+nx3       = 8
+x3min     = -1.0
+x3max     = 1.0
+ix3_bc    = outflow
+ox3_bc    = outflow
+
+<meshblock>
+nx1       = 8
+nx2       = 8
+nx3       = 8
+
+<time>
+evolution  = dynamic
+integrator = rk3
+cfl_number = 0.1
+nlim       = 0
+tlim       = 0
+ndiag      = 1
+
+<z4c>
+
+<problem>
+n             = 500000   # number of zones sampled for the perturbation statistics
+pert_T0       = 293.0    # reference temperature T_0 [K]
+pert_Tmin     = 273.0    # temperature floor T_min [K]
+pert_dT       = 100.0    # perturbation amplitude (std of the Gaussian draw) [K]
+pert_decay    = 0.05     # radial decay length lambda [code length]
+pert_decay_r0 = 1.0      # decay reference radius r_o (outer liner surface) [code length]
+pert_seed     = 12345    # RNG seed (reproducible field)

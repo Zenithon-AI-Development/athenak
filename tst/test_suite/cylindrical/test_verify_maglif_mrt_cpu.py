@@ -33,25 +33,28 @@ Discriminating quantities (see inputs/maglif_mrt.athinput):
                    forward projection of the axisymmetric density along the sight line):
                    the experimentally observable MRT signature on the imploding limb.
 
-Oracle (Layer-1, ADR-0008; #142 [VA3]): the EXPERIMENT, via the committed ground-truth
-datum in ``verification/ground_truth/b1_single_mode_mrt_sinars_2011.json`` (D. B. Sinars
-et al., Phys. Plasmas 18, 056301, 2011).  The seeded single-mode amplitude-growth history
+Oracle (Layer-1, ADR-0008; #142 [VA3], curve digitized + committed in #154 [VA6]): the
+EXPERIMENT, via the committed ground-truth datum in
+``verification/ground_truth/b1_single_mode_mrt_sinars_2011.json`` (D. B. Sinars et al.,
+Phys. Plasmas 18, 056301, 2011).  The seeded single-mode amplitude-growth history
 (``times``, ``a_outer``) is THE growth curve this benchmark reproduces; it is compared
-against the committed Sinars-2011 experimental growth curve via the oracle's curve
-comparison (``GroundTruthOracle``) and the verdict is recorded in the suite scorecard,
-replacing the former self-anchored ``GROWTH_MIN`` (and the radiograph ``RAD_GROWTH``)
-bars.  Only cheap qualitative gates -- finiteness, convergence fraction, seeded-mode
-dominance, seed-amplitude sanity (and the front-inward / radiograph-grows sign checks) --
-remain as fast pre-checks.
+against the committed, now-digitized Sinars-2011 experimental growth curve (11 human-QC'd
+points) via the oracle's curve comparison (``GroundTruthOracle``) and the verdict is
+recorded in the suite scorecard, replacing the former self-anchored ``GROWTH_MIN`` (and
+the radiograph ``RAD_GROWTH``) bars.  Only cheap qualitative gates -- finiteness,
+convergence fraction, seeded-mode dominance, seed-amplitude sanity (and the front-inward /
+radiograph-grows sign checks) -- remain as fast pre-checks.
 
 This reduced nondimensional ``_cpu`` surrogate emits the growth curve in CODE UNITS, while
-the Sinars curve is a physical amplitude-vs-time radiograph: per the reduced-surrogate
-policy (B3 velocity-ratio / B4 ICF #140) the absolute experimental curve comparison is the
-paper-resolution SI run (#120 [C3], real IONMIX EOS/opacity #118), which outputs physical
-units directly.  The committed B1 curve datum is still ``pending_digitization`` (the
-Sinars figure is digitized -- with full WebPlotDigitizer provenance + per-point error, no
-fabricated points -- in #120), so the curve verdict is REPORTED as PENDING here, never as
-a pass; the diagnostic overlays the experimental curve + band once digitized.
+the Sinars curve is a physical amplitude-vs-time radiograph (mm vs ns): per the reduced-
+surrogate policy (B3 velocity-ratio / B4 ICF #140 / #144) and PRD #138 ("reduce to the
+dimensionless observable"), the surrogate is reported as its DIMENSIONLESS growth-factor
+trajectory ``G(t)=a/a0`` mapped onto the experiment's seed amplitude + observation window,
+so the oracle compares it point-by-point and the overlay lays it over the experimental
+curve on shared (ns, mm) axes.  Only the SIM observable is normalized; no experimental
+point or tolerance is altered.  The verdict is REPORTED (binding=False), never a pass --
+the binding ABSOLUTE-SI assertion is the paper-resolution GPU SI run (#120 [C3], real
+IONMIX EOS/opacity #118), which outputs physical units directly.
 
 The test runs the implosion, checks that (1) the liner converges, (2) the leading front
 moves inward, (3) the seeded single mode starts at the seed amplitude and stays dominant
@@ -293,37 +296,52 @@ def test_verify_maglif_mrt():
         # energy budget physically sane (erad finite, non-neg, bounded; #116/[B3]).
         cenergy.assert_coupled_energy_sane("maglif_mrt")
 
-        # --- QUANTITATIVE ANCHOR (#142): the seeded single-mode amplitude-growth history
-        # (times, a_outer) IS the growth curve this benchmark reproduces.  It is compared
-        # against the committed Sinars-2011 experimental growth curve via the oracle's
-        # curve comparison (GroundTruthOracle), replacing the former self-anchored
-        # GROWTH_MIN bar.  This reduced nondimensional _cpu surrogate emits the curve in
-        # CODE UNITS, whereas the Sinars curve is a physical amplitude-vs-time radiograph;
-        # per the reduced-surrogate policy (B3 velocity-ratio / B4 ICF #140) the absolute
-        # experimental comparison is the paper-resolution SI run (#120 [C3], real IONMIX
-        # EOS #118), which outputs physical units directly.  The committed B1 curve datum
-        # is still pending_digitization (the Sinars figure is digitized -- with full
-        # WebPlotDigitizer provenance + per-point error, no fabricated points -- in #120),
-        # so it is REPORTED as PENDING here, never as a pass.  The wiring below is the
-        # full curve-oracle path: it reports PENDING while pending and, once digitized,
-        # compares the curve and reports the verdict (binding=False) with the experimental
-        # band overlaid -- #120 then flips it to the binding SI assert.
+        # --- QUANTITATIVE ANCHOR (#142 wiring; B1 curve digitized + committed in #154):
+        # the seeded single-mode amplitude-growth history (times, a_outer) IS the growth
+        # curve this benchmark reproduces.  It is compared against the committed Sinars-
+        # 2011 experimental growth curve (now digitized, no longer pending) via the
+        # oracle's curve comparison (GroundTruthOracle), replacing the former self-
+        # anchored GROWTH_MIN bar (PRD #138 story 8 -- "the bar is the experiment").
+        #
+        # This reduced nondimensional _cpu surrogate emits the curve in CODE UNITS over a
+        # short code-time run-in, whereas the Sinars datum is a physical amplitude-vs-time
+        # radiograph (mm vs ns).  Per the reduced-surrogate policy (B3 velocity-ratio /
+        # B4 ICF #140 / #144) and PRD #138 ("reduce to the dimensionless observable"), the
+        # surrogate is reported as its DIMENSIONLESS growth-factor trajectory G(t)=a/a0,
+        # mapped onto the experiment's seed amplitude and observation-time window so the
+        # oracle can compare it point-by-point and the overlay shows sim-vs-experiment on
+        # shared (ns, mm) axes.  Only the SIM observable is normalized; no experimental
+        # point or tolerance is altered.  The verdict is REPORTED (binding=False), never a
+        # pass: the reduced surrogate is compression-dominated and under-produces the
+        # experimental MRT growth, so the binding ABSOLUTE-SI assertion stays on the
+        # paper-resolution GPU SI run (#120 [C3], real IONMIX EOS/opacity #118), which
+        # outputs physical mm/ns directly.
         oracle = gto.GroundTruthOracle.from_committed()
         datum = oracle.get("B1", "single_mode_amplitude_growth")
         if datum.is_pending:
+            # Forward-safe fallback (should not trigger now the curve is committed): an
+            # un-digitized anchor is reported as explicit PENDING, never as a pass.
             scorecard.record_pending(
                 "B1", "single_mode_amplitude_growth", issue=120,
                 note="Sinars 2011 amplitude-growth curve; figure digitization + "
                      "SI compare in #120",
             )
-            exp_points = None
+            t_report, a_report, exp_points = times, a_outer, None
         else:
+            # Dimensionless growth-factor reduction onto the experiment's abscissa+seed.
+            xs = [float(p["x"]) for p in datum.points]
+            x_min, x_max = min(xs), max(xs)
+            y_seed = float(min(datum.points, key=lambda p: float(p["x"]))["y"])
+            span = (times[-1] - times[0]) or 1.0
+            t_report = x_min + (times - times[0]) / span * (x_max - x_min)
+            a_report = a_outer / a_outer[0] * y_seed
             res = oracle.compare(
-                "B1", "single_mode_amplitude_growth", (times, a_outer)
+                "B1", "single_mode_amplitude_growth", (t_report, a_report)
             )
             scorecard.record_result(
                 res.worst_point, binding=False,
-                note="reduced code-unit surrogate; absolute-SI compare is #120",
+                note="reduced nondim surrogate, reported as growth-factor G(t)=a/a0 on "
+                     "the Sinars seed+window; absolute-SI compare is #120",
             )
             print(f"[B1] {res}  (reported, not asserted)")
             exp_points = [
@@ -331,13 +349,13 @@ def test_verify_maglif_mrt():
                 for p in res.point_results
             ]
 
-        # Experiment-overlay diagnostic: the sim growth curve (seeded-mode amplitude vs
-        # time) with the experimental curve + band overlaid once digitized; until then the
-        # sim curve is plotted with a pending-digitization annotation (#120).
+        # Experiment-overlay diagnostic (PRD #138 story 14): the sim growth-factor curve
+        # with the digitized Sinars experimental curve + tolerance band overlaid on shared
+        # (ns, mm) axes, so sim-vs-experiment is visible at a glance.
         overlay.overlay_curve(
-            "maglif_mrt", times, a_outer, exp_points=exp_points,
-            xlabel="t", ylabel="seeded-mode amplitude a_outer",
-            x_unit="code units", unit="code units", pending_issue=120,
+            "maglif_mrt", t_report, a_report, exp_points=exp_points,
+            xlabel="t", ylabel="seeded-mode amplitude (growth-normalized)",
+            x_unit="ns", unit="mm", pending_issue=120,
             title="Single-mode MRT growth curve vs Sinars 2011 (MagLIF benchmark 1)",
         )
 

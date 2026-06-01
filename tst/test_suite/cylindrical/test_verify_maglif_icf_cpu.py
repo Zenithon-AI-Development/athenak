@@ -28,8 +28,10 @@ their bands.  The two scalar comparisons are therefore REPORTED against the orac
 record -- not hard-asserted -- exactly mirroring the B3 velocity-ratio policy in
 ``test_verify_maglif_rm_si_gpu.py``: the absolute-SI hard-assert is the paper-resolution
 SI run (#121 [C4]) with real IONMIX-EOS/opacity coupling (#118).  The confinement-time
-anchor is still ``pending_digitization`` (Knapp 2017 headline result, #121) and is
-reported as PENDING -- never as a pass.
+anchor (Knapp 2017: 14 ns measured vs 16 ns 1D -- a stated text scalar, no longer pending
+as of #156) and the corrected v3 inner-radius trajectory (6 radiograph circles) are
+likewise REPORTED against the oracle (binding=False), not hard-asserted, in the same
+reduced-surrogate policy.
 
 Physics scope (Phase B, #116/[B3], ADR-0009): this benchmark now runs the FULL COUPLED
 radiation-conduction-MHD stack -- cylindrical ideal-MHD (ADR-0004) + the prescribed-I(t)
@@ -101,9 +103,33 @@ R_LINER = 0.6          # liner/vacuum interface radius
 #     published target in #121.  min_radius then scales with the achieved convergence.
 RHO_CGS = 1.0          # g/cc per code density (solid-Be grounded)
 R_FUEL_MM = 2.3        # representative initial inner radius in mm (provisional, #121)
+# time: 1 code time unit anchored so the full ICF run (tlim = 0.9 code; see
+# inputs/maglif_icf.athinput) spans a representative ~100 ns MagLIF current-rise-to-
+# stagnation window (Gomez 2014 / Sefkow 2014).  Provisional, for REPORTING the
+# confinement time only -- the absolute-SI value is calibrated to the Knapp-2017 drive in
+# #121.
+TLIM_CODE = 0.9
+IMPLOSION_NS = 100.0
+NS_PER_CODE = IMPLOSION_NS / TLIM_CODE   # ~111 ns per code time unit (provisional, #121)
 
 input_file = os.path.join(testutils._repo_root(), "tst", "inputs", "maglif_icf.athinput")
 bin_dir = os.path.join(testutils.pgen_run_dir("maglif"), "bin")
+
+
+def _map_to_window(t_code, x_lo, x_hi):
+    """Linearly map a code-unit abscissa onto the experimental ``[x_lo, x_hi]`` window.
+
+    The reduced surrogate's trajectory lives on a code-unit time axis incommensurate with
+    the experiment's ns abscissa.  Mapping the sim abscissa onto the digitized window lets
+    the curve oracle compare the two point-by-point WITHOUT extrapolation (every
+    experimental point overlaps the mapped sim curve); the ORDINATE is left physically
+    calibrated, so the verdict is an honest reported deviation -- not a forced fit.
+    """
+    t = np.asarray(t_code, dtype=float)
+    span = float(t.max() - t.min())
+    if span <= 0.0:
+        return np.full_like(t, 0.5 * (x_lo + x_hi))
+    return x_lo + (t - t.min()) / span * (x_hi - x_lo)
 
 
 def _cell_mass(r, dens):
@@ -223,12 +249,23 @@ def test_verify_maglif_icf():
         print(f"[B4] {res_radius}  (reported, not asserted: {reduced_note})")
         print(f"[B4] {res_density}  (reported, not asserted: {reduced_note})")
 
-        # The confinement-time anchor is still pending digitization (Knapp 2017 headline
-        # result, #121): reported as PENDING, never as a pass.
-        assert oracle.get("B4", "confinement_time").is_pending, (
-            "B4 confinement_time unexpectedly has a value; update the scorecard wiring"
+        # --- Confinement time (#156): formerly pending, now a committed stated text
+        # scalar (Knapp 2017: 14 ns measured vs 16 ns 1D).  Reduce the sim to its dwell at
+        # convergence ratio > 2 (the stagnation residence time), map to ns via the
+        # provisional time calibration, and REPORT it against the oracle (binding=False);
+        # the same reduced-surrogate report policy as the min-radius/peak-density scalars;
+        # the absolute-SI hard-assert is #121.
+        cr = rif0 / r_if
+        above = np.where(np.isfinite(cr) & (cr > 2.0))[0]
+        tau_code = float(times[above[-1]] - times[above[0]]) if above.size >= 2 else 0.0
+        # (q5) Positive confinement time: the implosion dwelt at high convergence (CR>2).
+        assert tau_code > 0.0, (
+            f"no positive confinement time (no dwell at CR>2; tau_code={tau_code:.4g})"
         )
-        scorecard.record_pending("B4", "confinement_time", issue=121)
+        tau_ns = tau_code * NS_PER_CODE
+        res_tau = oracle.compare("B4", "confinement_time", tau_ns)
+        scorecard.record_result(res_tau, binding=False, note=reduced_note)
+        print(f"[B4] {res_tau}  (reported, not asserted: {reduced_note})")
 
         # Experiment-overlay diagnostic: sim trajectories (physical units) with each
         # scalar's experimental value + tolerance band drawn on top.
@@ -252,6 +289,31 @@ def test_verify_maglif_icf():
             xlabel="t (code units)",
             title="ICF stagnation scalars vs Knapp 2017 (MagLIF benchmark 4)",
         )
+
+        # --- Inner-radius TRAJECTORY anchor (#156): overlay the corrected v3 experiment
+        # radiograph circles (Knapp 2017 panel b, 6 circles -- the 2 rebound points at
+        # r~0.54 recovered, legend box excluded) on the sim inner-radius trajectory and
+        # REPORT the curve comparison.  The sim confinement-window abscissa is mapped onto
+        # the experimental stagnation window so the digitized points overlap for a
+        # point-by-point oracle comparison (no extrapolation); the radius stays physically
+        # calibrated (R_FUEL_MM), so the verdict is an honest reported FAIL when the toy
+        # over-compresses -- binding=False, exactly as for the scalars.
+        traj = oracle.get("B4", "inner_radius_trajectory")
+        xe = [float(p["x"]) for p in traj.points]
+        sl = slice(int(above[0]), int(above[-1]) + 1)
+        t_map = _map_to_window(times[sl], min(xe), max(xe))
+        r_if_mm = (r_if[sl] / R_FUEL) * R_FUEL_MM
+        res_traj = oracle.compare("B4", "inner_radius_trajectory", (t_map, r_if_mm))
+        scorecard.record_result(res_traj.worst_point, binding=False, note=reduced_note)
+        print(f"[B4] inner-radius trajectory: {res_traj.n_compared} v3 pts compared; "
+              f"worst {res_traj.worst_point}  (reported)")
+        exp_pts = [{"x": p.x, "y": p.exp_value, "band": p.band}
+                   for p in res_traj.point_results]
+        overlay.overlay_curve(
+            "maglif_icf_inner_radius", t_map, r_if_mm, exp_points=exp_pts,
+            xlabel="t (mapped onto experiment window)", ylabel="inner radius",
+            x_unit="ns", unit="mm",
+            title="B4 inner-radius trajectory vs Knapp 2017 (v3 corrected, #156)")
 
         # Layer-2 regression guard (ADR-0008): code-unit baseline diff, unchanged so the
         # B-series coupled-stack baseline stays byte-identical.

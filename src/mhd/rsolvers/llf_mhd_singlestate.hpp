@@ -42,9 +42,17 @@ void SingleStateLLF_MHD(const MHDPrim1D &wl, const MHDPrim1D &wr, const Real &bx
   fsum.bz = wl.bz*wl.vx + wr.bz*wr.vx - bxi*(wl.vz + wr.vz);
 
   Real el,er,pl,pr;
-  if (eos.is_ideal) {
-    pl = eos.IdealGasPressure(wl.e);
-    pr = eos.IdealGasPressure(wr.e);
+  // The ideal and tabulated 3T EOS both EVOLVE the energy: the internal energy density
+  // wl.e is taken directly (so el/er and the energy flux are EOS-independent and global
+  // energy is conserved by the conservative update).  They differ only in how the gas
+  // pressure closes -- ideal-gamma (gamma-1)e vs the tabulated p_gas(rho, e_ele, e_ion)
+  // (#162, ADR-0002).  When is_ideal the ternary selects IdealGasPressure, so the ideal
+  // path is byte-identical.  Isothermal (the else) carries no energy.
+  if (eos.is_ideal || eos.is_tabulated) {
+    pl = eos.is_tabulated ? eos.TabulatedGasPressure(wl.d, wl.e, wl.e_ele)
+                          : eos.IdealGasPressure(wl.e);
+    pr = eos.is_tabulated ? eos.TabulatedGasPressure(wr.d, wr.e, wr.e_ele)
+                          : eos.IdealGasPressure(wr.e);
     el = wl.e + 0.5*wl.d*(SQR(wl.vx)+SQR(wl.vy)+SQR(wl.vz)) + qc + SQR(bxi);
     er = wr.e + 0.5*wr.d*(SQR(wr.vx)+SQR(wr.vy)+SQR(wr.vz)) + qd + SQR(bxi);
     fsum.mx += (pl + pr);
@@ -55,8 +63,11 @@ void SingleStateLLF_MHD(const MHDPrim1D &wl, const MHDPrim1D &wr, const Real &bx
     fsum.mx += SQR(eos.iso_cs)*(wl.d + wr.d);
   }
 
-  // Compute max wave speed in L,R states (see Toro eq. 10.43)
-  if (eos.is_ideal) {
+  // Compute max wave speed in L,R states (see Toro eq. 10.43).  The fast-magnetosonic
+  // estimate uses asq ~ gamma*p; for the tabulated EOS gamma is the wave-speed
+  // bookkeeping index and p is the tabulated pressure pl/pr (an upper-bound estimate that
+  // keeps the diffusive LLF flux stable).
+  if (eos.is_ideal || eos.is_tabulated) {
     qa = eos.IdealMHDFastSpeed(wl.d, pl, bxi, wl.by, wl.bz);
     qb = eos.IdealMHDFastSpeed(wr.d, pr, bxi, wr.by, wr.bz);
   } else {
@@ -71,7 +82,7 @@ void SingleStateLLF_MHD(const MHDPrim1D &wl, const MHDPrim1D &wr, const Real &bx
   du.mx = a*(wr.d*wr.vx - wl.d*wl.vx);
   du.my = a*(wr.d*wr.vy - wl.d*wl.vy);
   du.mz = a*(wr.d*wr.vz - wl.d*wl.vz);
-  if (eos.is_ideal) du.e = a*(er - el);
+  if (eos.is_ideal || eos.is_tabulated) du.e = a*(er - el);
   du.by = a*(wr.by - wl.by);
   du.bz = a*(wr.bz - wl.bz);
 
@@ -80,7 +91,7 @@ void SingleStateLLF_MHD(const MHDPrim1D &wl, const MHDPrim1D &wr, const Real &bx
   flux.mx = 0.5*(fsum.mx - du.mx);
   flux.my = 0.5*(fsum.my - du.my);
   flux.mz = 0.5*(fsum.mz - du.mz);
-  if (eos.is_ideal) {flux.e = 0.5*(fsum.e  - du.e);}
+  if (eos.is_ideal || eos.is_tabulated) {flux.e = 0.5*(fsum.e  - du.e);}
   flux.by = -0.5*(fsum.by - du.by);
   flux.bz =  0.5*(fsum.bz - du.bz);
 
