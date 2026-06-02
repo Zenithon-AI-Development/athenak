@@ -103,6 +103,51 @@ struct EosTable3T {
     cv_ion = DvceArray2D<Real>("eos3t_cv_ion", ntemp, nrho);
   }
 
+  //--------------------------------------------------------------------------------------
+  //! \fn ScaleToCodeUnits
+  //! \brief Host-side: rescale a table loaded in physical CGS into the AthenaK code-unit
+  //!  system once at load (ADR-0010, the EOS-table unit boundary).  The density axis is
+  //!  relabelled `rho_phys -> rho_phys/density_cgs` (a constant log10 shift preserving
+  //!  the log-uniform grid), the specific energies and heat capacities are divided by
+  //!  `velocity_cgs^2` (specific energy has units velocity^2), and the pressures by
+  //!  `density_cgs*velocity_cgs^2` (the code pressure unit rho*v^2).  The TEMPERATURE
+  //!  axis stays eV (T is a derived diagnostic, not an evolved conserved variable), and
+  //!  mean ionization `Zbar` is dimensionless -- both unchanged.  After this call every
+  //!  forward lookup / `e->T` inversion is natively code-unit (rho in code density, e/p
+  //!  in code units, T in eV), so the solver `ConsToPrim2T` and the pgen initial
+  //!  conditions share one code-unit-native table.  Identity for `density_cgs ==
+  //!  velocity_cgs == 1` (the default), so a table consumed in physical units is
+  //!  unchanged.  Host-only (operates on host mirrors, then deep-copies back); call once
+  //!  after a reader fills the table, before it is captured into a device kernel.
+  void ScaleToCodeUnits(Real density_cgs, Real velocity_cgs) {
+    const Real inv_e = 1.0/(velocity_cgs*velocity_cgs);          // specific energy ~ v^2
+    const Real inv_p = 1.0/(density_cgs*velocity_cgs*velocity_cgs);  // pressure ~ rho*v^2
+    // density axis relabel: a constant divide is a log10 shift of the axis minimum only
+    // (the spacing is preserved, so the grid stays log-uniform).
+    log_rho_min -= std::log10(density_cgs);
+    ScaleField(e_ele,  inv_e);
+    ScaleField(e_ion,  inv_e);
+    ScaleField(cv_ele, inv_e);   // c_v = de/dT, T in eV unchanged -> scales like energy
+    ScaleField(cv_ion, inv_e);
+    ScaleField(p_ele,  inv_p);
+    ScaleField(p_ion,  inv_p);
+    // zbar (dimensionless) and the temperature axis (eV) are unchanged.
+  }
+
+  //--------------------------------------------------------------------------------------
+  //! \fn ScaleField
+  //! \brief Host helper for ScaleToCodeUnits: multiply every node of a (ntemp,nrho) field
+  //!  by a constant, through a host mirror, copying back to the device.  Pure host code
+  //!  (no device kernel) so it is ODR-safe in this multiply-included header.
+  void ScaleField(DvceArray2D<Real> &field, Real factor) {
+    auto h = Kokkos::create_mirror_view(field);
+    Kokkos::deep_copy(h, field);
+    for (int it = 0; it < ntemp; ++it) {
+      for (int ir = 0; ir < nrho; ++ir) { h(it, ir) *= factor; }
+    }
+    Kokkos::deep_copy(field, h);
+  }
+
   // --- axis coordinate helpers (host + device) ---
   KOKKOS_INLINE_FUNCTION Real LogTempAt(int it) const {
     return log_temp_min + it*dlog_temp;

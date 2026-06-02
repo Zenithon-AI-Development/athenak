@@ -639,6 +639,15 @@ void Mesh::NewTimeStep(const Real tlim) {
   MPI_Allreduce(MPI_IN_PLACE, &dt, 1, MPI_ATHENA_REAL, MPI_MIN, MPI_COMM_WORLD);
 #endif
 
+  // optional fixed timestep ceiling (<time>/dt_max).  Disabled by default (0), so every
+  // existing run is byte-identical.  Used by driven setups whose initial state is nearly
+  // pressure- and field-free (e.g. the faithful tabulated MagLIF B1 cold start, #174):
+  // the CFL timestep is then unbounded until the drive ramps up a field, so the cap
+  // lets the integrator step through the quiescent pre-drive phase rather than overshoot
+  // to tlim in one step.  Once the drive supplies a finite wave speed the CFL dt falls
+  // below the ceiling and normal adaptive stepping resumes.
+  if (dt_max > 0.0) { dt = std::min(dt, dt_max); }
+
   // limit last time step to stop at tlim *exactly*
   if ( (time < tlim) && ((time + dt) > tlim) ) {dt = tlim - time;}
 

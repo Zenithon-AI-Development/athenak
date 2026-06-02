@@ -20,18 +20,27 @@
 # status digitized via #154) through the curve oracle (ADR-0008).  The GPU benchmark
 # (test_verify_maglif_b1_sinars_gpu.py) reports that comparison in the scorecard.
 #
+# FAITHFUL DIMENSIONAL SETUP (#174/[P5], ADR-0010): the IONMIX tabulated 3T EOS is now wired
+# into BOTH the LLF solver (#162) AND this multi-material maglif IC (the `else` tabulated IC
+# branch fills the conserved energy + the e_ele scalar from the code-unit-scaled Al table),
+# and the z2173 load trace is consumed in faithful SI units -- time [ns] -> code time and
+# current [MA] -> code current via the calibration validated by the closed-form
+# magnetic-pressure anchor (~5 Mbar at 20 MA / 3.47 mm; test_unit_maglif_si_calibration_cpu).
+# velocity_cgs is conditioned so 1 code time = 1 ns, so the amplitude(t) curve is compared
+# against Sinars on ABSOLUTE time (the time axis gates implosion timing, the magnitude gates
+# growth).  Below-table-floor densities (vacuum gap, low-density fill) are edge-clamped by the
+# table inversion (no out-of-range access), so the multi-material target is well-posed.
+#
 # HONEST SCOPE NOTE (the engineering residual to a binding quantitative MATCH):
-#   (a) the IONMIX tabulated 3T EOS is wired into the LLF solver (#162) but NOT yet into
-#       this multi-material maglif IC -- the vacuum gap and low-density fill fall below the
-#       table's valid density range and the e_ele scalar is not seeded -- so this faithful
-#       run uses the ideal-MHD core (radiation OFF), exactly as the faithful B2 run (#163);
-#   (b) the drive current is consumed in code units (no SI current/time calibration, as
-#       documented in maglif_z2173_si.athinput / maglif_rm_si.athinput), so amplitude(t) is
-#       compared as the dimensionless growth factor G(t) mapped onto the experiment window;
-#   (c) AthenaK has no material-strength model (deviatoric/yield) -- an ideal-MHD converging
-#       liner e-folds order-unity times before stagnation, well short of the experiment's
-#       roughly fourfold-decade growth, so the quantitative growth-factor match is REPORTED
-#       (binding False), not asserted; the binding gate is the qualitative MRT signature.
+#   The growth-factor MATCH may still fall short of the experiment's multi-e-folding growth.
+#   Per ADR-0011 (attribution policy) the residual is NOT attributable to material strength:
+#   the Ellison/FLASH reference (arXiv:2504.10760) matched B1 with a STRENGTHLESS hydrodynamic
+#   liner, so strength is not a permissible explanation.  Any surviving shortfall -- after the
+#   magnetic-pressure anchor (calibration), implosion timing (bulk dynamics) and the
+#   1D-stays-1D + coarse two-grid convergence (numerics) are cleared -- is bounded by the
+#   reference's model set (conduction / resistivity / gray radiation diffusion) and filed as a
+#   follow-up with that evidence.  The amplitude(t) comparison is therefore still REPORTED
+#   (binding False) here, with the binding gate the qualitative single-mode MRT signature.
 #
 # RESOLUTION NOTE (as maglif_b2_ellison.athinput): AthenaK has no 3-D cylindrical SMR/AMR
 # (only the 2-D (r,phi) Balsara prolongation, #38), and the seed is AXIAL, so z must be
@@ -62,7 +71,7 @@ basename  = maglif_b1_sinars
 <units>
 length_cgs   = 0.1        # cm per code length, so code length unit is 1 mm
 density_cgs  = 2.7        # g/cc per code density, so code density unit is solid aluminum
-velocity_cgs = 1.0        # cm/s per code velocity (reporting only; observables downstream)
+velocity_cgs = 1.0e8      # cm/s per code velocity, conditioned so 1 code time is 1 ns (ADR-0010)
 
 <mesh>
 nghost    = 2
@@ -97,22 +106,27 @@ evolution  = dynamic
 integrator = rk2
 cfl_number = 0.3
 nlim       = 800000
-tlim       = 40.0        # code time (ns); captures the run-in where the seeded mode peaks
+tlim       = 130.0       # code time (ns, SI-calibrated); run-in to peak current (about 100 ns)
+dt_max     = 0.5         # ns ceiling: step through the field-free cold start before drive ramps (#174)
 ndiag      = 1000
 
 <mhd>
-eos         = ideal      # radiation OFF, ideal-MHD core (tabulated-3T IC wiring is a residual)
-reconstruct = plm
-rsolver     = hlld
-gamma       = 1.6666666666666667
-dfloor      = 1.0e-5
-pfloor      = 1.0e-7
+eos              = tabulated_3t                    # faithful IONMIX 3T EOS (#174); radiation OFF
+eos_table        = inputs/ionmix/al-imx-004.cn4    # FLASH aluminum IONMIX cn4 (overridden by test)
+eos_mass_per_ion = 4.4804e-23                      # Al ion mass [g] -> number-density axis to g/cc
+nscalars         = 1                               # passive scalar 0 carries e_ele/rho (ADR-0002)
+reconstruct      = plm
+rsolver          = llf                             # required for tabulated_3t: routes p_gas(rho,e) (#162)
+gamma            = 1.6666666666666667              # ideal-gamma wave-speed bookkeeping only (#162)
+dfloor           = 1.0e-5
+pfloor           = 1.0e-7
 
 <problem>
 # ---- drive (ADR-0005 mode A): faithful z2173 tabulated load current ----
 current_mode     = driven
 current_waveform = tabulated        # prescribed I(t) replayed from the measured z2173 trace
 current_file     = z2173_current.dat  # committed trace (tst/inputs); peak 20 MA, rise 100 ns
+current_si       = true            # convert the trace from SI (ns, MA) to code units (ADR-0010)
 mu0              = 1.0              # code-unit permeability (Heaviside-Lorentz)
 # ---- AR6 Al liner target geometry, PHYSICAL CGS (normalised by <units>) ----
 r_fuel           = 0.28875         # liner inner radius r_in 2.8875 mm (hollow-interior wall)
@@ -120,7 +134,8 @@ r_liner          = 0.34688         # liner outer radius r_out 3.4688 mm (liner/v
 d_fuel           = 1.0e-3          # low-density interior fill (hollow tube; setup choice)
 d_liner          = 2.7             # solid Al liner density 2.7 g/cc, maps to 1.0 code
 d_vac            = 1.0e-4          # tenuous vacuum gap (r_out to R_out)
-p0               = 1.0e-4          # cold thermal pressure (setup choice)
+p0               = 1.0e-4          # cold thermal pressure (ideal-EOS fallback; unused if tabulated)
+t_init_ev        = 1.0             # cold-LTE initial temperature [eV], clamped to the Al table floor
 bz0              = 0.0             # no axial premagnetization for this single-mode run
 # ---- seed: single axial sinusoid (Sinars single-mode MRT) ----
 perturbation     = single_mode     # one axial mode on the liner interfaces

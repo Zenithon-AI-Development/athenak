@@ -60,6 +60,7 @@
 #include "coordinates/coord_geometry.hpp"
 #include "bvals/bvals.hpp"
 #include "eos/eos.hpp"
+#include "eos/eos_table_3t.hpp"
 #include "mhd/mhd.hpp"
 #include "outputs/outputs.hpp"
 #include "circuit/drive_source.hpp"
@@ -328,6 +329,23 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   Real u_vel = pin->GetOrAddReal("units", "velocity_cgs", 1.0);
   Real u_prs = u_rho*u_vel*u_vel;                 // code pressure unit = rho*v^2
 
+  // ---- SI drive calibration (ADR-0010) ----
+  // When problem/current_si=true, convert the tabulated load trace from its faithful SI
+  // columns (time [ns], current [MA]) into code units via the factors fixed by <units>.
+  // Default false -> the trace is consumed in code units, so every pre-#174 tabulated
+  // input (and the analytic waveforms, whose i0/t_rise are code-unit) is unchanged.
+  // Converting here (after <units>, before i_init) means both the boundary drive and the
+  // IC-time current see the calibrated trace; mu0=1 is left untouched.
+  if (pin->GetOrAddBoolean("problem", "current_si", false) &&
+      drive_source_.waveform == circuit::CurrentWaveform::tabulated) {
+    circuit::SiDriveUnits du = circuit::CalibrateSiDrive(u_len, u_rho, u_vel);
+    int ntab = static_cast<int>(drive_source_.t_tab.size());
+    for (int p = 0; p < ntab; ++p) {
+      drive_source_.t_tab[p] *= du.time_per_ns;
+      drive_source_.i_tab[p] *= du.current_per_ma;
+    }
+  }
+
   // ---- target geometry + state (<problem>; physical units, normalised by <units>) ----
   // r_rod > 0 selects the converging Richtmyer-Meshkov geometry (#119/[C2]): a dense
   // on-axis ROD carrying the seeded perturbation, a working-fluid gap out to r_fuel, then
@@ -445,6 +463,14 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   EOS_Data &eos = pmbp->pmhd->peos->eos_data;
   Real gm1 = eos.gamma - 1.0;
   bool is_ideal = eos.is_ideal;
+  // Tabulated 3T (IONMIX) initial-condition state (ADR-0010 / ADR-0002).  The code-unit
+  // scaled table held on the MHD package (mhd.cpp) is captured by value into the kernel
+  // (shallow View copy, device-valid, like the live ConsToPrim path); the per-cell
+  // cold-LTE temperature `t_init` (eV) is clamped up to the table floor.  Only used in
+  // the tabulated branch -- for the ideal EOS the table is empty and unused.
+  eos_table_3t::EosTable3T tbl_d = pmbp->pmhd->eos_tbl;
+  Real t_init  = pin->GetOrAddReal("problem", "t_init_ev", 1.0);
+  Real t_floor = is_ideal ? 0.0 : tbl_d.TempMin();
   auto &u0 = pmbp->pmhd->u0;
   auto &b0 = pmbp->pmhd->b0;
   // Passive scalar(s): in the converging-RM (rod) target, tag the on-axis ROD material
@@ -533,6 +559,20 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
 
     if (is_ideal) {
       u0(m,IEN,k,j,i) = (p0*tfac)/gm1 + 0.5*(bphi*bphi + bz0*bz0);
+    } else {
+      // Tabulated 3T IC (ADR-0010): a single cold-LTE temperature per cell
+      // (T_e=T_i=t_init, optionally modulated by the Ellison temperature seed via tfac),
+      // clamped up to the table floor.  Look up the per-species SPECIFIC energies on the
+      // code-unit-scaled table and fill BOTH the conserved total energy and the e_ele
+      // passive scalar (the electron internal energy density that rides scalar 0; the ion
+      // energy is recovered by subtraction in ConsToPrim2T).  This is the else branch the
+      // faithful dimensional run needs -- previously total energy was filled only when
+      // is_ideal, leaving the tabulated energy uninitialised (#174).
+      Real t_cell  = fmax(t_init*tfac, t_floor);
+      Real e_ele_d = dens*tbl_d.EnergyEle(dens, t_cell);
+      Real e_ion_d = dens*tbl_d.EnergyIon(dens, t_cell);
+      u0(m,IEN,k,j,i)  = e_ele_d + e_ion_d + 0.5*(bphi*bphi + bz0*bz0);
+      u0(m,nmhd,k,j,i) = e_ele_d;   // electron internal energy density rides scalar 0
     }
   });
 

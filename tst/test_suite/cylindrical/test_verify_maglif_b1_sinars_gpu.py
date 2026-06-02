@@ -13,31 +13,33 @@ faithful artifact is inputs/maglif_b1_sinars.athinput.
 
 VALIDATION TIER -- the seeded-mode amplitude-growth curve is the QUANTITATIVE observable,
 compared point-by-point against the committed Sinars-2011 curve (now digitized via #154)
-through the curve oracle (ADR-0008).  That comparison is REPORTED in the scorecard
-(binding=False), NOT asserted, for three concrete engineering reasons documented in the
-athinput header and on issue #120:
-  (a) the IONMIX tabulated 3T EOS is wired into the LLF solver (#162) but NOT yet into the
-      multi-material maglif IC (the vacuum gap and low-density fill fall below the table's
-      valid density range, and the e_ele scalar is not seeded), so this run uses the
-      ideal-MHD core -- exactly as the merged faithful B2 run (#163);
-  (b) the drive current is consumed in code units (no SI current/time calibration), so the
-      growth is compared as the dimensionless growth factor G(t)=a/a0 mapped onto the
-      experiment's seed amplitude and observation window (the reduced-surrogate policy of
-      #140/#142/#143/#144);
-  (c) AthenaK has no material-strength model (grep src/ deviatoric|yield = 0), so an
-      ideal-MHD converging liner e-folds order-unity times before stagnation, well
-      short of the experiment's roughly fourfold-decade single-mode growth (the ceiling).
-The BINDING gate is therefore the qualitative single-mode MRT signature -- the liner
-converges, the SEEDED mode grows and stays dominant, the synthetic radiograph limb
-modulates, and a pert_amp=0 control stays exactly 1-D -- with the quantitative curve
-verdict reported alongside.  Flipping the report to a binding assert is one line once the
-tabulated-EOS IC wiring + SI calibration + a strength model (#P6) land.
+through the curve oracle (ADR-0008).  As of #174/[P5] this is now a FAITHFUL DIMENSIONAL
+comparison: the IONMIX tabulated 3T EOS is wired into BOTH the LLF solver (#162) and the
+multi-material maglif IC (the tabulated IC branch fills the conserved energy + the e_ele
+scalar; below-table-floor densities are edge-clamped), and the z2173 drive is consumed in
+SI units (ns->code time, MA->code current; ADR-0010), so the amplitude(t) curve is
+compared on ABSOLUTE TIME and ABSOLUTE AMPLITUDE [mm] -- the time axis gates implosion
+timing (drive+EOS calibration), the magnitude gates growth.
+
+That comparison is REPORTED in the scorecard (binding=False), NOT asserted.  Per ADR-0011
+(attribution policy) any remaining growth shortfall is NOT attributable to material
+strength -- the Ellison/FLASH reference (arXiv:2504.10760) matched B1 with a STRENGTHLESS
+hydrodynamic liner.  Once the upstream anchors are cleared (the closed-form
+magnetic-pressure anchor for calibration -- test_unit_maglif_si_calibration_cpu; implosion
+timing for bulk dynamics; the 1D-stays-1D + coarse two-grid convergence for numerics --
+test_verify_maglif_b1_tabulated_cpu), a surviving residual is bounded by the reference's
+model set (conduction / resistivity / gray radiation diffusion) and filed as a follow-up
+with that evidence; it does not gate this run.  The BINDING gate here is therefore the
+qualitative single-mode MRT signature -- the liner converges, the SEEDED mode grows and
+stays dominant, the synthetic radiograph limb modulates, and a pert_amp=0 control stays
+exactly 1-D -- with the quantitative curve verdict reported alongside.  Flipping the
+report to a binding assert closes #120 AC#2 if the run lands in-band.
 
 PHYSICS SCOPE: the single-mode MRT feed is a magneto-HYDRODYNAMIC instability set by the
 inward acceleration (magnetic pressure) and the Atwood number across the liner/vacuum
-interface -- carried by the cylindrical ideal-MHD core (ADR-0004) + the prescribed-I(t)
-circuit drive (ADR-0005 mode A).  The coupled radiation-conduction stack is OFF here (see
-inputs/maglif_b1_sinars.athinput); GPU runs are ideal-MHD only.
+interface -- carried by the cylindrical MHD core (ADR-0004) with the tabulated 3T Al EOS
+(#162/#174) + the SI-calibrated prescribed-I(t) circuit drive (ADR-0005 mode A, ADR-0010).
+The coupled radiation-conduction stack is OFF here (see inputs/maglif_b1_sinars.athinput).
 
 GPU-only (``_gpu`` suffix): built+run with CUDA; auto-collected by ``run_test_suite.py
 --gpu`` (excluded from CPU CI).  Heavy GPU CI harness is #123/[C6].
@@ -74,10 +76,15 @@ HALF = 0.5 * D_LINER   # half-max density level isolating the dense liner
 
 # Qualitative pre-check thresholds (fast sign/shape gates; NOT experiment-anchored bars --
 # the seeded growth is anchored against the Sinars curve via the oracle, reported below).
-CONV_FRAC = 0.85       # require >= 15% bulk convergence (R_liner shrinks; cal ~0.3)
+# NOTE (#174): the "cal ~" values were calibrated on the pre-#174 ideal-MHD raw-current
+# surrogate; the run is now tabulated-3T + SI-calibrated drive (gentler, longer run-in),
+# so these bars may need re-tuning when the #123 GPU harness next runs this benchmark.
+# They stay conservative sign/shape gates (converges, seed grows, control stays 1-D), not
+# magnitude matches (the magnitude is the reported oracle verdict).
+CONV_FRAC = 0.85       # require >= 15% bulk convergence (R_liner shrinks)
 DOM_FRAC = 0.2         # seeded mode holds >= 20% of interface z-variance at its peak
-GROWTH_MIN = 1.5       # seeded-mode amplitude e-folds >= 1.5x at peak (MRT feed; cal ~3x)
-FLAT_TOL = 1.0e-6      # pert_amp=0 control seeded-mode amplitude stays below (cal 1e-23)
+GROWTH_MIN = 1.5       # seeded-mode amplitude grows >= 1.5x at peak (MRT feed)
+FLAT_TOL = 1.0e-6      # pert_amp=0 control seeded-mode amplitude stays below
 
 # GPU build flags (athenakdev / A100); overridable for other runners (#123 generalizes).
 GPU_ARCH = os.environ.get("ATHENAK_GPU_ARCH", "Kokkos_ARCH_AMPERE80")
@@ -331,10 +338,13 @@ def test_verify_maglif_b1_sinars_gpu():
 
         # --- QUANTITATIVE ANCHOR (REPORTED): the seeded-mode amplitude-growth history
         # (times, a_outer) is the growth curve this benchmark reproduces, compared against
-        # the committed Sinars-2011 curve via the oracle.  Reported as the dimensionless
-        # growth factor G(t)=a/a0 mapped onto the experiment's seed + observation window
-        # (only the SIM observable is normalised; no experimental point/tolerance moved).
-        # binding=False per the three residuals in the module docstring.
+        # the committed Sinars-2011 curve via the oracle.  As of #174 this is a FAITHFUL
+        # DIMENSIONAL comparison -- the SI-calibrated drive makes `times` absolute ns, and
+        # the code length unit is mm (length_cgs 0.1), so `a_outer` is absolute mm: the
+        # curve is compared point-for-point on the experiment's own (ns, mm) axes, NO
+        # window/growth-factor remap.  binding=False per ADR-0011 (docstring): a residual
+        # is bounded by the reference model set (conduction/resistivity/radiation, NOT
+        # strength) and filed as a follow-up; it does not gate this run.
         oracle = gto.GroundTruthOracle.from_committed()
         datum = oracle.get("B1", "single_mode_amplitude_growth")
         if datum.is_pending:                       # forward-safe (curve is committed now)
@@ -342,35 +352,30 @@ def test_verify_maglif_b1_sinars_gpu():
                 "B1", "single_mode_amplitude_growth", issue=120,
                 note="Sinars 2011 amplitude-growth curve pending digitization",
             )
-            t_report, a_report, exp_points = times, a_outer, None
+            exp_points = None
         else:
-            xs = [float(p["x"]) for p in datum.points]
-            x_min, x_max = min(xs), max(xs)
-            y_seed = float(min(datum.points, key=lambda p: float(p["x"]))["y"])
-            span = (times[-1] - times[0]) or 1.0
-            t_report = x_min + (times - times[0]) / span * (x_max - x_min)
-            a_report = a_outer / a_outer[0] * y_seed
             res = oracle.compare(
-                "B1", "single_mode_amplitude_growth", (t_report, a_report)
+                "B1", "single_mode_amplitude_growth", (times, a_outer)
             )
-            gf = a_outer[-1] / a_outer[0]
+            y_seed = float(min(datum.points, key=lambda p: float(p["x"]))["y"])
             exp_span = max(p["y"] for p in datum.points) / y_seed
             scorecard.record_result(
                 res.worst_point, binding=False,
-                note="faithful SI ideal-MHD run, reported as growth-factor G(t)=a/a0; "
-                     "binding match needs tabulated-EOS IC + SI calib + strength #P6",
+                note="faithful SI tabulated-3T run, absolute time + amp [mm]; "
+                     "residual bounded by reference model set (conduction/resistivity/"
+                     "radiation, NOT strength; ADR-0011), filed as follow-up",
             )
             print(f"[B1] {res}  (reported, not asserted)")
-            print(f"[B1] faithful-SI seeded-mode growth factor a_end/a0 = {gf:.2f}x "
-                  f"(Sinars curve spans ~{exp_span:.0f}x)")
+            print(f"[B1] faithful-SI seeded-mode peak amplitude {a_outer.max():.4f} mm "
+                  f"(Sinars curve spans ~{exp_span:.0f}x its seed)")
             exp_points = [
                 {"x": p.x, "y": p.exp_value, "band": p.band}
                 for p in res.point_results
             ]
 
         overlay.overlay_curve(
-            "maglif_b1_sinars", t_report, a_report, exp_points=exp_points,
-            xlabel="t", ylabel="seeded-mode amplitude (growth-normalized)",
+            "maglif_b1_sinars", times, a_outer, exp_points=exp_points,
+            xlabel="t", ylabel="seeded-mode amplitude [mm]",
             x_unit="ns", unit="mm", pending_issue=120,
             title="Faithful single-mode MRT growth vs Sinars 2011 (MagLIF benchmark 1)",
         )

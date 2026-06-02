@@ -115,6 +115,15 @@ MHD::MHD(MeshBlockPack *ppack, ParameterInput *pin) :
     std::string eos_table_file = pin->GetString("mhd","eos_table");
     Real eos_mass_per_ion = pin->GetOrAddReal("mhd","eos_mass_per_ion",1.0);
     eos_table_3t::ReadIonmixCn4Eos(eos_table_file, eos_tbl, eos_mass_per_ion);
+    // Scale the table into the code-unit system fixed by <units> ONCE at load (ADR-0010,
+    // the EOS-table unit boundary): specific energy /velocity_cgs^2, pressure
+    // /(density_cgs*velocity_cgs^2), density axis /density_cgs; temp axis stays eV.
+    // After this every lookup -- the live ConsToPrim2T AND the pgen initial conditions --
+    // is code-unit native.  Defaults (1,1) are an identity, so a table consumed in
+    // physical units (no <units> block) is unchanged.
+    Real u_rho = pin->GetOrAddReal("units","density_cgs",1.0);
+    Real u_vel = pin->GetOrAddReal("units","velocity_cgs",1.0);
+    eos_tbl.ScaleToCodeUnits(u_rho, u_vel);
     peos = new TabulatedMHD(ppack, pin);
     // hand the populated table to the EOS data so the live hyperbolic pressure/wave-speed
     // (LLF Riemann solver + newdt) can close p_gas from the table (#162); the cons->prim

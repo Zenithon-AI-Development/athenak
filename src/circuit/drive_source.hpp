@@ -194,6 +194,48 @@ inline void ReadCurrentWaveform(const std::string &fname, DriveSource &ds) {
 }
 
 //----------------------------------------------------------------------------------------
+//! \struct SiDriveUnits
+//! \brief Linear factors converting a faithful SI drive trace -- `time [ns]`, `current
+//!        [MA]` (the z2173 trace columns) -- into the AthenaK code-unit system fixed by
+//!        (`length_cgs`, `density_cgs`, `velocity_cgs`) with Heaviside-Lorentz `mu0=1`
+//!        (ADR-0010).  Multiply the trace's time/current columns by these once on load.
+struct SiDriveUnits {
+  Real time_per_ns;     //!< code time per nanosecond
+  Real current_per_ma;  //!< code current per megaampere
+};
+
+//----------------------------------------------------------------------------------------
+//! \fn CalibrateSiDrive
+//! \brief Derive the (time, current) load-trace conversion factors for the chosen code
+//!  units (ADR-0010).  This is the calibration the closed-form magnetic-pressure anchor
+//!  validates (CONTEXT.md "Magnetic-pressure anchor").
+//!
+//!  TIME.  The code time unit is `length_cgs[cm]/velocity_cgs[cm/s]` seconds, so a time
+//!  in nanoseconds maps to code time by `t_code = t[ns]*1e-9 / t_unit`, i.e.
+//!  `time_per_ns = 1e-9 * velocity_cgs / length_cgs`.
+//!
+//!  CURRENT.  The code drive lays `B_phi = mu0*I_code/(2*pi*r_code)` with `mu0=1`, and
+//!  the code magnetic pressure is `B_code^2/2`.  Requiring that to equal the physical
+//!  magnetic pressure `mu0_SI*I_SI^2/(8*pi^2*r_SI^2)` [Pa] over the code pressure unit
+//!  gives a current-only (radius-independent) relation:
+//!     I_code = I_SI * sqrt( mu0_SI / ( r_unit_m^2 * P_unit_Pa ) ),
+//!  with the code length unit `r_unit_m = length_cgs*1e-2` [m] and the code pressure unit
+//!  `P_unit_Pa = 0.1*density_cgs*velocity_cgs^2` [Pa] (`density_cgs*velocity_cgs^2`
+//!  dyn/cm^2, /10 -> Pa).  Megaamperes add a factor 1e6.
+//!
+//!  A caller opts into the SI conversion explicitly (the pgen `problem/current_si` flag),
+//!  so every pre-existing code-unit trace stays byte-identical.
+inline SiDriveUnits CalibrateSiDrive(Real length_cgs, Real density_cgs, Real vel_cgs) {
+  const Real mu0_si    = 4.0e-7*(0.5*kTwoPi);         // 4*pi*1e-7 (SI permeability)
+  const Real r_unit_m  = length_cgs*1.0e-2;           // code length unit in metres
+  const Real p_unit_pa = 0.1*density_cgs*vel_cgs*vel_cgs;  // code pressure unit [Pa]
+  SiDriveUnits u;
+  u.time_per_ns    = 1.0e-9*vel_cgs/length_cgs;
+  u.current_per_ma = 1.0e6*std::sqrt(mu0_si/(r_unit_m*r_unit_m*p_unit_pa));
+  return u;
+}
+
+//----------------------------------------------------------------------------------------
 //! \fn ParseWaveform
 //! \brief Map an input string to a CurrentWaveform (FATALs on an unknown name).
 inline CurrentWaveform ParseWaveform(const std::string &name) {
