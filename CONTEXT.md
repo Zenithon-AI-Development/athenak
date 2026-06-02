@@ -88,6 +88,31 @@ domain — the feedback term closing the coupled circuit (mode C).
 The vacuum radial BC outside the current-carrying load enforcing `∂_r(r·B_φ)=0` → constant enclosed
 current → `B_φ ∝ 1/r` decay. Distinct from the **circuit** BC, which *drives* `B_φ` from `I(t)`.
 
+### Units & calibration
+
+**Code units**:
+AthenaK's single internal unit system. Every evolved quantity, EOS lookup, and the magnetic
+drive live here. Set by `length_cgs`, `density_cgs`, `velocity_cgs` in `<units>`. Physical CGS
+appears only at two boundaries: the EOS-table lookup and post-run reporting (ADR-0010).
+_Avoid_: "physical units" for in-code quantities — say which side of the boundary you mean.
+
+**`velocity_cgs`**:
+A numerical-conditioning knob, **not** a measurement. With `length_cgs`, `density_cgs` and the
+Heaviside-Lorentz `mu0=1` fixed, it is the one remaining free scale; any consistent value gives
+identical physics. Pick it so code numbers are O(1).
+_Avoid_: treating it as a measured/derived velocity, or "the absolute scale" — there is none to set.
+
+**EOS-table unit boundary**:
+The one place physical CGS meets code units. The IONMIX table is scaled into code units once at
+load (energy `/velocity_cgs^2`, pressure `/(density_cgs*velocity_cgs^2)`, density axis
+`/density_cgs`; the **temperature axis stays in eV**). Every lookup afterwards is code-unit native.
+_Avoid_: per-cell unit conversion in the solver hot path.
+
+**Magnetic-pressure anchor**:
+The closed-form calibration check `B^2/2 = mu0*I^2/(8*pi^2*r^2)` at the outer radius (~5 Mbar at
+20 MA / 3.47 mm). A unit error anywhere in the drive/EOS calibration breaks it; it is the Layer-1
+independent oracle for "the dimensional setup is self-consistent" (ADR-0008, ADR-0010).
+
 ## Verification
 
 Every HED verification and unit test declares an independent, citable **ground-truth oracle**. The
