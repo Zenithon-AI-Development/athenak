@@ -138,6 +138,7 @@ class Mesh {
   int *nprtcl_eachrank;    // number of particles on each rank
 
   Real time, dt, dtold, dt_last_completed, cfl_no;
+  Real dt_max = 0.0;       // optional <time>/dt_max ceiling (0 = off); see NewTimeStep
   int ncycle;
   EventCounters ecounter;
 

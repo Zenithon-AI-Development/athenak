@@ -1,0 +1,67 @@
+# AthenaK input: faithful dimensional units + drive calibration unit test
+# (unit_tests/maglif_si_calibration_test, issue [P5]/#174, ADR-0010).
+#
+# All checks run in ProblemGenerator::UserProblem and the program exits before any time
+# integration (nlim = tlim = 0).  The test loads the committed z2173 current trace
+# (problem/current_file) and the real aluminum IONMIX table (mhd/eos_table) LOCALLY -- it
+# does not need the package EOS -- so it runs on a trivial ideal-MHD grid.  The Python
+# wrapper (test_unit_maglif_si_calibration_cpu.py) overrides current_file and eos_table
+# with ABSOLUTE paths (the unit-test binary runs from tst/build_unit/<name>/src, so a
+# relative path would not resolve).  The <units> block carries the faithful B1 system:
+# code length 1 mm, code density solid Al, velocity_cgs conditioned so code time ~ 1 ns.
+
+<comment>
+problem   = MagLIF SI units + drive calibration unit test (B1, ADR-0010)
+
+<job>
+basename  = maglif_si_calibration_test
+
+<units>
+length_cgs   = 0.1        # cm per code length  -> code length unit = 1 mm
+density_cgs  = 2.7        # g/cc per code density -> code density unit = solid aluminum
+velocity_cgs = 1.0e8      # cm/s per code velocity -> code time unit ~ 1 ns over a 100 ns run
+
+<mesh>
+nghost    = 2
+nx1       = 4
+x1min     = 0.0
+x1max     = 1.0
+ix1_bc    = outflow
+ox1_bc    = outflow
+
+nx2       = 4
+x2min     = -1.0
+x2max     = 1.0
+ix2_bc    = outflow
+ox2_bc    = outflow
+
+nx3       = 4
+x3min     = -1.0
+x3max     = 1.0
+ix3_bc    = outflow
+ox3_bc    = outflow
+
+<meshblock>
+nx1       = 4
+nx2       = 4
+nx3       = 4
+
+<time>
+evolution  = dynamic
+integrator = rk2
+cfl_number = 0.2
+nlim       = 0           # do no integration, just run UserProblem
+tlim       = 0
+ndiag      = 1
+
+<mhd>
+eos              = ideal                          # the test loads EOS tables locally
+reconstruct      = plm
+rsolver          = hlld
+gamma            = 1.6666666666666667
+eos_table        = inputs/ionmix/al-imx-004.cn4   # IONMIX cn4 table (overridden by the test)
+eos_mass_per_ion = 1.0                            # number-density axis (scaling test is axis-independent)
+
+<problem>
+current_file = z2173_current.dat   # committed z2173 trace (overridden by the test, abs path)
+r_out_mm     = 3.4688              # liner/vacuum radius (Sinars AR6 Al, the anchor radius)
