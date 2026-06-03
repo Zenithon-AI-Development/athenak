@@ -30,10 +30,11 @@ timing for bulk dynamics; the 1D-stays-1D + coarse two-grid convergence for nume
 test_verify_maglif_b1_tabulated_cpu), a surviving residual is bounded by the reference's
 model set (conduction / resistivity / gray radiation diffusion) and filed as a follow-up
 with that evidence; it does not gate this run.  #175/[P6] then enabled that model set one
-operator at a time (test_verify_maglif_b1_operators_gpu) and found NONE yet alters the
-tabulated B1 implosion faithfully (ADR-0012): resb/fld/fld+mrad are inert (decoupled or
-unsourced standalone fields) and acond is EOS-inconsistent (ideal-gamma T) -- so the
-residual is bounded by three model-set wiring/consistency gaps, still NOT strength.  The
+operator at a time (test_verify_maglif_b1_operators_gpu) and found NONE yet altered the
+tabulated B1 implosion faithfully (ADR-0012), bounding the residual by three model-set
+wiring/consistency gaps (still NOT strength), closed one at a time: resb is now COUPLED to
+the live driven b0.x2f (#181/[P7a], resb_couple_b0) and ACTIVE; fld/fld+mrad remain inert
+(unsourced standalone erad, #182) and acond EOS-inconsistent (ideal-gamma T, #183).  The
 BINDING gate here is therefore the
 qualitative single-mode MRT signature -- the liner converges, the SEEDED mode grows and
 stays dominant, the synthetic radiograph limb modulates, and a pert_amp=0 control stays

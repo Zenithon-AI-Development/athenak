@@ -130,10 +130,11 @@ two-grid convergence) are cleared. **Material strength is excluded** (FLASH matc
 _Avoid_: "the code lacks model X, so X is the gap" (attribution-by-absence).
 
 **Operator-coupling status (faithful B1)**:
-Enabling the model-set operators on the faithful tabulated-3T B1 run does **not** yet move it
-faithfully: `resb` (resistivity) and `fld` (gray FLD) diffuse **standalone** `bphi`/`erad` arrays the
-`maglif` pgen never couples to the live MHD state (inert), and `acond` (conduction) / `mrad` (coupling)
-bake **ideal-gamma** thermodynamics (`T=(γ-1)e/ρ`, constant `c_v`) inconsistent with the tabulated
-closure. The B1 growth residual is therefore bounded by three model-set **wiring/consistency** gaps —
-couple `bphi↔b0.x2f`, source `erad`, make `acond`/`mrad` EOS-aware — not strength.
+The B1 growth residual is bounded by three model-set **wiring/consistency** gaps (not strength),
+closed one at a time: **(a) [CLOSED, #181/[P7a]]** `resb` (resistivity) is now coupled to the live
+driven face field — the resb super-step is bracketed by a copy-in (`b0.x2f→bphi`) / write-back
+(`bphi→b0.x2f`) gated on `resb_couple_b0`, so resistivity diffuses the *driving* `B_phi` and is
+**active**; **(b) [#182/[P7b]]** the gray-FLD `erad` is still a standalone field the `maglif` pgen
+never sources (inert); **(c) [#183/[P7c]]** `acond` (conduction) / `mrad` (coupling) still bake
+**ideal-gamma** thermodynamics (`T=(γ-1)e/ρ`, constant `c_v`) inconsistent with the tabulated closure.
 ([ADR-0012](docs/adr/0012-b1-operator-coupling-attribution.md).)

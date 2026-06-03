@@ -230,9 +230,63 @@ TaskStatus MHD::OperatorSplitAnisoConduction(Driver *pdrive, int stage) {
 
 TaskStatus MHD::OperatorSplitResistiveBphi(Driver *pdrive, int stage) {
   if (presb_op == nullptr) { return TaskStatus::complete; }
+  // #181/[P7a], ADR-0012 gap a: when coupled, bracket the super-step with the copy-in /
+  // write-back so resistivity diffuses the *live driven* B_phi (b0.x2f) rather than a
+  // decoupled scratch field; off by default => byte-identical (the standalone bphi path).
+  if (resb_couple_b0) { CoupleResbBphiFromB0(); }
   parabolic::OperatorSplitStep(pdrive->pparabolic, *presb_op, bphi,
                                pmy_pack->pmesh->dt);
+  if (resb_couple_b0) { CoupleResbBphiToB0(); }
   return TaskStatus::complete;
+}
+
+//----------------------------------------------------------------------------------------
+//! \fn void MHD::CoupleResbBphiFromB0
+//! \brief Copy the live driven azimuthal face field `b0.x2f` into the resb operator's
+//! standalone `bphi` (component 0) over the active cells (#181/[P7a], ADR-0012 gap a).
+//! In the cylindrical (r,phi,z) maglif column B_phi is the x2-face field and is uniform
+//! in phi (axisymmetric drive), so the lower x2-face value equals the cell-centred B_phi
+//! the operator diffuses.  Ghost zones of `bphi` are refilled by the operator's own
+//! per-substage ApplyBoundary (antisymmetric axis + SyncParabolicGhosts), so only the
+//! active cells are seeded here.
+
+void MHD::CoupleResbBphiFromB0() {
+  auto &indcs = pmy_pack->pmesh->mb_indcs;
+  int is = indcs.is, ie = indcs.ie;
+  int js = indcs.js, je = indcs.je;
+  int ks = indcs.ks, ke = indcs.ke;
+  int nmb1 = pmy_pack->nmb_thispack - 1;
+  auto bph = bphi;
+  auto b2f = b0.x2f;
+  par_for("resb_b0_in", DevExeSpace(), 0, nmb1, ks, ke, js, je, is, ie,
+  KOKKOS_LAMBDA(const int m, const int k, const int j, const int i) {
+    bph(m,0,k,j,i) = b2f(m,k,j,i);
+  });
+}
+
+//----------------------------------------------------------------------------------------
+//! \fn void MHD::CoupleResbBphiToB0
+//! \brief Write the resistively-diffused `bphi` (component 0) back into the live driven
+//! face field `b0.x2f` over the active cells (#181/[P7a], ADR-0012 gap a).  Mirrors the
+//! maglif IC face fill: the lower x2-face of every active cell, plus the top x2-face of
+//! the last cell in phi (j==je) -- B_phi is uniform in phi so that face equals the je
+//! cell value.  The total energy u0(IEN) is left unchanged, so the next ConsToPrim
+//! recovers the magnetic-energy decrement as gas internal energy (Ohmic dissipation);
+//! making that EOS-consistent for tabulated_3t is #P7c/#P7d.
+
+void MHD::CoupleResbBphiToB0() {
+  auto &indcs = pmy_pack->pmesh->mb_indcs;
+  int is = indcs.is, ie = indcs.ie;
+  int js = indcs.js, je = indcs.je;
+  int ks = indcs.ks, ke = indcs.ke;
+  int nmb1 = pmy_pack->nmb_thispack - 1;
+  auto bph = bphi;
+  auto b2f = b0.x2f;
+  par_for("resb_b0_out", DevExeSpace(), 0, nmb1, ks, ke, js, je, is, ie,
+  KOKKOS_LAMBDA(const int m, const int k, const int j, const int i) {
+    b2f(m,k,j,i) = bph(m,0,k,j,i);
+    if (j == je) { b2f(m,k,j+1,i) = bph(m,0,k,j,i); }
+  });
 }
 
 //----------------------------------------------------------------------------------------
@@ -258,7 +312,13 @@ TaskStatus MHD::StrangParabolicHalf(Driver *pdrive, int stage) {
       default: break;
     }
     if (field != nullptr) {
+      // #181/[P7a], ADR-0012 gap a: the resb B_phi composite optionally diffuses the live
+      // driven b0.x2f (copy-in before / write-back after this HALF super-step), so each
+      // Strang half acts on the *driving* field.  Off by default => byte-identical.
+      const bool couple = (strang_field_ids[n] == SF_BPHI) && resb_couple_b0;
+      if (couple) { CoupleResbBphiFromB0(); }
       parabolic::OperatorSplitStep(pdrive->pparabolic, *strang_comps[n], *field, half_dt);
+      if (couple) { CoupleResbBphiToB0(); }
     }
   }
   return TaskStatus::complete;
