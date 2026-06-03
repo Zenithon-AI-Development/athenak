@@ -41,6 +41,14 @@ liner (blue) and shock (green) point clouds (``rm_liner_trajectory`` /
 ``rm_shock_trajectory``; the prior trace's spurious upper strand culled) -- are likewise
 REPORTED against the oracle (binding=False) and overlaid on the sim's tracked
 liner/shock trajectories, reproducing the v3 diagnostic figure.
+
+Baseline stability (issue #185, ADR-0013): the Layer-2 ``harness.verify`` guard below
+(``R_rod``/``eta``/``R_shock`` vs ``baselines/maglif_rm_anchor.json``, captured #158) is
+BIT-STABLE on a clean build of main -- a reported ``eta`` drift was investigated and did
+not reproduce (the ideal/``hlld`` IC + integration path is unchanged by the gated
+tabulated/SI branches added in #167/#176/#179, confirming #176's byte-identical claim).
+Do NOT recapture this baseline to silence a one-off red; reproduce it on a clean build
+first (ADR-0008 anti-masking; this box can emit garbled tool output).
 """
 
 # Modules

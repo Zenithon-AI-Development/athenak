@@ -48,7 +48,14 @@ def run_command(command: List[str], text: bool = False) -> bool:
     """
 
     logging.info(f"Executing command: {' '.join(command)}")
-    process = Popen(command, stdout=PIPE, stderr=PIPE, text=True)
+    # Decode with errors="replace": parallel `make -j` interleaves child stdout/stderr
+    # and can split a multibyte (UTF-8) char in a compiler diagnostic across two writes,
+    # leaving an invalid byte sequence in the merged pipe.  With the default strict
+    # decoding that raises UnicodeDecodeError inside communicate() and aborts the ENTIRE
+    # suite at the build step -- before any test runs (a spurious green-CI blocker, #185).
+    # The output is only logged (the boolean return is driven by the process return code),
+    # so replacing undecodable bytes is lossless here and cannot mask a build failure.
+    process = Popen(command, stdout=PIPE, stderr=PIPE, text=True, errors="replace")
     # Log the output only to the file
     with open(LOG_FILE_PATH, "a") as log_file:
         output, errors = process.communicate()
