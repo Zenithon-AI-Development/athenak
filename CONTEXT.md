@@ -120,3 +120,20 @@ policy (Layer-1 independent oracle vs. Layer-2 self-captured snapshot, and what 
 is [ADR-0008](docs/adr/0008-verification-provenance-policy.md); the per-test
 **[verification provenance index](docs/verification.md)** records each test's oracle type, citation,
 and — for snapshot-only tests — the Layer-1 test that anchors the underlying method's correctness.
+
+**Benchmark shortfall attribution**:
+A faithful-benchmark miss is blamed on a missing physics model only with evidence and only from the
+*reference's* (Ellison/FLASH) model set — tabulated 3T EOS, conduction, resistivity, gray/multigroup
+radiation — after the upstream anchors (magnetic-pressure calibration, implosion timing, 1D-stays-1D +
+two-grid convergence) are cleared. **Material strength is excluded** (FLASH matched B1–4 strengthless).
+([ADR-0011](docs/adr/0011-benchmark-shortfall-attribution-policy.md).)
+_Avoid_: "the code lacks model X, so X is the gap" (attribution-by-absence).
+
+**Operator-coupling status (faithful B1)**:
+Enabling the model-set operators on the faithful tabulated-3T B1 run does **not** yet move it
+faithfully: `resb` (resistivity) and `fld` (gray FLD) diffuse **standalone** `bphi`/`erad` arrays the
+`maglif` pgen never couples to the live MHD state (inert), and `acond` (conduction) / `mrad` (coupling)
+bake **ideal-gamma** thermodynamics (`T=(γ-1)e/ρ`, constant `c_v`) inconsistent with the tabulated
+closure. The B1 growth residual is therefore bounded by three model-set **wiring/consistency** gaps —
+couple `bphi↔b0.x2f`, source `erad`, make `acond`/`mrad` EOS-aware — not strength.
+([ADR-0012](docs/adr/0012-b1-operator-coupling-attribution.md).)

@@ -29,7 +29,12 @@ magnetic-pressure anchor for calibration -- test_unit_maglif_si_calibration_cpu;
 timing for bulk dynamics; the 1D-stays-1D + coarse two-grid convergence for numerics --
 test_verify_maglif_b1_tabulated_cpu), a surviving residual is bounded by the reference's
 model set (conduction / resistivity / gray radiation diffusion) and filed as a follow-up
-with that evidence; it does not gate this run.  The BINDING gate here is therefore the
+with that evidence; it does not gate this run.  #175/[P6] then enabled that model set one
+operator at a time (test_verify_maglif_b1_operators_gpu) and found NONE yet alters the
+tabulated B1 implosion faithfully (ADR-0012): resb/fld/fld+mrad are inert (decoupled or
+unsourced standalone fields) and acond is EOS-inconsistent (ideal-gamma T) -- so the
+residual is bounded by three model-set wiring/consistency gaps, still NOT strength.  The
+BINDING gate here is therefore the
 qualitative single-mode MRT signature -- the liner converges, the SEEDED mode grows and
 stays dominant, the synthetic radiograph limb modulates, and a pert_amp=0 control stays
 exactly 1-D -- with the quantitative curve verdict reported alongside.  Flipping the

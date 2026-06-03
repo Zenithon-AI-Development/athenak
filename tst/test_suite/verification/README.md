@@ -163,13 +163,24 @@ growth-factor `G(t)=a/a0` against the committed Sinars-2011 curve via the curve 
 **binding** gate is the qualitative single-mode MRT signature — the liner converges, the seeded
 mode e-folds (calibrated ~3× peak) then is crushed by deep convergence, it carries a sizeable
 share of the interface structure at its peak, the synthetic radiograph limb modulates, and a
-`pert_amp=0` control stays exactly 1-D. The faithful run measures a peak growth factor ~3× vs
-the experiment's ~46×: the quantitative *match* (AC#2) is **reported, not asserted**, because an
-ideal-MHD converging liner e-folds only order-unity times before stagnation. Closing AC#2 needs
-the IONMIX tabulated EOS wired into the multi-material maglif IC (the solver path exists, #162,
-but the vacuum/fill fall below the table's valid density range), an SI current/time calibration,
-and a material-strength model (#P6). Same report-vs-assert discipline as the reduced `_cpu`
-arm (`test_verify_maglif_mrt_cpu.py`, #142), now on the faithful paper-resolution GPU run.
+`pert_amp=0` control stays exactly 1-D. As of #174 the IONMIX tabulated-3T EOS + SI drive
+calibration are wired (the faithful dimensional run); the paper-resolution amplitude(t) on the
+A100 reaches a seeded-mode peak ~0.04 mm over the Sinars window (1.88–69.9 ns) versus the
+experiment's ~0.9 mm — **out of band** (10/11 points), the documented under-growth ceiling. The
+quantitative *match* (AC#2) is **reported, not asserted**.
+
+Per **ADR-0011** the residual is **NOT** material strength (FLASH matched B1 strengthless); it is
+bounded by the reference model set (conduction / resistivity / gray radiation). #175/[P6] enabled
+that set one operator at a time on the faithful run (`test_verify_maglif_b1_operators_gpu.py`) and
+found (**ADR-0012**) that none yet alters the tabulated B1 implosion *faithfully*: `resb` and
+`fld`/`fld+mrad` are **inert** (the maglif pgen never couples their standalone `bphi`/`erad` to
+the live MHD state — the seeded-mode amplitude(t) is bitwise identical to baseline), and `acond`
+is **EOS-inconsistent** (it recovers temperature as the ideal-gamma `T=(γ-1)e/ρ`, not the
+tabulated electron/ion closure, so it changes the curve through a non-faithful path). So closing
+AC#2 is bounded by **three model-set wiring/consistency gaps** — (a) couple `resb`'s `bphi` to the
+live `b0.x2f`, (b) source the FLD `erad` from the gas, (c) make `acond`'s `T` and `mrad`'s `c_v`
+EOS-aware — all within the reference's model set, **none** material strength. Same
+report-vs-assert discipline as the reduced `_cpu` arm (`test_verify_maglif_mrt_cpu.py`, #142).
 
 ### Faithful Ellison B2: qualitative Stage 1 (#163) + soft quantitative anchor (#155)
 
