@@ -125,9 +125,10 @@ pfloor           = 1.0e-7
 #      so the per-operator attribution test (test_verify_maglif_b1_operators_gpu.py) can flip
 #      each ON one at a time by CLI override (overrides only REPLACE existing params).  Per
 #      ADR-0012 gaps: resb is now COUPLED to the live driven b0.x2f (#181/[P7a],
-#      resb_couple_b0 below) so resistivity is ACTIVE; fld still diffuses a standalone erad
-#      the maglif pgen never sources (inert, #P7b), and acond/mrad bake ideal-gamma
-#      thermodynamics inconsistent with tabulated_3t (#P7c).  The
+#      resb_couple_b0 below) so resistivity is ACTIVE; the FLD erad is now SOURCED from the
+#      gas state (#182/[P7b], fld_source_erad_from_gas below) so fld / fld+mrad are ACTIVE;
+#      acond/mrad still bake ideal-gamma thermodynamics inconsistent with tabulated_3t
+#      (#P7c).  The
 #      coefficients are uncalibrated placeholders (a faithful SI calibration is a follow-up).
 strang_split         = false      # Strang-wrap the operator-split parabolic block (ADR-0009)
 resb_operator_split  = false      # cylindrical resistive B_phi diffusion (issue 27)
@@ -137,7 +138,12 @@ resb_couple_b0       = true       # couple bphi <-> live driven b0.x2f (#181/[P7
                                   #   only when resb_operator_split is on => baseline byte-identical.
 acond_operator_split = false      # anisotropic Braginskii conduction on the gas energy (issue 108)
 acond_kappa_conv     = 0.05       # conduction coefficient (uncalibrated placeholder)
-fld_operator_split   = false      # grey flux-limited radiation diffusion (issue 110); INERT here
+fld_operator_split   = false      # grey flux-limited radiation diffusion (issue 110)
+fld_source_erad_from_gas = true   # source erad from the gas state (#182/[P7b], ADR-0012 gap b):
+                                  #   partition LTE a*T^4 out of the gas internal energy so the
+                                  #   FLD field is physically fed and mrad has a real field to
+                                  #   exchange against -> fld / fld+mrad now ACTIVE (not inert).
+                                  #   Read only when fld_operator_split is on => byte-identical off.
 fld_c_light          = 10.0       # code-unit radiation speed
 fld_chi              = 1000.0     # grey opacity (opaque liner)
 fld_n_larsen         = 2.0        # Larsen flux-limiter exponent

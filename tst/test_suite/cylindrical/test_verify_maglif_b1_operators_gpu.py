@@ -18,38 +18,42 @@ each operator flips from INERT to ACTIVE here in turn --
     lives) -- INERT. CLOSED by #181/[P7a]: with ``resb_couple_b0`` the resb super-step is
     bracketed by a copy-in (b0.x2f -> bphi) / write-back (bphi -> b0.x2f), so resistivity
     now diffuses the *driving* B_phi -- ACTIVE (no longer inert).
-  * gray FLD (``fld_operator_split``) diffuses a STANDALONE ``erad`` the maglif pgen never
-    sources, and without ``mrad_coupling`` never touches the gas -- so it is INERT.
+  * gray FLD (``fld_operator_split``) diffused a STANDALONE ``erad`` the maglif pgen never
+    sourced, and without ``mrad_coupling`` never touched the gas -- INERT. CLOSED by
+    #182/[P7b]: with ``fld_source_erad_from_gas`` the maglif IC partitions the LTE grey
+    energy ``a*T^4`` (at the cell temperature) OUT of the gas internal energy, so the gas
+    state -- hence the seeded-mode amplitude(t) -- now differs from the FLD-off baseline
+    even without coupling -- ACTIVE.
   * gray FLD + matter-radiation coupling (``mrad_coupling``) couples erad<->IEN with a
-    CONSTANT heat capacity ``mrad_cv`` (not the tabulated closure), but has nothing to
-    exchange against because ``erad`` is never sourced (stays 0) -- so it is INERT in
-    practice (the EOS-inconsistent c_v only bites once erad is sourced).
+    CONSTANT heat capacity ``mrad_cv`` (not the tabulated closure). With ``erad`` now
+    sourced (#182/[P7b]) the coupling has a real, spatially-structured field to exchange
+    against -- ACTIVE -- though the constant-c_v closure is still EOS-inconsistent (#P7c).
   * conduction (``acond_operator_split``) DOES act on the live gas energy, but recovers
     temperature as the ideal-gamma T = (gamma-1) eint/rho (aniso_conduction_operator.cpp
     TempMHD), inconsistent with the tabulated_3t electron/ion-split closure -- so it
     CHANGES the amplitude(t) curve, but through a non-faithful (ideal-gamma) closure.
 
-Measured on the GPU (reduced grid): resb, gray-FLD and gray-FLD+mrad leave the seeded-mode
-amplitude(t) BITWISE identical to the operators-off baseline; only acond perturbs it
-(max ~1% over the run-in), and EOS-inconsistently.
+Measured on the GPU (reduced grid): with gaps (a)/[P7a] and (b)/[P7b] closed, resb,
+gray-FLD and gray-FLD+mrad now CHANGE the seeded-mode amplitude(t) vs the operators-off
+baseline (no longer bitwise identical), as does acond; each through an uncalibrated or
+EOS-inconsistent closure (not yet the faithful physics).
 
 This test LOCKS IN that attribution as a regression: it enables each operator one at a
 time on the faithful setup (at a cheap REDUCED resolution -- the inert/active facts are
 code-structural and resolution-independent, and operator-on is compared against
 operator-off at the SAME grid so the seed resolution cancels), and asserts
-  * gray-FLD and gray-FLD+mrad (still unwired, #182) leave the seeded-mode amplitude(t)
-    IDENTICAL to baseline (INERT -- unsourced standalone fields), and
-  * resb (coupled, #181) and acond CHANGE it while staying finite (ACTIVE), and their
+  * resb (coupled, #181), gray-FLD and gray-FLD+mrad (erad sourced, #182), and acond all
+    CHANGE the seeded-mode amplitude(t) while staying finite (ACTIVE), and their
     pert_amp=0 controls stay exactly 1-D (the AC#1 "1-D-stays-1-D" anchor still holds with
-    each ON -- resistive radial B_phi diffusion preserves axisymmetry).
+    each ON -- radial B_phi diffusion / radial radiation sourcing preserve axisymmetry).
 Each per-operator verdict is recorded in the scorecard (binding=False, ADR-0012 note).
 
 CONCLUSION (recorded, NOT strength; ADR-0011 holds): the faithful B1 amplitude(t) residual
 is bounded by THREE reference-model-set engineering gaps -- (a) couple resb's bphi to the
-live b0.x2f [CLOSED #181/[P7a]], (b) source the FLD erad from the gas [#182/[P7b]], (c)
-make acond's T and mrad's c_v EOS-aware [#183/[P7c]].  The paper-resolution amplitude(t)
-oracle verdict itself stays the job of test_verify_maglif_b1_sinars_gpu.py (the faithful
-baseline run).
+live b0.x2f [CLOSED #181/[P7a]], (b) source the FLD erad from the gas [CLOSED #182/[P7b]],
+(c) make acond's T and mrad's c_v EOS-aware [#183/[P7c]].  The paper-resolution
+amplitude(t) oracle verdict itself stays the job of test_verify_maglif_b1_sinars_gpu.py
+(the faithful baseline run).
 
 GPU-only (``_gpu`` suffix): built+run with CUDA; auto-collected by ``run_test_suite.py
 --gpu`` (excluded from CPU CI).  Heavy GPU CI harness is #123/[C6].
@@ -113,14 +117,17 @@ OPERATORS = [
      "inert": False, "label": "resistivity (resb)",
      "why": "bphi now coupled to live b0.x2f (#181/[P7a]) -> diffuses the driving B_phi"},
     {"key": "fld", "args": ["mhd/strang_split=true", "mhd/fld_operator_split=true"],
-     "inert": True,  "label": "gray FLD (fld, no coupling)",
-     "why": "standalone erad, never sourced; no mrad coupling -> never touches the gas"},
+     "inert": False, "label": "gray FLD (fld, no coupling)",
+     "why": "erad now sourced from the gas (#182/[P7b]): LTE a*T^4 partitioned out of "
+            "the gas internal energy at IC -> the gas state (hence amplitude) differs "
+            "from the FLD-off baseline even without coupling"},
     {"key": "fldmrad",
      "args": ["mhd/strang_split=true", "mhd/fld_operator_split=true",
               "mhd/mrad_coupling=true"],
-     "inert": True,  "label": "gray FLD + matter-rad coupling (fld+mrad)",
-     "why": "erad never sourced in maglif (stays 0) -> coupling inert; constant-c_v "
-            "closure also EOS-inconsistent (latent until erad is sourced)"},
+     "inert": False, "label": "gray FLD + matter-rad coupling (fld+mrad)",
+     "why": "erad now sourced (#182/[P7b]) -> mrad has a real, structured field to "
+            "exchange against (erad<->IEN), changing the implosion; constant-c_v closure "
+            "still EOS-inconsistent (#P7c)"},
     {"key": "acond", "args": ["mhd/strang_split=true", "mhd/acond_operator_split=true"],
      "inert": False, "label": "conduction (acond)",
      "why": "acts on live IEN via ideal-gamma T=(g-1)e/rho, EOS-inconsistent"},
@@ -240,8 +247,9 @@ def test_verify_maglif_b1_operators_gpu():
                         f"identical to baseline (rel dev {max_rel:.1e}); no effect on "
                         f"the faithful B1 implosion (ADR-0012, NOT strength)")
             else:
-                # The operator acts on the live gas energy -> it changes the curve;
-                # ADR-0012: but via an ideal-gamma closure inconsistent with tabulated_3t.
+                # The operator now reaches the live gas (coupled/sourced) -> it changes
+                # the curve; ADR-0012: but through uncalibrated/EOS-inconsistent closures,
+                # this is still NOT the faithful physics (SI calibration is #P7d/#184).
                 assert not same, (
                     f"{op['label']} expected ACTIVE on the gas ({op['why']}) but left "
                     f"the seeded-mode amplitude(t) unchanged (max rel dev {max_rel:.3e})"
@@ -255,10 +263,10 @@ def test_verify_maglif_b1_operators_gpu():
                     f"{op['label']} pert_amp=0 control developed axial structure "
                     f"(max a_outer={float(np.max(ca)):.3e}); breaks 1-D-stays-1-D"
                 )
-                verdict = "ACTIVE/EOS-INCONSISTENT"
-                note = (f"{op['label']}: changes amplitude(t) (rel {max_rel:.1e}) but "
-                        f"{op['why']}; 1-D control stays 1-D; not faithful on "
-                        f"tabulated_3t (ADR-0012, NOT strength)")
+                verdict = "ACTIVE"
+                note = (f"{op['label']}: changes amplitude(t) (rel {max_rel:.1e}) -- "
+                        f"{op['why']}; 1-D control stays 1-D; uncalibrated/not yet "
+                        f"faithful on tabulated_3t (ADR-0012, NOT strength)")
 
             # sim/experiment kept None: the scorecard formats numeric cells with ':g', so
             # the string verdict lives in the `verdict` field and details in `note`.
@@ -270,8 +278,8 @@ def test_verify_maglif_b1_operators_gpu():
             print(f"[B1][#175] {op['label']:42s} -> {verdict}  "
                   f"(max rel dev vs baseline {max_rel:.3e})")
 
-        print("[B1][#175] residual bounded by 3 model-set gaps (resb<->b0 coupling, erad "
-              "sourcing, EOS-aware acond/mrad T & c_v); NOT strength (ADR-0012).")
+        print("[B1][#175] resb<->b0 coupling (#181) + erad sourcing (#182) now ACTIVE; "
+              "remaining gap = EOS-aware acond/mrad T & c_v (#183); NOT strength.")
     finally:
         for pat in pats:
             for f in glob.glob(os.path.join(bin_dir, pat)):

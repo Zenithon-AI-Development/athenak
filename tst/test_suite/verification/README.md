@@ -177,8 +177,12 @@ bounded by **three model-set wiring/consistency gaps** (all within the reference
 **none** material strength), closed one at a time: **(a) [CLOSED #181/[P7a]]** couple `resb`'s
 standalone `bphi` to the live driven `b0.x2f` — the resb super-step is now bracketed by a copy-in
 (`b0.x2f→bphi`) / write-back (`bphi→b0.x2f`) gated on `resb_couple_b0`, so resistivity diffuses the
-*driving* `B_phi` and is **active** (no longer bitwise-identical to baseline); **(b) [#182/[P7b]]**
-source the FLD `erad` from the gas (`fld`/`fld+mrad` still **inert** — standalone unsourced `erad`);
+*driving* `B_phi` and is **active** (no longer bitwise-identical to baseline); **(b) [CLOSED
+#182/[P7b]]** source the FLD `erad` from the gas — the `maglif` IC partitions the LTE grey energy
+`a*T^4` (at the cell temperature) out of the gas internal energy (gated on
+`fld_source_erad_from_gas`, conserving `E_gas+E_rad`), so `fld`/`fld+mrad` are **active** (the gas,
+hence amplitude(t), differs from baseline even without coupling; `mrad` now has a real field to
+exchange against);
 **(c) [#183/[P7c]]** make `acond`'s `T` and `mrad`'s `c_v` EOS-aware (`acond` is **active but
 EOS-inconsistent** — recovers ideal-gamma `T=(γ-1)e/ρ`, not the tabulated electron/ion closure).
 Same report-vs-assert discipline as the reduced `_cpu` arm (`test_verify_maglif_mrt_cpu.py`, #142).

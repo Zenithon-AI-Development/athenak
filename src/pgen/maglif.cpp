@@ -481,6 +481,23 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   int nmhd = pmbp->pmhd->nmhd;
   int nscal = pmbp->pmhd->nscalars;
 
+  // #182/[P7b], ADR-0012 gap b: optionally SOURCE the operator-split grey-FLD `erad` from
+  // the local gas state inside the IC kernel below (the LTE grey energy a*T^4 at the cell
+  // temperature, partitioned OUT of the gas internal energy), instead of the uniform
+  // radiative-equilibrium seed further down.  Read ONLY when grey FLD is live
+  // (pfld_op != nullptr) and gated on a knob defaulting OFF, so FLD-off runs -- and
+  // existing FLD runs that leave the knob off (e.g. the coupled smoke/B3 stack) -- stay
+  // byte-identical (they keep the uniform seed).  The radiation constant `a` and heat
+  // capacity `c_v` come from the same <mhd> mrad_* params the coupling uses (present in
+  // the athinput regardless of mrad_coupling), so the `fld` (no-coupling) and `fld+mrad`
+  // runs source the SAME field -- both then differ from the operators-off baseline.
+  bool fld_on = (pmbp->pmhd->pfld_op != nullptr);
+  bool source_erad = fld_on &&
+      pin->GetOrAddBoolean("mhd", "fld_source_erad_from_gas", false);
+  Real src_arad = source_erad ? pin->GetOrAddReal("mhd", "mrad_arad", 1.0) : 0.0;
+  Real src_cv   = source_erad ? pin->GetOrAddReal("mhd", "mrad_cv",   1.0) : 0.0;
+  auto erad_d   = pmbp->pmhd->erad;   // valid handle when fld_on; written iff source_erad
+
   par_for("pgen_maglif", DevExeSpace(), 0,(pmbp->nmb_thispack-1),ks,ke,js,je,is,ie,
   KOKKOS_LAMBDA(int m, int k, int j, int i) {
     Real &x1min = size.d_view(m).x1min;
@@ -574,6 +591,26 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
       u0(m,IEN,k,j,i)  = e_ele_d + e_ion_d + 0.5*(bphi*bphi + bz0*bz0);
       u0(m,nmhd,k,j,i) = e_ele_d;   // electron internal energy density rides scalar 0
     }
+
+    // #182/[P7b], ADR-0012 gap b: source the grey-FLD radiation energy from the local gas
+    // state.  Partition the LTE grey energy a*T^4 (at the cell temperature) OUT of the
+    // gas internal energy, conserving E_gas + E_rad, so the radiation field is physically
+    // fed and mrad has a real, spatially-structured field to exchange against.  The
+    // temperature is the faithful tabulated_3t cell temperature (eV) in the tabulated
+    // path, else the coupling's gas temperature T = e_int/c_v.  Capped to half the local
+    // gas thermal energy so the gas stays positive (the coefficients are uncalibrated
+    // placeholders; SI calibration is #P7d/#184); the cap also makes erad track the gas
+    // energy into the low-density vacuum, giving FLD a real gradient at the liner edge to
+    // diffuse.  Off => the uniform equilibrium seed below runs (byte-identical FLD runs).
+    if (source_erad) {
+      Real e_int = u0(m,IEN,k,j,i) - 0.5*(bphi*bphi + bz0*bz0);
+      Real t_src = is_ideal ? ((src_cv > 0.0) ? e_int/src_cv : 0.0)
+                            : fmax(t_init*tfac, t_floor);
+      Real erad_cell = src_arad*t_src*t_src*t_src*t_src;
+      erad_cell = fmin(erad_cell, 0.5*fmax(e_int, 0.0));
+      u0(m,IEN,k,j,i) -= erad_cell;
+      erad_d(m,0,k,j,i) = erad_cell;
+    }
   });
 
   // ---- seed the operator-split grey-FLD radiation field to radiative equilibrium ----
@@ -585,7 +622,9 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   // equilibrium means the coupling starts balanced (no spurious initial energy kick) and
   // the FLD diffusion + coupling then redistribute energy conservatively.  Guarded on
   // pfld_op so the ideal-MHD benchmarks (FLD off) stay byte-identical: no array, no fill.
-  if (pmbp->pmhd->pfld_op != nullptr) {
+  // Skipped when `fld_source_erad_from_gas` is on (#182/[P7b]): the kernel above already
+  // filled `erad` per cell from the gas state and partitioned it out of the gas energy.
+  if (fld_on && !source_erad) {
     Real e_gas = p0/gm1;
     Real cv    = pmbp->pmhd->mrad_cv;
     Real arad  = pmbp->pmhd->mrad_arad;
