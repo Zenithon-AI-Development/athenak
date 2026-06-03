@@ -29,6 +29,7 @@
 #include "radiation_fld/fld_multigroup_operator.hpp"
 #include "diffusion/aniso_conduction_operator.hpp"
 #include "diffusion/braginskii_transport.hpp"
+#include "diffusion/operator_si_calibration.hpp"
 #include "diffusion/resistive_bphi_operator.hpp"
 #include "driver/composite_parabolic_operator.hpp"
 #include "mhd/mhd.hpp"
@@ -218,6 +219,46 @@ MHD::MHD(MeshBlockPack *ppack, ParameterInput *pin) :
   pbval_b = new MeshBoundaryValuesFC(ppack, pin);
   pbval_b->InitializeBuffers(3);
 
+  // SI calibration of the reference-model-set operator coefficients (#184/[P7d],
+  // closing the ADR-0012 coefficient-calibration gap d).  Default OFF => every operator
+  // reads its placeholder coefficient via GetOrAddReal below, byte-identical to pre-#184.
+  // When `operators_si_calibrate` is on (gated to the faithful tabulated_3t path, as
+  // EOS-aware knobs of #183), each placeholder is REPLACED by the value derived from
+  // first-principles Spitzer/Braginskii transport + the IONMIX opacity and converted into
+  // the code-unit system fixed by <units> (the operator analogue of the ADR-0010 drive
+  // calibration).  The reference plasma state (T_e, Z, lnLambda, ion mass, representative
+  // IONMIX opacities) is read from <mhd> si_calib_* params.  This single boundary is
+  // physical transport/opacity values cross into code units, like CalibrateSiDrive.
+  bool operators_si_calibrate =
+      pin->GetOrAddBoolean("mhd","operators_si_calibrate",false);
+  if (operators_si_calibrate && (eqn_of_state.compare("tabulated_3t") != 0)) {
+    std::cout << "### WARNING in " << __FILE__ << " line " << __LINE__
+              << ": <mhd> operators_si_calibrate=true ignored (needs eos=tabulated_3t); "
+              << "operators use the uncalibrated placeholder coefficients." << std::endl;
+    operators_si_calibrate = false;
+  }
+  op_si_calib::OperatorSiCoefficients si_coeff{};
+  if (operators_si_calibrate) {
+    Real u_len = pin->GetOrAddReal("units","length_cgs",1.0);
+    Real u_rho = pin->GetOrAddReal("units","density_cgs",1.0);
+    Real u_vel = pin->GetOrAddReal("units","velocity_cgs",1.0);
+    Real m_i_g = pin->GetOrAddReal("mhd","eos_mass_per_ion",1.0);  // ion mass [g]
+    op_si_calib::OperatorReferenceState s;
+    s.t_e_ev    = pin->GetOrAddReal("mhd","si_calib_te_ev", 100.0);
+    s.z_bar     = pin->GetOrAddReal("mhd","si_calib_zbar", 1.0);
+    s.ln_lambda = pin->GetOrAddReal("mhd","si_calib_lnlam", 5.0);
+    s.m_i_kg    = m_i_g*1.0e-3;
+    // reference electron density: the liner solid density (code density 1.0 = rho unit).
+    Real n_i    = (u_rho*1.0e3)/s.m_i_kg;             // ion number density [m^-3]
+    s.n_e_m3    = s.z_bar*n_i;
+    s.rho_gcc   = u_rho;                                           // reference rho [g/cc]
+    // representative IONMIX Rosseland / Planck-absorption mass opacities [cm^2/g] for the
+    // run material (traceable to the cn4 table; see ADR-0014 + the B1 deck comments).
+    s.kappa_planck_cm2g = pin->GetOrAddReal("mhd","si_calib_kappa_planck_cm2g", 1.0);
+    s.kappa_ross_cm2g   = pin->GetOrAddReal("mhd","si_calib_kappa_ross_cm2g", 1.0);
+    si_coeff = op_si_calib::CalibrateSiOperators(u_len, u_rho, u_vel, s);
+  }
+
   // Grey flux-limited radiation diffusion (FLD) wired operator-split into the MHD step
   // (#110/[A3], ADR-0001).  Only built when explicitly enabled, so default MHD runs add
   // nothing and stay byte-identical.  `erad` is a standalone single-variable radiation
@@ -233,7 +274,9 @@ MHD::MHD(MeshBlockPack *ppack, ParameterInput *pin) :
     int ncells3 = (indcs.nx3 > 1)? (indcs.nx3 + 2*(indcs.ng)) : 1;
     Kokkos::realloc(erad, nmb, 1, ncells3, ncells2, ncells1);
     Real fld_c   = pin->GetOrAddReal("mhd","fld_c_light", 1.0);
-    Real fld_chi = pin->GetOrAddReal("mhd","fld_chi", 1.0);
+    // SI-calibrated Rosseland opacity (#184) replaces the placeholder when calibrating.
+    Real fld_chi = operators_si_calibrate ? si_coeff.fld_chi
+                                          : pin->GetOrAddReal("mhd","fld_chi", 1.0);
     Real fld_nl  = pin->GetOrAddReal("mhd","fld_n_larsen", 2.0);
     Real fld_es  = pin->GetOrAddReal("mhd","fld_e_source", -1.0);
     pfld_op = new FLDGreyOperator(ppack, pin, erad, fld_c, fld_chi, fld_nl, fld_es);
@@ -278,13 +321,28 @@ MHD::MHD(MeshBlockPack *ppack, ParameterInput *pin) :
   acond_operator_split = pin->GetOrAddBoolean("mhd","acond_operator_split",false);
   if (acond_operator_split) {
     anisocond::AnisoCondParams apar;
-    apar.zbar       = pin->GetOrAddReal("mhd","acond_zbar", 1.0);
-    apar.mi_si      = pin->GetOrAddReal("mhd","acond_mi_si", braginskii::kProtonMass);
-    apar.lnlam      = pin->GetOrAddReal("mhd","acond_lnlam", 10.0);
-    apar.dens_conv  = pin->GetOrAddReal("mhd","acond_dens_conv", 1.0);
-    apar.temp_conv  = pin->GetOrAddReal("mhd","acond_temp_conv", 1.0);
-    apar.bmag_conv  = pin->GetOrAddReal("mhd","acond_bmag_conv", 1.0);
-    apar.kappa_conv = pin->GetOrAddReal("mhd","acond_kappa_conv", 1.0);
+    // When calibrating (#184), the local Braginskii state (Z, lnLambda, ion mass) is
+    // reference state so the operator's kappa(rho,T) is consistent with the conv factors;
+    // otherwise the per-param deck values (byte-identical to pre-#184).
+    apar.zbar       = operators_si_calibrate
+                          ? pin->GetOrAddReal("mhd","si_calib_zbar", 1.0)
+                          : pin->GetOrAddReal("mhd","acond_zbar", 1.0);
+    apar.mi_si      = operators_si_calibrate
+                      ? pin->GetOrAddReal("mhd","eos_mass_per_ion",1.0)*1.0e-3
+                      : pin->GetOrAddReal("mhd","acond_mi_si", braginskii::kProtonMass);
+    apar.lnlam      = operators_si_calibrate
+                          ? pin->GetOrAddReal("mhd","si_calib_lnlam", 5.0)
+                          : pin->GetOrAddReal("mhd","acond_lnlam", 10.0);
+    // SI-calibrated Braginskii code<->SI conversion factors (#184) replace placeholders
+    // when calibrating; otherwise the per-param values (byte-identical to pre-#184).
+    apar.dens_conv  = operators_si_calibrate ? si_coeff.acond_dens_conv
+                                  : pin->GetOrAddReal("mhd","acond_dens_conv", 1.0);
+    apar.temp_conv  = operators_si_calibrate ? si_coeff.acond_temp_conv
+                                  : pin->GetOrAddReal("mhd","acond_temp_conv", 1.0);
+    apar.bmag_conv  = operators_si_calibrate ? si_coeff.acond_bmag_conv
+                                  : pin->GetOrAddReal("mhd","acond_bmag_conv", 1.0);
+    apar.kappa_conv = operators_si_calibrate ? si_coeff.acond_kappa_conv
+                                  : pin->GetOrAddReal("mhd","acond_kappa_conv", 1.0);
     apar.nlarsen    = pin->GetOrAddReal("mhd","acond_n_larsen", 2.0);
     apar.vfs        = pin->GetOrAddReal("mhd","acond_vfs", -1.0);
     apar.incl_e     = pin->GetOrAddBoolean("mhd","acond_incl_e", true);
@@ -331,7 +389,9 @@ MHD::MHD(MeshBlockPack *ppack, ParameterInput *pin) :
     int ncells3 = (indcs.nx3 > 1)? (indcs.nx3 + 2*(indcs.ng)) : 1;
     Kokkos::realloc(bphi, nmb, 1, ncells3, ncells2, ncells1);
     Kokkos::realloc(eta_resb, nmb, ncells3, ncells2, ncells1);
-    Real resb_eta = pin->GetOrAddReal("mhd","resb_eta", 1.0);
+    // SI-calibrated Spitzer magnetic diffusivity (#184) replaces the placeholder when on.
+    Real resb_eta = operators_si_calibrate ? si_coeff.resb_eta
+                                           : pin->GetOrAddReal("mhd","resb_eta", 1.0);
     Kokkos::deep_copy(eta_resb, resb_eta);
     presb_op = new ResistiveBphiOperator(ppack, pin, bphi, eta_resb);
     // Couple the standalone bphi to the live driven b0.x2f (#181/[P7a], ADR-0012 gap a).
@@ -388,7 +448,9 @@ MHD::MHD(MeshBlockPack *ppack, ParameterInput *pin) :
   // the IONMIX tables (Phase C, #118).  Default off => byte-identical.
   mrad_coupling = pin->GetOrAddBoolean("mhd","mrad_coupling",false);
   if (mrad_coupling) {
-    mrad_chi_a   = pin->GetOrAddReal("mhd","mrad_chi_a", 0.0);
+    // SI-calibrated IONMIX Planck-absorption opacity (#184) replaces placeholder when on.
+    mrad_chi_a   = operators_si_calibrate ? si_coeff.mrad_chi_a
+                                          : pin->GetOrAddReal("mhd","mrad_chi_a", 0.0);
     mrad_cv      = pin->GetOrAddReal("mhd","mrad_cv", 1.0);
     mrad_arad    = pin->GetOrAddReal("mhd","mrad_arad", 1.0);
     mrad_clight  = pin->GetOrAddReal("mhd","mrad_clight",

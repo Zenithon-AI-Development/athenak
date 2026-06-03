@@ -27,13 +27,13 @@ each operator flips from INERT to ACTIVE here in turn --
   * gray FLD + matter-radiation coupling (``mrad_coupling``) couples erad<->IEN. With
     ``erad`` now sourced (#182/[P7b]) the coupling has a real, spatially-structured field
     to exchange against -- ACTIVE -- and the heat capacity is now read from the tabulated
-    closure (``mrad_eos_aware``, c_v = rho*(cv_e+cv_i)) rather than the constant ``mrad_cv``
-    (EOS-aware, #183/[P7c]).
+    closure (``mrad_eos_aware``, c_v = rho*(cv_e+cv_i)) rather than the constant
+    ``mrad_cv`` (EOS-aware, #183/[P7c]).
   * conduction (``acond_operator_split``) acts on the live gas energy and now recovers the
     conducted temperature from the tabulated_3t electron closure (``acond_eos_aware``,
-    T_e = Te(rho, e_ele/rho)) rather than the ideal-gamma T = (gamma-1) eint/rho -- EOS-aware
-    and consistent with the faithful closure (#183/[P7c]) -- so it CHANGES the amplitude(t)
-    curve through the faithful thermodynamics.
+    T_e = Te(rho, e_ele/rho)) rather than the ideal-gamma T = (gamma-1) eint/rho --
+    EOS-aware and consistent with the faithful closure (#183/[P7c]) -- so it CHANGES the
+    amplitude(t) curve through the faithful thermodynamics.
 
 Measured on the GPU (reduced grid): with gaps (a)/[P7a], (b)/[P7b] and (c)/[P7c] closed,
 resb, gray-FLD, gray-FLD+mrad and acond all CHANGE the seeded-mode amplitude(t) vs the
@@ -128,8 +128,8 @@ OPERATORS = [
               "mhd/mrad_coupling=true"],
      "inert": False, "label": "gray FLD + matter-rad coupling (fld+mrad)",
      "why": "erad now sourced (#182/[P7b]) -> mrad has a real, structured field to "
-            "exchange against (erad<->IEN), changing the implosion; c_v now read from the "
-            "tabulated closure (mrad_eos_aware, #183/[P7c])"},
+            "exchange against (erad<->IEN), changing the implosion; c_v now read "
+            "from the tabulated closure (mrad_eos_aware, #183/[P7c])"},
     {"key": "acond", "args": ["mhd/strang_split=true", "mhd/acond_operator_split=true"],
      "inert": False, "label": "conduction (acond)",
      "why": "acts on live IEN; T recovered from the tabulated_3t electron closure "
@@ -154,6 +154,12 @@ def _run(basename, extra_args=None, pert_amp=None):
         f"mesh/nx1={NX1}", f"mesh/nx2={NX2}", f"mesh/nx3={NX3}",
         f"meshblock/nx1={MBX1}", f"meshblock/nx2={MBX2}", f"meshblock/nx3={MBX3}",
         f"time/tlim={TLIM}", "output1/dt=5.0", "output2/dt=1000",
+        # Pin the #181-183 STRUCTURAL (inert/active) attribution with the known
+        # placeholder coefficients: the SI calibration (#184/[P7d], ADR-0014) is an
+        # orthogonal coefficient-MAGNITUDE concern, exercised by
+        # test_unit_operator_si_calibration_cpu.py.  The deck enables it by default for
+        # the faithful #120 run; here it is off so this test stays byte-identical.
+        "mhd/operators_si_calibrate=false",
     ]
     if extra_args:
         args += extra_args

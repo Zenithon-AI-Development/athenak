@@ -131,9 +131,22 @@ pfloor           = 1.0e-7
 #      conduction recovers T from the tabulated electron closure and the grey coupling reads
 #      c_v from the tabulated closure, consistent with tabulated_3t (not ideal-gamma).  The
 #      coefficients are uncalibrated placeholders (a faithful SI calibration is #184/[P7d]).
+# ---- SI calibration of the operator coefficients (#184/[P7d], ADR-0014, ADR-0012 gap d) ----
+# When operators_si_calibrate is on (tabulated_3t only) the placeholder resb_eta, acond conv
+# factors, mrad_chi_a and fld_chi below are REPLACED by values derived from first-principles
+# Spitzer/Braginskii transport plus the IONMIX opacity at the reference state, converted into
+# the <units> code system (the operator analogue of the ADR-0010 drive calibration).  Read
+# only inside the operator blocks, so the operators-off baseline stays byte-identical; the
+# per-operator attribution test overrides this OFF to pin the #181-183 facts with placeholders.
+operators_si_calibrate    = true
+si_calib_te_ev            = 100.0       # reference electron temperature, eV (Spitzer/Braginskii)
+si_calib_zbar             = 6.65        # Al mean ionization Z at the ref node (al-imx-004, 100 eV)
+si_calib_lnlam            = 5.0         # Coulomb logarithm at the reference state
+si_calib_kappa_ross_cm2g  = 5358.0      # Al IONMIX Rosseland at the ref node, cm^2/g (sets fld_chi)
+si_calib_kappa_planck_cm2g = 6968.0     # Al IONMIX Planck-absorption at the ref node, cm^2/g (mrad_chi_a)
 strang_split         = false      # Strang-wrap the operator-split parabolic block (ADR-0009)
 resb_operator_split  = false      # cylindrical resistive B_phi diffusion (issue 27)
-resb_eta             = 1.0e-3     # constant magnetic diffusivity (uncalibrated placeholder; SI=#P7d)
+resb_eta             = 1.0e-3     # placeholder diffusivity (superseded when calibrate on; SI #P7d)
 resb_couple_b0       = true       # couple bphi <-> live driven b0.x2f (#181/[P7a], ADR-0012 gap a):
                                   #   resb now diffuses the DRIVING B_phi (active, not inert).  Read
                                   #   only when resb_operator_split is on => baseline byte-identical.

@@ -113,6 +113,16 @@ The closed-form calibration check `B^2/2 = mu0*I^2/(8*pi^2*r^2)` at the outer ra
 20 MA / 3.47 mm). A unit error anywhere in the drive/EOS calibration breaks it; it is the Layer-1
 independent oracle for "the dimensional setup is self-consistent" (ADR-0008, ADR-0010).
 
+**Operator SI calibration**:
+The operator analogue of the drive calibration (ADR-0014, `diffusion/operator_si_calibration.hpp`):
+the reference-model-set coefficients — `resb_eta` (Spitzer magnetic diffusivity), the `acond_*_conv`
+factors (Braginskii), `mrad_chi_a`/`fld_chi` (IONMIX Planck/Rosseland opacity) — are derived from
+first-principles transport/opacity at a reference plasma state and converted into the `<units>` code
+system at one boundary. Opt-in `<mhd> operators_si_calibrate` (default off, byte-identical), gated to
+`tabulated_3t`. Closes ADR-0012 gap (d), so the faithful B1 operators are wired *and* calibrated.
+_Avoid_: treating the old order-unity `resb_eta`/`acond_kappa_conv`/`*_chi*` deck values as physical —
+they were placeholders until #184.
+
 ## Verification
 
 Every HED verification and unit test declares an independent, citable **ground-truth oracle**. The
