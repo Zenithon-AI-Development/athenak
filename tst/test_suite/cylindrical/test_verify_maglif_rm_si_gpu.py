@@ -25,9 +25,11 @@ ratio, kz*dr), so they are comparable to a code-unit run directly: the convergin
 growth is hydrodynamic (shock-deposited vorticity + Bell-Plesset convergence
 amplification), set by the Atwood number and the convergence ratio, both of which the
 cylindrical ideal-MHD core reproduces.  The coupled radiation/conduction stack is OFF here
-(see inputs/maglif_rm_si.athinput): its toy coefficients would damp the RM growth and its
-operator-split GPU path segfaults at runtime; it is validated separately on CPU
-(#115/#116/#117).  Real opacity/EOS-derived material coupling (IONMIX, #118) is not yet
+(see inputs/maglif_rm_si.athinput) for a PHYSICS reason: its toy coefficients would damp
+the RM growth.  (The operator-split parabolic GPU runtime segfault was fixed in #153/#139;
+the coupled GPU path now runs, guarded by test_verify_maglif_smoke_gpu.py.)
+The coupled stack is validated separately on CPU (#115/#116/#117) and on GPU (smoke #139).
+Real opacity/EOS-derived material coupling (IONMIX, #118) is not yet
 wired into the EOS, so no absolute km/s calibration is asserted (observables are
 dimensionless).
 

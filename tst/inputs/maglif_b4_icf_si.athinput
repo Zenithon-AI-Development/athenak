@@ -33,8 +33,8 @@
 #       this faithful run uses the IDEAL-MHD core with radiation OFF, exactly as the faithful
 #       B1/B2 runs.  The confining rebound is the ADIABATIC fuel cushion (the dominant
 #       confinement mechanism in the surrogate); the radiative confinement-time refinement
-#       needs the coupled stack on the tabulated EOS (residual a + the GPU coupled segfault,
-#       issue #139);
+#       needs the coupled stack on the tabulated EOS (residual a; the GPU coupled-stack
+#       runtime segfault that used to block this was fixed in #153/#139);
 #   (b) the drive current is consumed in code units (no SI current/time calibration, as
 #       documented in maglif_z2173_si.athinput), so the trajectory is compared as a
 #       dimensionless implosion mapped onto the experimental stagnation window;
