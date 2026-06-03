@@ -127,9 +127,10 @@ pfloor           = 1.0e-7
 #      ADR-0012 gaps: resb is now COUPLED to the live driven b0.x2f (#181/[P7a],
 #      resb_couple_b0 below) so resistivity is ACTIVE; the FLD erad is now SOURCED from the
 #      gas state (#182/[P7b], fld_source_erad_from_gas below) so fld / fld+mrad are ACTIVE;
-#      acond/mrad still bake ideal-gamma thermodynamics inconsistent with tabulated_3t
-#      (#P7c).  The
-#      coefficients are uncalibrated placeholders (a faithful SI calibration is a follow-up).
+#      acond and mrad are now EOS-AWARE (#183/[P7c], acond_eos_aware / mrad_eos_aware below):
+#      conduction recovers T from the tabulated electron closure and the grey coupling reads
+#      c_v from the tabulated closure, consistent with tabulated_3t (not ideal-gamma).  The
+#      coefficients are uncalibrated placeholders (a faithful SI calibration is #184/[P7d]).
 strang_split         = false      # Strang-wrap the operator-split parabolic block (ADR-0009)
 resb_operator_split  = false      # cylindrical resistive B_phi diffusion (issue 27)
 resb_eta             = 1.0e-3     # constant magnetic diffusivity (uncalibrated placeholder; SI=#P7d)
@@ -138,6 +139,9 @@ resb_couple_b0       = true       # couple bphi <-> live driven b0.x2f (#181/[P7
                                   #   only when resb_operator_split is on => baseline byte-identical.
 acond_operator_split = false      # anisotropic Braginskii conduction on the gas energy (issue 108)
 acond_kappa_conv     = 0.05       # conduction coefficient (uncalibrated placeholder)
+acond_eos_aware      = true       # recover conducted T from the tabulated_3t electron closure
+                                  #   (T_e=Te(rho,e_ele/rho)) not ideal-gamma (#183/[P7c], gap c).
+                                  #   Read only when acond_operator_split is on => byte-identical off.
 fld_operator_split   = false      # grey flux-limited radiation diffusion (issue 110)
 fld_source_erad_from_gas = true   # source erad from the gas state (#182/[P7b], ADR-0012 gap b):
                                   #   partition LTE a*T^4 out of the gas internal energy so the
@@ -153,6 +157,9 @@ mrad_chi_a           = 0.04       # absorption opacity (matter-radiation couplin
 mrad_cv              = 1.5e-3     # constant heat capacity (EOS-inconsistent placeholder)
 mrad_arad            = 1.0e-6     # radiation constant (code units)
 mrad_clight          = 10.0       # coupling light speed (code units)
+mrad_eos_aware       = true       # read c_v from the tabulated_3t closure (rho*(cv_e+cv_i)) not
+                                  #   the constant mrad_cv (#183/[P7c], gap c).  Read only when
+                                  #   mrad_coupling is on => baseline byte-identical.
 
 <problem>
 # ---- drive (ADR-0005 mode A): faithful z2173 tabulated load current ----

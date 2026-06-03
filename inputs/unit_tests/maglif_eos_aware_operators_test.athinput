@@ -1,0 +1,61 @@
+# AthenaK input: EOS-aware operator closures unit test
+# (unit_tests/maglif_eos_aware_operators_test, issue [P7c]/#183, ADR-0012 gap c).
+#
+# All checks run in ProblemGenerator::UserProblem and the program exits before any time
+# integration (nlim = tlim = 0).  The test loads the real aluminum IONMIX table
+# (mhd/eos_table) LOCALLY and verifies the EOS-aware conduction temperature recovery and
+# the EOS-aware matter-radiation heat capacity against the tabulated_3t closure (vs the
+# pre-#183 ideal-gamma / constant placeholders).  It does not need the package EOS, so it
+# runs on a trivial ideal-MHD grid.  The Python wrapper
+# (test_unit_maglif_eos_aware_operators_cpu.py) overrides eos_table with an ABSOLUTE path
+# (the unit-test binary runs from tst/build_unit/<name>/src, so a relative path would not
+# resolve).
+
+<comment>
+problem   = MagLIF EOS-aware operator closures unit test (B1, ADR-0012 gap c)
+
+<job>
+basename  = maglif_eos_aware_operators_test
+
+<mesh>
+nghost    = 2
+nx1       = 4
+x1min     = 0.0
+x1max     = 1.0
+ix1_bc    = outflow
+ox1_bc    = outflow
+
+nx2       = 4
+x2min     = -1.0
+x2max     = 1.0
+ix2_bc    = outflow
+ox2_bc    = outflow
+
+nx3       = 4
+x3min     = -1.0
+x3max     = 1.0
+ix3_bc    = outflow
+ox3_bc    = outflow
+
+<meshblock>
+nx1       = 4
+nx2       = 4
+nx3       = 4
+
+<time>
+evolution  = dynamic
+integrator = rk2
+cfl_number = 0.2
+nlim       = 0           # do no integration, just run UserProblem
+tlim       = 0
+ndiag      = 1
+
+<mhd>
+eos              = ideal                          # the test loads the EOS table locally
+reconstruct      = plm
+rsolver          = hlld
+gamma            = 1.6666666666666667
+eos_table        = inputs/ionmix/al-imx-004.cn4   # IONMIX cn4 table (overridden by the test)
+eos_mass_per_ion = 1.0                            # number-density axis (closure is axis-independent)
+
+<problem>

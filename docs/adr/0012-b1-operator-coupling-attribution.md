@@ -115,3 +115,40 @@ stays **byte-identical**, and FLD-off runs (no `erad` array) are untouched.
 **ACTIVE** (seeded-mode amplitude(t) ≠ baseline, while each `pert_amp=0` control stays exactly 1-D —
 the radial radiation sourcing preserves axisymmetry). Only gap (c) #183 (EOS-aware `acond` `T` and
 `mrad` `c_v`) remains; the paper-resolution amplitude(t) oracle re-attribution stays #120 AC#2.
+
+---
+
+## Update (2026-06-03, #183/[P7c]): gap (c) closed — `acond` `T` and `mrad` `c_v` EOS-aware
+
+The third and last consistency gap is now closed. On the faithful tabulated_3t setup both
+operators recover their thermodynamics from the **same tabulated EOS closure `ConsToPrim2T`
+uses**, rather than the ideal-gamma bookkeeping relation:
+
+- **Conduction (`acond_operator_split`).** When the new `<mhd> acond_eos_aware` knob is on the
+  anisotropic-conduction temperature recovery (`anisocond::EosAwareTemp::Temp`) inverts the
+  *electron* temperature from the tabulated closure, `T_e = table.Te(rho, e_ele/rho)` — the
+  electron internal energy density rides the first passive scalar (ADR-0002), and electron
+  conduction is the dominant Braginskii channel — instead of the ideal-gamma value
+  `T = (gamma-1) eint/rho`. The operator keeps its single-temperature flux structure; only the
+  closure that turns `(rho, e)` into the conducted `T` changes. The flux divergence stays
+  conservative, so no spurious energy is created.
+- **Matter-radiation coupling (`mrad_coupling`).** When the new `<mhd> mrad_eos_aware` knob is on
+  the per-cell volumetric heat capacity in the point-implicit `e_gas <-> erad` exchange is the
+  tabulated closure value `c_v = rho*(c_v,e(rho,T_e) + c_v,i(rho,T_i))` (the same per-species heat
+  capacities the table feeds the closure), instead of the constant `mrad_cv` placeholder. The
+  backward-Euler exchange still conserves `E_r + e_gas` exactly for any `c_v > 0`.
+
+Both knobs are **gated off by default** and gated to the tabulated path (an ideal/isothermal run
+leaves them off — the table is empty there — and warns if requested), so every existing `acond` /
+`mrad` run stays **byte-identical** (the default `EosAwareTemp` returns exactly the old `TempMHD`
+value; the default coupling uses the constant `mrad_cv`). A new red-first CPU unit test
+(`maglif_eos_aware_operators_test`, `test_unit_maglif_eos_aware_operators_cpu.py`) loads the real
+aluminum IONMIX table, asserts the EOS-aware conduction temperature **equals** the tabulated `T_e`
+closure (and recovers the node temperature it was filled at) while the ideal-gamma value is grossly
+inconsistent with the eV closure (RED meta-check), and asserts the EOS-aware grey-coupling `c_v` is
+the positive tabulated value, **not** the constant placeholder.
+
+All three reference-model-set gaps (a)/(b)/(c) are now closed; the remaining piece is the **SI
+calibration** of the operator coefficients (`resb_eta`, `acond_kappa`, the `fld_*`/`mrad_*` opacity
+set) — gap (d), #184/[P7d] — after which the paper-resolution amplitude(t) oracle re-attribution
+(#120 AC#2) can be re-run on a fully consistent, calibrated model set.

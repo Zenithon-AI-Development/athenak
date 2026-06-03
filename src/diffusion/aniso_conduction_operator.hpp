@@ -71,6 +71,7 @@
 #include "athena.hpp"
 #include "driver/parabolic_operator.hpp"
 #include "diffusion/braginskii_transport.hpp"
+#include "eos/eos_table_3t.hpp"
 
 // forward declarations
 class MeshBlockPack;
@@ -165,6 +166,48 @@ void Conductivities(const AnisoCondParams &p, Real rho, Real tcode, Real bmag,
   kperp = p.kappa_conv*kt;
 }
 
+//----------------------------------------------------------------------------------------
+//! \struct EosAwareTemp
+//! \brief Per-cell gas-temperature recovery for the conduction operator, EOS-aware
+//!  (#183/[P7c], ADR-0012 gap c).  The flux kernels need a temperature T(rho, e) to build
+//!  the conducted heat-flux gradient.  By default (`eos_aware=false`) this is the
+//!  ideal-gamma bookkeeping value `T = (gamma-1) eint/rho` -- the original `TempMHD`
+//!  closure, byte-identical for every existing run.  On the faithful tabulated_3t path
+//!  (`eos_aware=true`) the temperature is instead inverted from the tabulated closure:
+//!  the electron internal energy density rides the first passive scalar (`e_ele` at index
+//!  `eele_idx`, ADR-0002), and the conducted temperature is the *electron* temperature
+//!  `T_e = table.Te(rho, e_ele/rho)` -- the same `e->T` inversion ConsToPrim2T caches
+//!  as the derived field, so conduction is consistent with the faithful EOS
+//!  rather than the ideal-gamma relation.  Electron conduction is the dominant Braginskii
+//!  channel, so `T_e` is the relevant conducted temperature (the operator keeps
+//!  its single-temperature flux structure).  Trivially copyable (the table is a shallow
+//!  View handle), so it is captured BY VALUE into the kernels like AnisoCondParams.
+struct EosAwareTemp {
+  bool eos_aware = false;             //!< false => ideal-gamma TempMHD (byte-identical)
+  int eele_idx = 0;                   //!< index of the e_ele passive scalar in `cons`
+  Real gm1 = 0.0;                     //!< gamma-1 for the ideal-gamma closure
+  eos_table_3t::EosTable3T table;     //!< tabulated 3T EOS (only read when eos_aware)
+
+  //! \brief Recover the conducted gas temperature for cell (m,k,j,i) from the conserved
+  //!  state `u` and cell-centred field `bcc`.  Both closures subtract the kinetic and
+  //!  (cell-centred) magnetic energy from the total energy to form the gas internal
+  //!  energy, exactly as the original TempMHD did.
+  KOKKOS_INLINE_FUNCTION
+  Real Temp(const DvceArray5D<Real> &u, const DvceArray5D<Real> &bcc,
+            int m, int k, int j, int i) const {
+    Real rho = u(m,IDN,k,j,i);
+    Real ke = 0.5*(SQR(u(m,IM1,k,j,i)) + SQR(u(m,IM2,k,j,i)) + SQR(u(m,IM3,k,j,i)))/rho;
+    Real me = 0.5*(SQR(bcc(m,IBX,k,j,i)) + SQR(bcc(m,IBY,k,j,i)) + SQR(bcc(m,IBZ,k,j,i)));
+    Real eint = u(m,IEN,k,j,i) - ke - me;
+    if (!eos_aware) {
+      return gm1*eint/rho;             // original ideal-gamma bookkeeping temperature
+    }
+    // faithful tabulated_3t closure: invert the electron energy scalar to T_e
+    Real e_ele = u(m,eele_idx,k,j,i);
+    return table.Te(rho, e_ele/rho);
+  }
+};
+
 }  // namespace anisocond
 
 //----------------------------------------------------------------------------------------
@@ -184,7 +227,9 @@ class AnisotropicConductionOperator : public parabolic::ParabolicOperator {
   AnisotropicConductionOperator(MeshBlockPack *pp, ParameterInput *pin,
                                 const DvceArray5D<Real> &cons,
                                 const DvceArray5D<Real> &bcc, Real gamma,
-                                const anisocond::AnisoCondParams &par);
+                                const anisocond::AnisoCondParams &par,
+                                const anisocond::EosAwareTemp &etemp =
+                                    anisocond::EosAwareTemp());
   ~AnisotropicConductionOperator();
 
   //! \brief M(u): anisotropic heat-flux divergence into rhs_out(IEN); 0 in all other
@@ -205,6 +250,7 @@ class AnisotropicConductionOperator : public parabolic::ParabolicOperator {
   DvceArray5D<Real> bcc_;        // frozen cell-centred magnetic field (3 components)
   Real gamma_;                   // adiabatic index, for T = (gamma-1) eint/rho
   anisocond::AnisoCondParams par_;  // physical + unit-conversion parameters
+  anisocond::EosAwareTemp etemp_;   // EOS-aware temperature recovery (#183/[P7c])
   DvceFaceFld5D<Real> hflx_;     // scratch face-centred heat flux
   // per-substage multi-block/MPI/AMR neighbour ghost exchange for the diffused field
   // (#112/[A5]); owns a unique MPI communicator.  nullptr only if built with pin==nullptr

@@ -236,6 +236,7 @@ class MHD {
   Real mrad_cv = 1.0;        // volumetric heat capacity c_v (e_gas = c_v T)
   Real mrad_arad = 1.0;      // radiation constant a
   Real mrad_clight = 1.0;    // code-unit speed of light c
+  bool mrad_eos_aware = false;  // c_v from the tabulated_3t closure (#183/[P7c]) vs const
 
   // following only used for time-evolving flow
   DvceArray5D<Real> u1;       // conserved variables, second register

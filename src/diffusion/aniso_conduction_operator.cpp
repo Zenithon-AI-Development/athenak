@@ -24,20 +24,6 @@
 #include "diffusion/aniso_conduction_operator.hpp"
 
 //----------------------------------------------------------------------------------------
-//! \fn Real TempMHD()
-//! \brief Gas temperature T = (gamma-1) eint/rho from an MHD conserved cell, subtracting
-//! BOTH kinetic and (cell-centred) magnetic energy from the total energy.
-KOKKOS_INLINE_FUNCTION
-Real TempMHD(const DvceArray5D<Real> &u, const DvceArray5D<Real> &bcc, Real gm1,
-             int m, int k, int j, int i) {
-  Real rho = u(m,IDN,k,j,i);
-  Real ke = 0.5*(SQR(u(m,IM1,k,j,i)) + SQR(u(m,IM2,k,j,i)) + SQR(u(m,IM3,k,j,i)))/rho;
-  Real me = 0.5*(SQR(bcc(m,IBX,k,j,i)) + SQR(bcc(m,IBY,k,j,i)) + SQR(bcc(m,IBZ,k,j,i)));
-  Real eint = u(m,IEN,k,j,i) - ke - me;
-  return gm1*eint/rho;
-}
-
-//----------------------------------------------------------------------------------------
 //! \fn bool InsulatingBdry()
 //! \brief True iff a MeshBlock face is an INSULATING domain boundary -- i.e. it has no
 //! neighbour (not a `block` internal face) and is not connected to one across the domain
@@ -55,17 +41,25 @@ bool InsulatingBdry(BoundaryFlag flag) {
 
 AnisotropicConductionOperator::AnisotropicConductionOperator(MeshBlockPack *pp,
   ParameterInput *pin, const DvceArray5D<Real> &cons, const DvceArray5D<Real> &bcc,
-  Real gamma, const anisocond::AnisoCondParams &par) :
+  Real gamma, const anisocond::AnisoCondParams &par,
+  const anisocond::EosAwareTemp &etemp) :
   pmy_pack(pp),
   cons_(cons),
   bcc_(bcc),
   gamma_(gamma),
   par_(par),
+  etemp_(etemp),
   hflx_("aniso_cond_hflx", cons.extent_int(0), cons.extent_int(1),
         cons.extent_int(2), cons.extent_int(3), cons.extent_int(4)),
   pbval_(nullptr),
   coarse_("aniso_cond_coarse", 1, 1, 1, 1, 1),
   pbval_flux_(nullptr) {
+  // The ideal-gamma temperature fallback always uses THIS operator's gamma, so a caller
+  // that constructs the operator with the default EosAwareTemp() (no eos-aware override,
+  // gm1 unset) still recovers the correct T=(gamma-1)eint/rho -- byte-identical to the
+  // pre-#183 TempMHD.  An EOS-aware caller (maglif, #183) leaves eos_aware=true and the
+  // tabulated closure is used instead; gm1 is then irrelevant but kept consistent.
+  etemp_.gm1 = gamma - 1.0;
   const int nvar = cons.extent_int(1);
   // own boundary-values object for the per-substage neighbour ghost exchange: unique MPI
   // communicator for this operator's exchange, buffers sized to the diffused field's
@@ -116,8 +110,8 @@ void AnisotropicConductionOperator::OperatorAction(const DvceArray5D<Real> &u_in
   int nx1 = indcs.nx1;
   auto size = pmy_pack->pmb->mb_size;
   auto csys = pmy_pack->pcoord->coord_system;
-  Real gm1 = gamma_ - 1.0;
   auto par = par_;
+  auto etemp = etemp_;
   auto bcc = bcc_;
   auto &flx1 = hflx_.x1f;
   auto &flx2 = hflx_.x2f;
@@ -143,22 +137,22 @@ void AnisotropicConductionOperator::OperatorAction(const DvceArray5D<Real> &u_in
     if (csys != CoordSystem::cartesian) {
       rface = LeftEdgeX(i-is, nx1, size.d_view(m).x1min, size.d_view(m).x1max);
     }
-    Real tl = TempMHD(u_in, bcc, gm1, m, k, j, i-1);
-    Real tr = TempMHD(u_in, bcc, gm1, m, k, j, i);
+    Real tl = etemp.Temp(u_in, bcc, m, k, j, i-1);
+    Real tr = etemp.Temp(u_in, bcc, m, k, j, i);
     Real dtdx1 = (tr - tl)/size.d_view(m).dx1;
     Real dtdx2 = 0.0, dtdx3 = 0.0;
     if (!one_d) {
-      Real fr = TempMHD(u_in,bcc,gm1,m,k,j+1,i)   - tr;
-      Real br = tr - TempMHD(u_in,bcc,gm1,m,k,j-1,i);
-      Real fl = TempMHD(u_in,bcc,gm1,m,k,j+1,i-1) - tl;
-      Real bl = tl - TempMHD(u_in,bcc,gm1,m,k,j-1,i-1);
+      Real fr = etemp.Temp(u_in,bcc,m,k,j+1,i)   - tr;
+      Real br = tr - etemp.Temp(u_in,bcc,m,k,j-1,i);
+      Real fl = etemp.Temp(u_in,bcc,m,k,j+1,i-1) - tl;
+      Real bl = tl - etemp.Temp(u_in,bcc,m,k,j-1,i-1);
       dtdx2 = anisocond::VL4(fr, br, fl, bl)/Edge2Length(csys, size.d_view(m).dx2, rface);
     }
     if (!one_d && !two_d) {
-      Real fr = TempMHD(u_in,bcc,gm1,m,k+1,j,i)   - tr;
-      Real br = tr - TempMHD(u_in,bcc,gm1,m,k-1,j,i);
-      Real fl = TempMHD(u_in,bcc,gm1,m,k+1,j,i-1) - tl;
-      Real bl = tl - TempMHD(u_in,bcc,gm1,m,k-1,j,i-1);
+      Real fr = etemp.Temp(u_in,bcc,m,k+1,j,i)   - tr;
+      Real br = tr - etemp.Temp(u_in,bcc,m,k-1,j,i);
+      Real fl = etemp.Temp(u_in,bcc,m,k+1,j,i-1) - tl;
+      Real bl = tl - etemp.Temp(u_in,bcc,m,k-1,j,i-1);
       dtdx3 = anisocond::VL4(fr, br, fl, bl)/size.d_view(m).dx3;
     }
     Real bx = 0.5*(bcc(m,IBX,k,j,i-1) + bcc(m,IBX,k,j,i));
@@ -189,20 +183,20 @@ void AnisotropicConductionOperator::OperatorAction(const DvceArray5D<Real> &u_in
       if (csys != CoordSystem::cartesian) {
         x1v = CellCenterX(i-is, nx1, size.d_view(m).x1min, size.d_view(m).x1max);
       }
-      Real tl = TempMHD(u_in, bcc, gm1, m, k, j-1, i);
-      Real tr = TempMHD(u_in, bcc, gm1, m, k, j, i);
+      Real tl = etemp.Temp(u_in, bcc, m, k, j-1, i);
+      Real tr = etemp.Temp(u_in, bcc, m, k, j, i);
       Real dtdx2 = (tr - tl)/CenterWidth2(csys, size.d_view(m).dx2, x1v);
-      Real fr = TempMHD(u_in,bcc,gm1,m,k,j,i+1)   - tr;
-      Real br = tr - TempMHD(u_in,bcc,gm1,m,k,j,i-1);
-      Real fl = TempMHD(u_in,bcc,gm1,m,k,j-1,i+1) - tl;
-      Real bl = tl - TempMHD(u_in,bcc,gm1,m,k,j-1,i-1);
+      Real fr = etemp.Temp(u_in,bcc,m,k,j,i+1)   - tr;
+      Real br = tr - etemp.Temp(u_in,bcc,m,k,j,i-1);
+      Real fl = etemp.Temp(u_in,bcc,m,k,j-1,i+1) - tl;
+      Real bl = tl - etemp.Temp(u_in,bcc,m,k,j-1,i-1);
       Real dtdx1 = anisocond::VL4(fr, br, fl, bl)/size.d_view(m).dx1;
       Real dtdx3 = 0.0;
       if (!two_d) {
-        Real fr3 = TempMHD(u_in,bcc,gm1,m,k+1,j,i)   - tr;
-        Real br3 = tr - TempMHD(u_in,bcc,gm1,m,k-1,j,i);
-        Real fl3 = TempMHD(u_in,bcc,gm1,m,k+1,j-1,i) - tl;
-        Real bl3 = tl - TempMHD(u_in,bcc,gm1,m,k-1,j-1,i);
+        Real fr3 = etemp.Temp(u_in,bcc,m,k+1,j,i)   - tr;
+        Real br3 = tr - etemp.Temp(u_in,bcc,m,k-1,j,i);
+        Real fl3 = etemp.Temp(u_in,bcc,m,k+1,j-1,i) - tl;
+        Real bl3 = tl - etemp.Temp(u_in,bcc,m,k-1,j-1,i);
         dtdx3 = anisocond::VL4(fr3, br3, fl3, bl3)/size.d_view(m).dx3;
       }
       Real bx = 0.5*(bcc(m,IBX,k,j-1,i) + bcc(m,IBX,k,j,i));
@@ -233,18 +227,18 @@ void AnisotropicConductionOperator::OperatorAction(const DvceArray5D<Real> &u_in
       if (csys != CoordSystem::cartesian) {
         x1v = CellCenterX(i-is, nx1, size.d_view(m).x1min, size.d_view(m).x1max);
       }
-      Real tl = TempMHD(u_in, bcc, gm1, m, k-1, j, i);
-      Real tr = TempMHD(u_in, bcc, gm1, m, k, j, i);
+      Real tl = etemp.Temp(u_in, bcc, m, k-1, j, i);
+      Real tr = etemp.Temp(u_in, bcc, m, k, j, i);
       Real dtdx3 = (tr - tl)/size.d_view(m).dx3;
-      Real fr1 = TempMHD(u_in,bcc,gm1,m,k,j,i+1)   - tr;
-      Real br1 = tr - TempMHD(u_in,bcc,gm1,m,k,j,i-1);
-      Real fl1 = TempMHD(u_in,bcc,gm1,m,k-1,j,i+1) - tl;
-      Real bl1 = tl - TempMHD(u_in,bcc,gm1,m,k-1,j,i-1);
+      Real fr1 = etemp.Temp(u_in,bcc,m,k,j,i+1)   - tr;
+      Real br1 = tr - etemp.Temp(u_in,bcc,m,k,j,i-1);
+      Real fl1 = etemp.Temp(u_in,bcc,m,k-1,j,i+1) - tl;
+      Real bl1 = tl - etemp.Temp(u_in,bcc,m,k-1,j,i-1);
       Real dtdx1 = anisocond::VL4(fr1, br1, fl1, bl1)/size.d_view(m).dx1;
-      Real fr2 = TempMHD(u_in,bcc,gm1,m,k,j+1,i)   - tr;
-      Real br2 = tr - TempMHD(u_in,bcc,gm1,m,k,j-1,i);
-      Real fl2 = TempMHD(u_in,bcc,gm1,m,k-1,j+1,i) - tl;
-      Real bl2 = tl - TempMHD(u_in,bcc,gm1,m,k-1,j-1,i);
+      Real fr2 = etemp.Temp(u_in,bcc,m,k,j+1,i)   - tr;
+      Real br2 = tr - etemp.Temp(u_in,bcc,m,k,j-1,i);
+      Real fl2 = etemp.Temp(u_in,bcc,m,k-1,j+1,i) - tl;
+      Real bl2 = tl - etemp.Temp(u_in,bcc,m,k-1,j-1,i);
       Real dtdx2 = anisocond::VL4(fr2, br2, fl2, bl2)
                  /CenterWidth2(csys, size.d_view(m).dx2, x1v);
       Real bx = 0.5*(bcc(m,IBX,k-1,j,i) + bcc(m,IBX,k,j,i));
@@ -363,6 +357,7 @@ Real AnisotropicConductionOperator::ExplicitStableDt() {
   auto &u = cons_;
   auto bcc = bcc_;
   auto par = par_;
+  auto etemp = etemp_;
   Real gm1 = gamma_ - 1.0;
   Real fac = (three_d) ? (1.0/6.0) : ((multi_d) ? 0.25 : 0.5);
   const Real tiny = 1.0e-30;
@@ -377,7 +372,7 @@ Real AnisotropicConductionOperator::ExplicitStableDt() {
     k += ks;
     j += js;
     Real rho = u(m,IDN,k,j,i);
-    Real tcode = TempMHD(u, bcc, gm1, m, k, j, i);
+    Real tcode = etemp.Temp(u, bcc, m, k, j, i);
     Real bmag = Kokkos::sqrt(SQR(bcc(m,IBX,k,j,i)) + SQR(bcc(m,IBY,k,j,i))
                            + SQR(bcc(m,IBZ,k,j,i)));
     Real kpar, kperp;

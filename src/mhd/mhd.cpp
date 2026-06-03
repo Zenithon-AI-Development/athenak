@@ -290,7 +290,27 @@ MHD::MHD(MeshBlockPack *ppack, ParameterInput *pin) :
     apar.incl_e     = pin->GetOrAddBoolean("mhd","acond_incl_e", true);
     apar.incl_i     = pin->GetOrAddBoolean("mhd","acond_incl_i", true);
     Real agamma = peos->eos_data.gamma;
-    pacond_op = new AnisotropicConductionOperator(ppack, pin, u0, bcc0, agamma, apar);
+    // EOS-aware temperature recovery (#183/[P7c], ADR-0012 gap c).  Default off => the
+    // operator recovers the ideal-gamma bookkeeping temperature T=(gamma-1)eint/rho, so
+    // every existing acond run stays byte-identical.  On the faithful tabulated path the
+    // `acond_eos_aware` knob makes conduction invert the conducted (electron) temperature
+    // from the tabulated EOS closure (e_ele scalar -> T_e), thermodynamically consistent
+    // with the faithful EOS rather than ideal-gamma.  Gated to tabulated: an ideal/
+    // isothermal run leaves it off (the table is empty) and warns if it was requested.
+    anisocond::EosAwareTemp etemp;
+    bool acond_eos_aware = pin->GetOrAddBoolean("mhd","acond_eos_aware",false);
+    bool tab3t = (eqn_of_state.compare("tabulated_3t") == 0);
+    if (acond_eos_aware && !tab3t) {
+      std::cout << "### WARNING in " << __FILE__ << " line " << __LINE__
+                << ": <mhd> acond_eos_aware=true ignored (requires eos=tabulated_3t); "
+                << "conduction uses the ideal-gamma temperature closure." << std::endl;
+    }
+    etemp.eos_aware = acond_eos_aware && tab3t;
+    etemp.eele_idx  = nmhd;          // electron internal energy density rides scalar 0
+    etemp.gm1       = agamma - 1.0;
+    etemp.table     = eos_tbl;       // shallow View handle; only read when eos_aware
+    pacond_op = new AnisotropicConductionOperator(ppack, pin, u0, bcc0, agamma, apar,
+                                                  etemp);
   }
 
   // Cylindrical resistive B_phi diffusion (the -eta B_phi/r^2 curl-curl operator) wired
@@ -373,6 +393,20 @@ MHD::MHD(MeshBlockPack *ppack, ParameterInput *pin) :
     mrad_arad    = pin->GetOrAddReal("mhd","mrad_arad", 1.0);
     mrad_clight  = pin->GetOrAddReal("mhd","mrad_clight",
                                      (pfld_op != nullptr) ? pfld_op->c_light() : 1.0);
+    // EOS-aware heat capacity (#183/[P7c], ADR-0012 gap c).  Default off => the coupling
+    // uses the constant `mrad_cv` placeholder, byte-identical for existing mrad runs.
+    // On the faithful tabulated_3t path the `mrad_eos_aware` knob makes the per-cell
+    // volumetric heat capacity in the e_gas <-> erad exchange the tabulated closure value
+    // rho*(c_v,e(rho,T_e) + c_v,i(rho,T_i)) instead of the constant -- the same EOS the
+    // ConsToPrim2T closure uses.  Gated to the tabulated path (the table is empty
+    // otherwise); warns if requested off the tabulated EOS.
+    mrad_eos_aware = pin->GetOrAddBoolean("mhd","mrad_eos_aware",false);
+    if (mrad_eos_aware && (eqn_of_state.compare("tabulated_3t") != 0)) {
+      std::cout << "### WARNING in " << __FILE__ << " line " << __LINE__
+                << ": <mhd> mrad_eos_aware=true ignored (requires eos=tabulated_3t); "
+                << "coupling uses the constant mrad_cv." << std::endl;
+      mrad_eos_aware = false;
+    }
   }
 
   // Orbital advection and shearing box BCs (if requested in input file)
