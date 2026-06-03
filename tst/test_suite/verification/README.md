@@ -119,8 +119,10 @@ stays on the GPU run while the binding CPU gate is the cheap qualitative converg
 The **B2 multi-mode MRT** benchmark has a second, *qualitative-tier* arm on the GPU:
 `cylindrical/test_verify_maglif_mmrt_gpu.py` (#122 [C5]) runs the multi-mode surface-roughness
 implosion at paper resolution (`inputs/maglif_mmrt_si.athinput`, nx1=512 × nx3=128, coupled
-stack **off** — ideal-MHD only, since the operator-split parabolic GPU path segfaults at
-runtime, #139) and validates the **qualitative** limb-modulation behaviour: a synthetic
+stack **off** — ideal-MHD only, for a physics reason: the toy coupled coefficients would damp
+the MRT growth being measured; the operator-split parabolic GPU runtime segfault that once
+forced ideal-MHD was fixed in #153/#139, and the coupled GPU path is now regression-guarded by
+`cylindrical/test_verify_maglif_smoke_gpu.py`) and validates the **qualitative** limb-modulation behaviour: a synthetic
 side-on radiograph (Abel projection) whose bright-limb modulation is broadband (spectral
 participation ≥ 2 modes, no single-mode collapse), driven-surface-dominant (the MagLIF
 asymmetry: the magnetically-driven outer interface roughens far more than the RT-stabilised
@@ -129,6 +131,25 @@ from roughness is inherently stochastic) the verdict is recorded as `QUALITATIVE
 (`binding=False`) via `scorecard.record` — it is **not** a quantitative curve match; the
 McBride-2012 growth *curve* stays the reduced-`_cpu` reported anchor (#143). Same
 report-vs-assert discipline, on a qualitative observable.
+
+### Coupled-stack GPU regression guard (#139)
+
+`cylindrical/test_verify_maglif_smoke_gpu.py` (#139) is the GPU sibling of the per-PR coupled
+smoke guard `test_verify_maglif_smoke_cpu.py` (#117 [B4]). It builds and runs the same tiny
+multi-block full-coupled config (`inputs/maglif_smoke.athinput`: grey FLD + anisotropic
+Braginskii conduction + Strang-split operator-split parabolic super-step + matter-radiation
+coupling, with the per-substage cross-block `SyncParabolicGhosts`) **with CUDA**, so it
+exercises the operator-split parabolic super-step (RKL2 STS, ADR-0009) on the GPU end to end.
+It exists because that path used to **segfault at runtime on the first super-step** (#139): a
+header-template `par_for<…>` instantiated across several translation units emitted colliding
+per-TU host launch-stubs that resolved to a null kernel pointer (relocatable device code is
+off by default). The fix (#153) hoisted the four RKL2 stage kernels into named namespace-scope
+functors launched directly via `Kokkos::parallel_for` (`src/driver/parabolic_integrator.hpp`);
+this test is the regression guard that would have caught the original fault and keeps the
+coupled GPU path green. Same qualitative-signature assertions as the CPU smoke (run completes,
+`erad` budget sane, liner converges, seeded mode grows). GPU-only (`_gpu`), auto-collected by
+`run_test_suite.py --gpu`; the heavy self-hosted-runner GPU CI harness that automates it is
+#123/[C6].
 
 ### Faithful single-mode B1 (Sinars): paper-resolution GPU replication (#120)
 
@@ -208,8 +229,9 @@ and the v3 inner-radius trajectory are **reported** against the oracle (`binding
 not hard-asserted — the ideal-gamma EOS without material strength / degenerate-DD pressure
 over-compresses the fuel column (the reduced gate measures ~0.13 mm / ~6 g/cc / ~21 ns), so
 the absolute-SI hard-assert remains the paper-resolution GPU run on the tabulated-EOS
-coupled stack (residuals: IONMIX-EOS IC wiring #118/#162, GPU coupled segfault #139,
-material strength). The **density-vs-radius profile** (acceptance criterion 3) has no
+coupled stack (residuals: IONMIX-EOS IC wiring #118/#162, material strength — the GPU
+coupled-stack runtime segfault was fixed in #153/#139, guarded by
+`cylindrical/test_verify_maglif_smoke_gpu.py`). The **density-vs-radius profile** (acceptance criterion 3) has no
 committed experimental profile datum yet (only the radius-vs-time trajectory is digitized),
 so it is recorded **PENDING** — a digitized Abel-inverted profile is the data-supply step
 that would flip it to a comparison (ADR-0008 forbids fabricating one).

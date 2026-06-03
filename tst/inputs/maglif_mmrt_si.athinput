@@ -25,12 +25,13 @@
 # inward acceleration (magnetic pressure) and the Atwood number across the liner/vacuum
 # interface -- carried by the cylindrical ideal-MHD core (ADR-0004) + the prescribed-I(t)
 # circuit drive (ADR-0005 mode A).  The coupled radiation-conduction stack (ADR-0009) is OFF
-# here for the same two reasons as benchmark 3 (maglif_rm_si.athinput): (1) the nondimensional
+# here for the same PHYSICS reason as benchmark 3 (maglif_rm_si.athinput): the nondimensional
 # TOY coefficients would non-physically DAMP the MRT growth being measured (anisotropic
-# conduction stabilises the mode, #116/[B3]); and (2) the operator-split parabolic GPU path
-# currently segfaults at runtime (#139) -- GPU runs are ideal-MHD only.  The coupled stack is
-# validated separately on CPU (#115/#116/#117) and the COUPLED multi-mode run is the _cpu
-# benchmark (test_verify_maglif_mmrt_cpu.py).
+# conduction stabilises the mode, #116/[B3]).  (The operator-split parabolic GPU path that used
+# to segfault at runtime on the first super-step was fixed in #153/#139 and now runs on GPU;
+# the coupled GPU path is regression-guarded by test_verify_maglif_smoke_gpu.py.)  The coupled
+# stack is validated separately on CPU (#115/#116/#117) and on GPU (smoke #139), and the
+# COUPLED multi-mode run is the _cpu benchmark (test_verify_maglif_mmrt_cpu.py).
 #
 # RESOLUTION NOTE: AthenaK does not support 3-D cylindrical SMR/AMR (only the 2-D (r,phi)
 # Balsara B-prolongation exists, issue #38).  The MRT seed is AXIAL (kz band [2,6] along z), so

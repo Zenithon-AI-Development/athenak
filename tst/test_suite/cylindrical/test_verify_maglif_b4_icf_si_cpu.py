@@ -34,7 +34,8 @@ material strength, no degenerate-DD pressure) over-compresses the fuel column.  
 absolute stagnation scalars and the trajectory are REPORTED against the oracle
 (binding=False), exactly as the surrogate (#140) and the faithful B1 run (#120); the
 absolute-SI hard-assert is the paper-resolution GPU run on the tabulated-EOS coupled stack
-(residual a + the GPU coupled segfault #139).  The density-vs-radius PROFILE (acceptance
+(residual a; the GPU coupled-stack runtime segfault that used to block it was fixed in
+#153/#139).  The density-vs-radius PROFILE (acceptance
 criterion 3) has no committed experimental profile datum yet (only the radius-vs-time
 trajectory is digitized), so it is recorded PENDING (needs a digitized Abel-inverted
 profile), per ADR-0008's no-fabrication rule.

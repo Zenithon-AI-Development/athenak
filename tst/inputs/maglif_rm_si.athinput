@@ -21,14 +21,14 @@
 # Atwood number and the convergence ratio.  It is therefore carried by the cylindrical
 # ideal-MHD core (ADR-0004) + the prescribed-I(t) circuit drive (ADR-0005 mode A), which is
 # exactly what is exercised here.  The coupled radiation-conduction stack (ADR-0009) is OFF
-# for this benchmark for two reasons: (1) with the nondimensional TOY coefficients (real
+# for this benchmark for a PHYSICS reason: with the nondimensional TOY coefficients (real
 # opacity/EOS-derived material coupling is not yet wired into the EOS) it would non-physically
 # DAMP the very RM growth being measured (#116/[B3] documents anisotropic conduction
-# stabilising the mode); and (2) the operator-split parabolic GPU path currently segfaults at
-# runtime (the stack was only ever exercised on CPU; its GPU compile-compatibility is fixed in
-# this PR -- parabolic_integrator.hpp / fld_multigroup_operator -- but a runtime GPU bug
-# remains, a dedicated GPU-port issue).  The coupled stack is validated separately on CPU
-# (units #115, benchmarks #116, per-PR smoke #117).
+# stabilising the mode).  (The operator-split parabolic GPU path that used to segfault at
+# runtime on the first super-step was fixed in #153/#139 -- named RKL2 stage functors in
+# parabolic_integrator.hpp -- and now runs on GPU; the coupled-stack GPU path is regression-
+# guarded by test_verify_maglif_smoke_gpu.py.)  The coupled stack is validated separately on
+# CPU (units #115, benchmarks #116, per-PR smoke #117) and on GPU (smoke #139).
 #
 # RESOLUTION NOTE: AthenaK does not support 3-D cylindrical SMR/AMR (only the 2-D (r,phi)
 # divergence-preserving Balsara B-prolongation exists, src/coordinates/coordinates.cpp:62 /
@@ -100,8 +100,9 @@ nscalars    = 1            # passive scalar tagging the rod material (s=1 rod, 0
                            # Be rod from the equally dense Be liner (output column r_00)
 # ---- coupled radiation-conduction stack OFF for the quantitative RM anchor (see header) ----
 # The converging RM growth is hydrodynamic; the toy-coefficient coupled stack would suppress
-# it (and the operator-split parabolic GPU path segfaults at runtime).  Validated on CPU
-# elsewhere (#115/#116/#117).  Left here (defaulted off) to document the wiring.
+# it, so it is off here for that PHYSICS reason (the GPU runtime segfault was fixed in
+# #153/#139 -- the coupled GPU path now runs, guarded by test_verify_maglif_smoke_gpu.py).
+# Validated on CPU elsewhere (#115/#116/#117).  Left here (defaulted off) to document wiring.
 strang_split          = false
 fld_operator_split    = false
 acond_operator_split  = false

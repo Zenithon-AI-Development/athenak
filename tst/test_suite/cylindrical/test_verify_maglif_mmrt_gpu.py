@@ -28,9 +28,10 @@ PHYSICS SCOPE: the multi-mode MRT feed is a magneto-HYDRODYNAMIC instability set
 inward acceleration and the Atwood number across the liner/vacuum interface -- carried by
 the cylindrical ideal-MHD core (ADR-0004) + the prescribed-I(t) circuit drive (ADR-0005
 mode A).  The coupled radiation-conduction stack (ADR-0009) is OFF here (see
-inputs/maglif_mmrt_si.athinput): its toy coefficients would damp the MRT growth and its
-operator-split parabolic GPU path segfaults at runtime (#139), so GPU runs are ideal-MHD
-only.  The COUPLED multi-mode run is the _cpu benchmark (#116/[B3], #143).
+inputs/maglif_mmrt_si.athinput) for a PHYSICS reason: its toy coefficients would damp the
+MRT growth.  (The operator-split parabolic GPU runtime segfault was fixed in #153/#139;
+the coupled GPU path now runs, guarded by test_verify_maglif_smoke_gpu.py.)
+The COUPLED multi-mode run is the _cpu benchmark (#116/[B3], #143).
 
 GPU-only (``_gpu`` suffix): built+run with CUDA; auto-collected by ``run_test_suite.py
 --gpu`` (excluded from CPU CI).  Heavy GPU CI harness is #123/[C6].
