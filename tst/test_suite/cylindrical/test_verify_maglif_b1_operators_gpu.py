@@ -24,19 +24,21 @@ each operator flips from INERT to ACTIVE here in turn --
     energy ``a*T^4`` (at the cell temperature) OUT of the gas internal energy, so the gas
     state -- hence the seeded-mode amplitude(t) -- now differs from the FLD-off baseline
     even without coupling -- ACTIVE.
-  * gray FLD + matter-radiation coupling (``mrad_coupling``) couples erad<->IEN with a
-    CONSTANT heat capacity ``mrad_cv`` (not the tabulated closure). With ``erad`` now
-    sourced (#182/[P7b]) the coupling has a real, spatially-structured field to exchange
-    against -- ACTIVE -- though the constant-c_v closure is still EOS-inconsistent (#P7c).
-  * conduction (``acond_operator_split``) DOES act on the live gas energy, but recovers
-    temperature as the ideal-gamma T = (gamma-1) eint/rho (aniso_conduction_operator.cpp
-    TempMHD), inconsistent with the tabulated_3t electron/ion-split closure -- so it
-    CHANGES the amplitude(t) curve, but through a non-faithful (ideal-gamma) closure.
+  * gray FLD + matter-radiation coupling (``mrad_coupling``) couples erad<->IEN. With
+    ``erad`` now sourced (#182/[P7b]) the coupling has a real, spatially-structured field
+    to exchange against -- ACTIVE -- and the heat capacity is now read from the tabulated
+    closure (``mrad_eos_aware``, c_v = rho*(cv_e+cv_i)) rather than the constant ``mrad_cv``
+    (EOS-aware, #183/[P7c]).
+  * conduction (``acond_operator_split``) acts on the live gas energy and now recovers the
+    conducted temperature from the tabulated_3t electron closure (``acond_eos_aware``,
+    T_e = Te(rho, e_ele/rho)) rather than the ideal-gamma T = (gamma-1) eint/rho -- EOS-aware
+    and consistent with the faithful closure (#183/[P7c]) -- so it CHANGES the amplitude(t)
+    curve through the faithful thermodynamics.
 
-Measured on the GPU (reduced grid): with gaps (a)/[P7a] and (b)/[P7b] closed, resb,
-gray-FLD and gray-FLD+mrad now CHANGE the seeded-mode amplitude(t) vs the operators-off
-baseline (no longer bitwise identical), as does acond; each through an uncalibrated or
-EOS-inconsistent closure (not yet the faithful physics).
+Measured on the GPU (reduced grid): with gaps (a)/[P7a], (b)/[P7b] and (c)/[P7c] closed,
+resb, gray-FLD, gray-FLD+mrad and acond all CHANGE the seeded-mode amplitude(t) vs the
+operators-off baseline (no longer bitwise identical); the closures are now faithful
+(EOS-aware) but the coefficients remain uncalibrated (SI calibration is #184/[P7d]).
 
 This test LOCKS IN that attribution as a regression: it enables each operator one at a
 time on the faithful setup (at a cheap REDUCED resolution -- the inert/active facts are
@@ -51,7 +53,7 @@ Each per-operator verdict is recorded in the scorecard (binding=False, ADR-0012 
 CONCLUSION (recorded, NOT strength; ADR-0011 holds): the faithful B1 amplitude(t) residual
 is bounded by THREE reference-model-set engineering gaps -- (a) couple resb's bphi to the
 live b0.x2f [CLOSED #181/[P7a]], (b) source the FLD erad from the gas [CLOSED #182/[P7b]],
-(c) make acond's T and mrad's c_v EOS-aware [#183/[P7c]].  The paper-resolution
+(c) make acond's T and mrad's c_v EOS-aware [CLOSED #183/[P7c]].  The paper-resolution
 amplitude(t) oracle verdict itself stays the job of test_verify_maglif_b1_sinars_gpu.py
 (the faithful baseline run).
 
@@ -126,11 +128,12 @@ OPERATORS = [
               "mhd/mrad_coupling=true"],
      "inert": False, "label": "gray FLD + matter-rad coupling (fld+mrad)",
      "why": "erad now sourced (#182/[P7b]) -> mrad has a real, structured field to "
-            "exchange against (erad<->IEN), changing the implosion; constant-c_v closure "
-            "still EOS-inconsistent (#P7c)"},
+            "exchange against (erad<->IEN), changing the implosion; c_v now read from the "
+            "tabulated closure (mrad_eos_aware, #183/[P7c])"},
     {"key": "acond", "args": ["mhd/strang_split=true", "mhd/acond_operator_split=true"],
      "inert": False, "label": "conduction (acond)",
-     "why": "acts on live IEN via ideal-gamma T=(g-1)e/rho, EOS-inconsistent"},
+     "why": "acts on live IEN; T recovered from the tabulated_3t electron closure "
+            "(acond_eos_aware, T_e=Te(rho,e_ele/rho), #183/[P7c]), not ideal-gamma"},
 ]
 
 

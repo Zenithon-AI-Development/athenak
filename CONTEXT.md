@@ -138,6 +138,10 @@ driven face field — the resb super-step is bracketed by a copy-in (`b0.x2f→b
 `maglif` IC partitions the LTE grey energy `a*T^4` (at the cell temperature) out of the gas internal
 energy (gated on `fld_source_erad_from_gas`, conserving `E_gas+E_rad`), so `fld`/`fld+mrad` are
 **active** (the gas, hence amplitude(t), differs from baseline; `mrad` has a real field to exchange
-against); **(c) [#183/[P7c]]** `acond` (conduction) / `mrad` (coupling) still bake
-**ideal-gamma** thermodynamics (`T=(γ-1)e/ρ`, constant `c_v`) inconsistent with the tabulated closure.
-([ADR-0012](docs/adr/0012-b1-operator-coupling-attribution.md).)
+against); **(c) [CLOSED, #183/[P7c]]** `acond` (conduction) and `mrad` (coupling) are now
+**EOS-aware** — gated on `acond_eos_aware`/`mrad_eos_aware`, conduction recovers the conducted
+temperature from the tabulated electron closure (`T_e=table.Te(ρ,e_ele/ρ)`, the same `e→T` inversion
+`ConsToPrim2T` caches) instead of `T=(γ-1)e/ρ`, and the grey coupling reads the volumetric
+`c_v=ρ(c_v,e+c_v,i)` from the tabulated closure instead of the constant `mrad_cv`, so both are
+thermodynamically consistent with the faithful EOS. (SI calibration of the coefficients is **(d)
+#184/[P7d]**.) ([ADR-0012](docs/adr/0012-b1-operator-coupling-attribution.md).)

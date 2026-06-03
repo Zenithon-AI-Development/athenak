@@ -347,6 +347,12 @@ TaskStatus MHD::MatterRadCouplingHalf(Driver *pdrive, int stage) {
   auto er  = erad;
   auto bcc = bcc0;
   const Real chia = mrad_chi_a, cv = mrad_cv, arad = mrad_arad, cl = mrad_clight;
+  // EOS-aware heat capacity (#183/[P7c], ADR-0012 gap c): on the faithful tabulated path
+  // read c_v from the same tabulated closure ConsToPrim2T uses, instead of the constant
+  // placeholder.  The electron internal energy density rides scalar 0 (index nmhd).
+  const bool eos_aware = mrad_eos_aware;
+  const int eele_idx = nmhd;
+  auto tbl = pmy_pack->pmhd->eos_tbl;
   par_for("mrad_cpl", DevExeSpace(), 0, nmb1, ks, ke, js, je, is, ie,
   KOKKOS_LAMBDA(const int m, const int k, const int j, const int i) {
     // recover the gas INTERNAL energy density (subtract kinetic + magnetic) so coupling
@@ -357,8 +363,18 @@ TaskStatus MHD::MatterRadCouplingHalf(Driver *pdrive, int stage) {
     Real bx = bcc(m,IBX,k,j,i), by = bcc(m,IBY,k,j,i), bz = bcc(m,IBZ,k,j,i);
     Real me_d = 0.5*(bx*bx + by*by + bz*bz);
     Real e_gas = u(m,IEN,k,j,i) - ke_d - me_d;
+    // per-cell heat capacity: tabulated closure (volumetric c_v = rho*(c_v,e + c_v,i) at
+    // inverted electron/ion temperatures) when EOS-aware, else the constant placeholder.
+    Real cv_cell = cv;
+    if (eos_aware && rho > 0.0) {
+      Real e_ele = u(m,eele_idx,k,j,i);          // electron internal energy density
+      Real e_ion = e_gas - e_ele;                // ion energy by subtraction (ADR-0002)
+      Real te = tbl.Te(rho, e_ele/rho);
+      Real ti = tbl.Ti(rho, e_ion/rho);
+      cv_cell = rho*(tbl.CvEle(rho, te) + tbl.CvIon(rho, ti));   // specific -> volumetric
+    }
     Real e_rad_new, e_gas_new;
-    radiationfld::PointImplicitGreyCoupling(er(m,0,k,j,i), e_gas, cv, chia, cl, arad,
+    radiationfld::PointImplicitGreyCoupling(er(m,0,k,j,i), e_gas, cv_cell, chia, cl, arad,
                                             half_dt, e_rad_new, e_gas_new);
     er(m,0,k,j,i) = e_rad_new;
     u(m,IEN,k,j,i) = e_gas_new + ke_d + me_d;
