@@ -9,12 +9,15 @@ amplitude(t) growth gap closes (which would flip the #120 AC#2 comparison to bin
 survives (in which case the residual is documented per-operator, still NOT strength).
 
 FINDING (ADR-0012), confirmed here on the GPU: with the faithful ``eos = tabulated_3t``
-closure, NONE of the operators yet alters the implosion FAITHFULLY, for code-structural
-reasons --
+closure, the originally-decoupled operators do not yet alter the implosion FAITHFULLY, for
+code-structural reasons. As the three model-set wiring gaps (#181/#182/#183) are closed,
+each operator flips from INERT to ACTIVE here in turn --
 
-  * resistivity (``resb_operator_split``) advances a STANDALONE ``bphi`` array that the
-    maglif pgen never couples to the live MHD face field ``b0.x2f`` (where the driven
-    B_phi lives) -- so it is INERT.
+  * resistivity (``resb_operator_split``) advanced a STANDALONE ``bphi`` array the maglif
+    pgen never coupled to the live MHD face field ``b0.x2f`` (where the driven B_phi
+    lives) -- INERT. CLOSED by #181/[P7a]: with ``resb_couple_b0`` the resb super-step is
+    bracketed by a copy-in (b0.x2f -> bphi) / write-back (bphi -> b0.x2f), so resistivity
+    now diffuses the *driving* B_phi -- ACTIVE (no longer inert).
   * gray FLD (``fld_operator_split``) diffuses a STANDALONE ``erad`` the maglif pgen never
     sources, and without ``mrad_coupling`` never touches the gas -- so it is INERT.
   * gray FLD + matter-radiation coupling (``mrad_coupling``) couples erad<->IEN with a
@@ -34,17 +37,19 @@ This test LOCKS IN that attribution as a regression: it enables each operator on
 time on the faithful setup (at a cheap REDUCED resolution -- the inert/active facts are
 code-structural and resolution-independent, and operator-on is compared against
 operator-off at the SAME grid so the seed resolution cancels), and asserts
-  * resb, gray-FLD and gray-FLD+mrad leave the seeded-mode amplitude(t) IDENTICAL to
-    baseline (INERT -- decoupled/unsourced standalone fields), and
-  * acond CHANGES it while staying finite (ACTIVE, EOS-inconsistent), and its pert_amp=0
-    control stays exactly 1-D (the AC#1 "1-D-stays-1-D" anchor still holds with it ON).
+  * gray-FLD and gray-FLD+mrad (still unwired, #182) leave the seeded-mode amplitude(t)
+    IDENTICAL to baseline (INERT -- unsourced standalone fields), and
+  * resb (coupled, #181) and acond CHANGE it while staying finite (ACTIVE), and their
+    pert_amp=0 controls stay exactly 1-D (the AC#1 "1-D-stays-1-D" anchor still holds with
+    each ON -- resistive radial B_phi diffusion preserves axisymmetry).
 Each per-operator verdict is recorded in the scorecard (binding=False, ADR-0012 note).
 
 CONCLUSION (recorded, NOT strength; ADR-0011 holds): the faithful B1 amplitude(t) residual
 is bounded by THREE reference-model-set engineering gaps -- (a) couple resb's bphi to the
-live b0.x2f, (b) source the FLD erad from the gas, (c) make acond's T and mrad's c_v
-EOS-aware -- all filed as a follow-up.  The paper-resolution amplitude(t) oracle verdict
-itself stays the job of test_verify_maglif_b1_sinars_gpu.py (the faithful baseline run).
+live b0.x2f [CLOSED #181/[P7a]], (b) source the FLD erad from the gas [#182/[P7b]], (c)
+make acond's T and mrad's c_v EOS-aware [#183/[P7c]].  The paper-resolution amplitude(t)
+oracle verdict itself stays the job of test_verify_maglif_b1_sinars_gpu.py (the faithful
+baseline run).
 
 GPU-only (``_gpu`` suffix): built+run with CUDA; auto-collected by ``run_test_suite.py
 --gpu`` (excluded from CPU CI).  Heavy GPU CI harness is #123/[C6].
@@ -102,9 +107,11 @@ build_dir = os.path.join(testutils._repo_root(), "tst", "build_pgen", "maglif")
 # The four reference-model-set operators, enabled ONE AT A TIME on the faithful setup.
 # ``inert`` is the ADR-0012 structural prediction this test verifies on the GPU.
 OPERATORS = [
-    {"key": "resb", "args": ["mhd/strang_split=true", "mhd/resb_operator_split=true"],
-     "inert": True,  "label": "resistivity (resb)",
-     "why": "standalone bphi, never coupled to live b0.x2f in maglif"},
+    {"key": "resb",
+     "args": ["mhd/strang_split=true", "mhd/resb_operator_split=true",
+              "mhd/resb_couple_b0=true"],
+     "inert": False, "label": "resistivity (resb)",
+     "why": "bphi now coupled to live b0.x2f (#181/[P7a]) -> diffuses the driving B_phi"},
     {"key": "fld", "args": ["mhd/strang_split=true", "mhd/fld_operator_split=true"],
      "inert": True,  "label": "gray FLD (fld, no coupling)",
      "why": "standalone erad, never sourced; no mrad coupling -> never touches the gas"},

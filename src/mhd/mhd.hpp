@@ -196,6 +196,17 @@ class MHD {
   DvceArray4D<Real> eta_resb;
   ResistiveBphiOperator *presb_op = nullptr;
 
+  // Couple the standalone resb `bphi` field to the live driven MHD face field `b0.x2f`
+  // (#181/[P7a], ADR-0012 gap a).  Without this the `bphi` the operator diffuses is a
+  // decoupled scratch field the production `maglif` pgen never fills from -- nor writes
+  // back to -- the driven azimuthal `b0.x2f`, so resistivity diffuses a zero field and
+  // the implosion is unchanged.  When on, the resb super-step is bracketed by a copy-in
+  // (`b0.x2f` -> `bphi`) and a write-back (`bphi` -> `b0.x2f`), so resistivity diffuses
+  // the *driving* B_phi (Ohmic dissipation flows to the gas via the unchanged total
+  // energy on the next ConsToPrim).  Gated off by default => byte-identical; only the
+  // `maglif` faithful-B1 setup enables it (`resb_eta` SI calibration is #P7d).
+  bool resb_couple_b0 = false;
+
   // Strang-split orchestration of the coupled timestep (#115/[B2], ADR-0009).  The active
   // stiff operator-split parabolic operators (FLD radiation, anisotropic conduction,
   // resistive B_phi -- built above) are grouped into one CompositeParabolicOperator PER
@@ -262,6 +273,12 @@ class MHD {
   TaskStatus OperatorSplitAnisoConduction(Driver *d, int stage);
   // ...in "before_timeintegrator" list (operator-split cylindrical resistive B_phi, #113)
   TaskStatus OperatorSplitResistiveBphi(Driver *d, int stage);
+  // Copy-in / write-back coupling the resb `bphi` to the driven `b0.x2f` (#181/[P7a],
+  // ADR-0012 gap a).  No-ops unless `resb_couple_b0` is on (only the maglif faithful-B1
+  // setup enables it); bracket every resb super-step so resistivity diffuses the live
+  // driven azimuthal field rather than a decoupled scratch field.
+  void CoupleResbBphiFromB0();   // b0.x2f -> bphi  (copy-in,   before the super-step)
+  void CoupleResbBphiToB0();     // bphi   -> b0.x2f (write-back, after the super-step)
   // Strang orchestration (#115/[B2]): a HALF parabolic super-step over each per-field
   // composite (in BOTH "before_" and "after_timeintegrator"), and the matter-radiation
   // point-implicit coupling HALF step (outside the super-step).

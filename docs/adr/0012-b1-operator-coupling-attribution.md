@@ -60,3 +60,28 @@ recording each amplitude(t) oracle
 verdict in the scorecard. The faithful baseline benchmark (`test_verify_maglif_b1_sinars_gpu.py`) is
 unchanged. Closing the B1 gap (#120 AC#2) requires the three gaps above, not strength. Complements
 ADR-0011 (attribution policy), ADR-0010 (faithful units), ADR-0009 (composite Strang/RKL2 super-step).
+
+---
+
+## Update (2026-06-03, #181/[P7a]): gap (a) closed — `resb` coupled to the live `b0.x2f`
+
+The first of the three gaps is now closed. The `maglif` faithful-B1 setup couples the resb
+operator's standalone `bphi` to the live driven azimuthal face field `b0.x2f`: when the new
+`<mhd> resb_couple_b0` knob is on, every resb RKL2 super-step (both the full-step
+`OperatorSplitResistiveBphi` task and the Strang-half `StrangParabolicHalf` `SF_BPHI` branch) is
+bracketed by a **copy-in** (`b0.x2f → bphi`, `MHD::CoupleResbBphiFromB0`) before and a **write-back**
+(`bphi → b0.x2f`, `MHD::CoupleResbBphiToB0`) after, so resistivity diffuses the *driving* `B_phi`
+rather than a decoupled zero field. The copy-in/write-back mirror the maglif IC face layout (B_phi is
+the x2-face field, uniform in phi for the axisymmetric column; the top x2-face of the last phi cell
+is set at `j==je`). The total energy `u0(IEN)` is left unchanged across the super-step, so the next
+`ConsToPrim` recovers the magnetic-energy decrement as gas internal energy (Ohmic dissipation);
+making that flow EOS-consistent for `tabulated_3t` is gap (c)/#183 and the SI `η` calibration is
+#184/[P7d].
+
+The knob is **gated off by default** (`resb_couple_b0=false`), read only inside the
+`resb_operator_split` setup block, so every existing run — including the resb unit/verification pgens
+that fill their own `bphi` IC (`resb_bphi_multiblock`, `cyl_bphi_diffuse`) and the operators-off
+maglif baseline — stays **byte-identical**. `test_verify_maglif_b1_operators_gpu.py` flips the `resb`
+case from `inert:True` to **ACTIVE** (seeded-mode amplitude(t) ≠ baseline, while its `pert_amp=0`
+control stays exactly 1-D — radial `B_phi` diffusion preserves axisymmetry). Gaps (b) #182 and (c)
+#183 remain; the paper-resolution amplitude(t) oracle re-attribution stays #120 AC#2.

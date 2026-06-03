@@ -124,13 +124,17 @@ pfloor           = 1.0e-7
 #      baseline (byte-identical: *_operator_split false maps to GetOrAdd default).  Present
 #      so the per-operator attribution test (test_verify_maglif_b1_operators_gpu.py) can flip
 #      each ON one at a time by CLI override (overrides only REPLACE existing params).  Per
-#      ADR-0012 none yet alters the tabulated B1 implosion FAITHFULLY: resb/fld diffuse
-#      standalone fields the maglif pgen never couples to the live MHD state (inert), and
-#      acond/mrad bake ideal-gamma thermodynamics inconsistent with tabulated_3t.  The
+#      ADR-0012 gaps: resb is now COUPLED to the live driven b0.x2f (#181/[P7a],
+#      resb_couple_b0 below) so resistivity is ACTIVE; fld still diffuses a standalone erad
+#      the maglif pgen never sources (inert, #P7b), and acond/mrad bake ideal-gamma
+#      thermodynamics inconsistent with tabulated_3t (#P7c).  The
 #      coefficients are uncalibrated placeholders (a faithful SI calibration is a follow-up).
 strang_split         = false      # Strang-wrap the operator-split parabolic block (ADR-0009)
-resb_operator_split  = false      # cylindrical resistive B_phi diffusion (issue 27); INERT here
-resb_eta             = 1.0e-3     # constant magnetic diffusivity (uncalibrated placeholder)
+resb_operator_split  = false      # cylindrical resistive B_phi diffusion (issue 27)
+resb_eta             = 1.0e-3     # constant magnetic diffusivity (uncalibrated placeholder; SI=#P7d)
+resb_couple_b0       = true       # couple bphi <-> live driven b0.x2f (#181/[P7a], ADR-0012 gap a):
+                                  #   resb now diffuses the DRIVING B_phi (active, not inert).  Read
+                                  #   only when resb_operator_split is on => baseline byte-identical.
 acond_operator_split = false      # anisotropic Braginskii conduction on the gas energy (issue 108)
 acond_kappa_conv     = 0.05       # conduction coefficient (uncalibrated placeholder)
 fld_operator_split   = false      # grey flux-limited radiation diffusion (issue 110); INERT here

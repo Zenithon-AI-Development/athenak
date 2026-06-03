@@ -314,6 +314,11 @@ MHD::MHD(MeshBlockPack *ppack, ParameterInput *pin) :
     Real resb_eta = pin->GetOrAddReal("mhd","resb_eta", 1.0);
     Kokkos::deep_copy(eta_resb, resb_eta);
     presb_op = new ResistiveBphiOperator(ppack, pin, bphi, eta_resb);
+    // Couple the standalone bphi to the live driven b0.x2f (#181/[P7a], ADR-0012 gap a).
+    // Default off => the operator diffuses the decoupled scratch field as before (the
+    // resb unit/verification pgens fill their own bphi IC, so they stay byte-identical);
+    // the maglif faithful-B1 setup turns it on so resistivity acts on the driving field.
+    resb_couple_b0 = pin->GetOrAddBoolean("mhd","resb_couple_b0",false);
   }
 
   // Strang-split orchestration of the coupled timestep (#115/[B2], ADR-0009).  Group the
