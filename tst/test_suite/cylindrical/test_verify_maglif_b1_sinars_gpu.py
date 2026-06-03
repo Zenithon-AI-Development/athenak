@@ -33,8 +33,9 @@ with that evidence; it does not gate this run.  #175/[P6] then enabled that mode
 operator at a time (test_verify_maglif_b1_operators_gpu) and found NONE yet altered the
 tabulated B1 implosion faithfully (ADR-0012), bounding the residual by three model-set
 wiring/consistency gaps (still NOT strength), closed one at a time: resb is now COUPLED to
-the live driven b0.x2f (#181/[P7a], resb_couple_b0) and ACTIVE; fld/fld+mrad remain inert
-(unsourced standalone erad, #182) and acond EOS-inconsistent (ideal-gamma T, #183).  The
+the live driven b0.x2f (#181/[P7a], resb_couple_b0) and ACTIVE; fld/fld+mrad are now
+ACTIVE too (erad SOURCED from the gas, #182/[P7b], fld_source_erad_from_gas) though
+uncalibrated; acond remains EOS-inconsistent (ideal-gamma T, #183).  The
 BINDING gate here is therefore the
 qualitative single-mode MRT signature -- the liner converges, the SEEDED mode grows and
 stays dominant, the synthetic radiograph limb modulates, and a pert_amp=0 control stays

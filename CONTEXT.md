@@ -134,7 +134,10 @@ The B1 growth residual is bounded by three model-set **wiring/consistency** gaps
 closed one at a time: **(a) [CLOSED, #181/[P7a]]** `resb` (resistivity) is now coupled to the live
 driven face field — the resb super-step is bracketed by a copy-in (`b0.x2f→bphi`) / write-back
 (`bphi→b0.x2f`) gated on `resb_couple_b0`, so resistivity diffuses the *driving* `B_phi` and is
-**active**; **(b) [#182/[P7b]]** the gray-FLD `erad` is still a standalone field the `maglif` pgen
-never sources (inert); **(c) [#183/[P7c]]** `acond` (conduction) / `mrad` (coupling) still bake
+**active**; **(b) [CLOSED, #182/[P7b]]** the gray-FLD `erad` is now **sourced from the gas** — the
+`maglif` IC partitions the LTE grey energy `a*T^4` (at the cell temperature) out of the gas internal
+energy (gated on `fld_source_erad_from_gas`, conserving `E_gas+E_rad`), so `fld`/`fld+mrad` are
+**active** (the gas, hence amplitude(t), differs from baseline; `mrad` has a real field to exchange
+against); **(c) [#183/[P7c]]** `acond` (conduction) / `mrad` (coupling) still bake
 **ideal-gamma** thermodynamics (`T=(γ-1)e/ρ`, constant `c_v`) inconsistent with the tabulated closure.
 ([ADR-0012](docs/adr/0012-b1-operator-coupling-attribution.md).)

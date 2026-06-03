@@ -85,3 +85,33 @@ maglif baseline — stays **byte-identical**. `test_verify_maglif_b1_operators_g
 case from `inert:True` to **ACTIVE** (seeded-mode amplitude(t) ≠ baseline, while its `pert_amp=0`
 control stays exactly 1-D — radial `B_phi` diffusion preserves axisymmetry). Gaps (b) #182 and (c)
 #183 remain; the paper-resolution amplitude(t) oracle re-attribution stays #120 AC#2.
+
+---
+
+## Update (2026-06-03, #182/[P7b]): gap (b) closed — FLD `erad` sourced from the gas state
+
+The second gap is now closed. The `maglif` faithful-B1 setup **sources the grey-FLD radiation
+energy `erad` from the local gas state** at the IC: when the new `<mhd> fld_source_erad_from_gas`
+knob is on, the IC kernel computes the LTE grey energy `a*T^4` at the cell temperature (the
+faithful `tabulated_3t` temperature in eV; the coupling's `T = e_int/c_v` on the ideal path) and
+**partitions it OUT of the gas internal energy** (`u0(IEN) -= erad`, conserving `E_gas + E_rad`),
+filling the standalone `erad` array the FLD operator diffuses. The partitioned amount is capped to
+half the local gas thermal energy so the gas stays positive — the coefficients (`mrad_arad`,
+`mrad_cv`) are still uncalibrated placeholders (SI calibration is gap-adjacent #184/[P7d]) — and the
+cap also makes `erad` track the gas energy into the low-density vacuum, giving FLD a real gradient
+at the liner edge to diffuse. Because the radiation energy is now drawn FROM the gas, the gas state
+(hence the seeded-mode amplitude(t)) differs from the FLD-off baseline **even without coupling**, so
+gray-FLD alone is no longer inert; and `mrad_coupling` now has a real, spatially-structured field to
+exchange against (`erad ↔ IEN`, point-implicit, conserving `E_r + e_gas`). The radiation constant
+`a` and heat capacity `c_v` are read from the same `<mhd> mrad_*` params the coupling uses (present
+in the athinput regardless of `mrad_coupling`), so the `fld` (no-coupling) and `fld+mrad` runs source
+the *same* field.
+
+The knob is **gated off by default** (`fld_source_erad_from_gas=false`), read only when grey FLD is
+live (`pfld_op != nullptr`); when off, the previous uniform radiative-equilibrium seed runs instead,
+so every existing FLD run that leaves the knob off — the coupled smoke/B3 stack, the FLD unit pgens —
+stays **byte-identical**, and FLD-off runs (no `erad` array) are untouched.
+`test_verify_maglif_b1_operators_gpu.py` flips the `fld` and `fldmrad` cases from `inert:True` to
+**ACTIVE** (seeded-mode amplitude(t) ≠ baseline, while each `pert_amp=0` control stays exactly 1-D —
+the radial radiation sourcing preserves axisymmetry). Only gap (c) #183 (EOS-aware `acond` `T` and
+`mrad` `c_v`) remains; the paper-resolution amplitude(t) oracle re-attribution stays #120 AC#2.
