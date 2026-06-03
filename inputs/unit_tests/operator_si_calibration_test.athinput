@@ -1,0 +1,62 @@
+# AthenaK input: SI operator-coefficient calibration anchor unit test
+# (unit_tests/operator_si_calibration_test, issue [P7d]/#184, ADR-0014).
+#
+# All checks run in ProblemGenerator::UserProblem and the program exits before any time
+# integration (nlim = tlim = 0).  The test evaluates the Spitzer/Braginskii transport
+# coefficients (closed-form, from braginskii_transport.hpp's CODATA constants) and loads the
+# real aluminum IONMIX multigroup-opacity table (problem/opacity_file) LOCALLY, asserting the
+# SI calibration (diffusion/operator_si_calibration.hpp) matches the analytic Spitzer eta /
+# Braginskii kappa and the IONMIX opacity, and differs from the pre-#184 placeholders.  It
+# does not need the package EOS, so it runs on a trivial ideal-MHD grid.  The Python wrapper
+# (test_unit_operator_si_calibration_cpu.py) overrides opacity_file with an ABSOLUTE path
+# (the unit-test binary runs from tst/build_unit/<name>/src, so a relative path would not
+# resolve).
+
+<comment>
+problem   = SI operator-coefficient calibration anchor unit test (B1, ADR-0014)
+
+<job>
+basename  = operator_si_calibration_test
+
+<mesh>
+nghost    = 2
+nx1       = 4
+x1min     = 0.0
+x1max     = 1.0
+ix1_bc    = outflow
+ox1_bc    = outflow
+
+nx2       = 4
+x2min     = -1.0
+x2max     = 1.0
+ix2_bc    = outflow
+ox2_bc    = outflow
+
+nx3       = 4
+x3min     = -1.0
+x3max     = 1.0
+ix3_bc    = outflow
+ox3_bc    = outflow
+
+<meshblock>
+nx1       = 4
+nx2       = 4
+nx3       = 4
+
+<time>
+evolution  = dynamic
+integrator = rk2
+cfl_number = 0.2
+nlim       = 0           # do no integration, just run UserProblem
+tlim       = 0
+ndiag      = 1
+
+<mhd>
+eos              = ideal                          # the test loads the opacity table locally
+reconstruct      = plm
+rsolver          = hlld
+gamma            = 1.6666666666666667
+
+<problem>
+opacity_file          = inputs/ionmix/al-imx-004.cn4   # IONMIX cn4 (overridden by the test)
+opacity_mass_per_ion  = 4.4804e-23                     # Al ion mass [g] -> density axis to g/cc
