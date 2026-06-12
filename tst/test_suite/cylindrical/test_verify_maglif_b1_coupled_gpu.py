@@ -64,6 +64,11 @@ COUPLED_ARGS = [
     "mhd/acond_operator_split=true",
     "mhd/fld_operator_split=true",
     "mhd/mrad_coupling=true",
+    # #192: pin the open outer boundary against ghost-fed inflow.  The zero-gradient
+    # ghost copy is an unbounded mass reservoir once the resb-diffused drive field
+    # raises an inward wind in the vacuum gap (mass x77,000 by 70 ns at paper res);
+    # the guard swaps inflowing columns to a static vacuum ghost state (ADR-0015).
+    "problem/ox1_inflow_guard=true",
 ]
 
 TLIM = 70.0          # ns; the Sinars experiment window (last committed datum 69.9 ns)
