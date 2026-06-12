@@ -124,7 +124,7 @@ def _build_dir_is_cuda():
     if not os.path.isfile(cache):
         return False
     with open(cache, "r") as f:
-        return "Kokkos_ENABLE_CUDA:BOOL=ON" in f.read().upper()
+        return "KOKKOS_ENABLE_CUDA:BOOL=ON" in f.read().upper()
 
 
 def _run(basename, pert_amp=None):
