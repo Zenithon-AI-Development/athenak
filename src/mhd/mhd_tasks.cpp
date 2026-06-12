@@ -270,9 +270,25 @@ void MHD::CoupleResbBphiFromB0() {
 //! face field `b0.x2f` over the active cells (#181/[P7a], ADR-0012 gap a).  Mirrors the
 //! maglif IC face fill: the lower x2-face of every active cell, plus the top x2-face of
 //! the last cell in phi (j==je) -- B_phi is uniform in phi so that face equals the je
-//! cell value.  The total energy u0(IEN) is left unchanged, so the next ConsToPrim
-//! recovers the magnetic-energy decrement as gas internal energy (Ohmic dissipation);
-//! making that EOS-consistent for tabulated_3t is #P7c/#P7d.
+//! cell value.
+//!
+//! ENERGY (#192/[P8]): the total energy u0(IEN) is updated by the per-cell magnetic-
+//! energy change of the swap, 0.5*(bphi_new^2 - bphi_old^2), so the gas internal energy
+//! ConsToPrim recovers (e_int = E - KE - B^2/2) is INVARIANT under the write-back.
+//! Leaving IEN unchanged (the pre-#192 behaviour) silently fed the field-energy change
+//! into e_int with the WRONG SIGN -- cells the field diffuses INTO are cooled by
+//! -dB^2/2, and in the cold liner skin / tenuous vacuum gap (B^2/2 >> e_int) that drove
+//! e_int negative every step, so the pressure floor re-filled it and FABRICATED energy:
+//! on the paper-resolution faithful B1 deck this floor pump injected ~4 orders of
+//! magnitude more energy than the drive had delivered by t=24 ns and ended in the
+//! exponential mass/density runaway documented on #192 (the A100 bisect attributes the
+//! runaway to resb alone; fld+mrad and acond stay bounded).  With the swap made
+//! energy-consistent the field energy a cell gains arrives via the operator's transport
+//! (sourced at the driven boundary, i.e. the circuit does the work) instead of being
+//! billed to the local gas.  The net field energy the super-step DISSIPATES is dropped
+//! (not deposited as heat): Ohmic/Joule heating of the skin is a one-signed, stabilising
+//! omission deferred to a follow-up (it needs the eta J^2 split the RKL2 composite does
+//! not expose); see ADR-0015.
 
 void MHD::CoupleResbBphiToB0() {
   auto &indcs = pmy_pack->pmesh->mb_indcs;
@@ -282,10 +298,14 @@ void MHD::CoupleResbBphiToB0() {
   int nmb1 = pmy_pack->nmb_thispack - 1;
   auto bph = bphi;
   auto b2f = b0.x2f;
+  auto u = u0;
   par_for("resb_b0_out", DevExeSpace(), 0, nmb1, ks, ke, js, je, is, ie,
   KOKKOS_LAMBDA(const int m, const int k, const int j, const int i) {
-    b2f(m,k,j,i) = bph(m,0,k,j,i);
-    if (j == je) { b2f(m,k,j+1,i) = bph(m,0,k,j,i); }
+    const Real b_old = b2f(m,k,j,i);
+    const Real b_new = bph(m,0,k,j,i);
+    u(m,IEN,k,j,i) += 0.5*(b_new*b_new - b_old*b_old);
+    b2f(m,k,j,i) = b_new;
+    if (j == je) { b2f(m,k,j+1,i) = b_new; }
   });
 }
 
