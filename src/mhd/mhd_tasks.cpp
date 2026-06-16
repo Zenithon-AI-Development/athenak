@@ -249,10 +249,10 @@ TaskStatus MHD::OperatorSplitResistiveBphi(Driver *pdrive, int stage) {
 //! diffuses is the per-(r,z)-column phi-AVERAGE of the lower x2-faces.  Seeding the
 //! phi-mean (rather than each phi slice's own face) makes the diffused field exactly
 //! phi-uniform, so no sub-machine phi asymmetry can enter the operator and leak back into
-//! div(B) on write-back (#192; see CoupleResbBphiToB0).  For an already-phi-uniform column
-//! the phi-mean equals every slice, so this reduces to a per-slice copy (the paper-res leg
+//! div(B) on write-back (#192; CoupleResbBphiToB0).  For an already-phi-uniform column
+//! the phi-mean equals every slice, so this reduces to a per-slice copy (paper-res leg
 //! and the maglif IC are unchanged to round-off).  Ghost zones of `bphi` are refilled by
-//! the operator's own per-substage ApplyBoundary (antisymmetric axis + SyncParabolicGhosts),
+//! the operator's per-substage ApplyBoundary (antisymmetric axis + SyncParabolicGhosts),
 //! so only the active cells are seeded here.
 
 void MHD::CoupleResbBphiFromB0() {
@@ -286,23 +286,23 @@ void MHD::CoupleResbBphiFromB0() {
 //! by exactly the change in that phi difference -- it is divergence-free IFF the APPLIED
 //! dB_phi is uniform in phi.  The pre-fix per-slice write `b2f(j)=bphi(j)` was div-free
 //! only while `bphi` stayed exactly phi-uniform; at the 1.5x-refined grid a sub-machine
-//! phi asymmetry crept into the diffused `bphi`, the per-slice write seeded div(B)!=0, and
+//! phi asymmetry crept into the diffused `bphi`, per-slice write seeded div(B)!=0, and
 //! constrained transport then faithfully PRESERVED and grew it into a density runaway ->
 //! NaN (the refined leg of test_verify_maglif_b1_coupled_gpu; ADR-0015).  So apply the
 //! per-(r,z)-column phi-AVERAGED increment delta = mean_j(bphi) - mean_j(b0.x2f) to EVERY
 //! x2-face of the column (the active lower faces js..je plus the je+1 top face): the phi
 //! difference of B_phi is unchanged, so div(B) is preserved by construction, while the
 //! physical (phi-mean) resistive diffusion is kept -- only the spurious phi noise is
-//! dropped.  For an already-phi-uniform column delta equals each slice's own (bphi - b2f),
+//! dropped.  For a phi-uniform column delta equals each slice's own (bphi - b2f),
 //! so the paper-res leg and the IC are unchanged to round-off.
 //!
 //! ENERGY (#192/[P8]): the total energy u0(IEN) is updated by the per-cell magnetic-
 //! energy change of the swap, 0.5*(b_new^2 - b_old^2) with b_new = b_old + delta, so the
-//! gas internal energy ConsToPrim recovers (e_int = E - KE - B^2/2) is INVARIANT under the
+//! gas internal energy ConsToPrim yields (e_int = E - KE - B^2/2) is INVARIANT under the
 //! write-back.  Leaving IEN unchanged (the pre-#192 behaviour) silently fed the field-
 //! energy change into e_int with the WRONG SIGN -- cells the field diffuses INTO are
 //! cooled by -dB^2/2, and in the cold liner skin / tenuous vacuum gap (B^2/2 >> e_int)
-//! that drove e_int negative every step, so the pressure floor re-filled it and FABRICATED
+//! that drove e_int negative each step, so the pressure floor refilled it and FABRICATED
 //! energy: on the paper-resolution faithful B1 deck this floor pump injected ~4 orders of
 //! magnitude more energy than the drive had delivered by t=24 ns and ended in the
 //! exponential mass/density runaway documented on #192 (the A100 bisect attributes the

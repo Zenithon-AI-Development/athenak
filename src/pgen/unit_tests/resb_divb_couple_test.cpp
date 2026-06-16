@@ -10,7 +10,7 @@
 //
 //  WHY THIS TEST.  The operator-split cylindrical resistive-B_phi step (#113, ADR-0004)
 //  diffuses a standalone `bphi` field and -- when coupled to the live MHD drive
-//  (resb_couple_b0, #181/ADR-0012) -- writes the result back onto the staggered face field
+//  (resb_couple_b0, #181/ADR-0012) -- writes the result onto the staggered face field
 //  b0.x2f via CoupleResbBphiToB0().  That write touches ONLY the x2 (phi) faces, OUTSIDE
 //  the constrained-transport curl that keeps div(B)=0.  The cylindrical FV divergence
 //      div(B) = (1/V)[ A1(i+1)B1(i+1) - A1(i)B1(i)
@@ -29,8 +29,8 @@
 //  perturbation (the refined-grid failure mode), call the REAL CoupleResbBphiToB0(), and
 //  assert:
 //    (1) the seeded b0 is divergence-free (sanity);
-//    (2) AFTER the write-back div(B) is still ~0 -- the phi structure did NOT leak into the
-//        solenoidal constraint (RED with the per-slice write b2f(j)=bphi(j); GREEN with the
+//    (2) AFTER the write-back div(B) is still ~0 -- phi structure did NOT leak into the
+//        solenoidal constraint (RED with per-slice write b2f(j)=bphi(j); GREEN with the
 //        phi-uniform-delta write);
 //    (3) the write did real work -- it applied the axisymmetric increment to every face
 //        (so a "fix" that stabilizes by writing nothing is rejected); and
@@ -59,8 +59,8 @@
 namespace {
 // Axisymmetric B_phi(r) profile written onto the x2-faces (phi-uniform => div-free seed).
 KOKKOS_INLINE_FUNCTION
-Real BphiProfile(Real r) { return r; }   // B0 = 1, linear in r; any phi-uniform f(r) works
-constexpr Real D_AX = 0.10;   // axisymmetric increment the "diffusion" applies (real work)
+Real BphiProfile(Real r) { return r; }  // B0=1, linear in r; any phi-uniform f(r) works
+constexpr Real D_AX = 0.10;  // axisymmetric increment the diffusion applies (real work)
 constexpr Real EPS  = 0.05;   // amplitude of the spurious zero-mean phi perturbation
 }  // namespace
 
@@ -118,7 +118,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
       b2f(m,k,j,i) = BphiProfile(r);
     });
   }
-  // sane conserved state so the IEN write-back bill is well-defined (div(B) is independent
+  // sane conserved state so IEN write-back bill is well-defined (div(B) is independent
   // of it, but keep u0 finite).
   Kokkos::deep_copy(u, 0.0);
   par_for("seed_u", DevExeSpace(), 0, nmb1, ks, ke, js, je, is, ie,
@@ -127,7 +127,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
     u(m,IEN,k,j,i) = 1.0;
   });
 
-  // ---- div(B) reduction (cylindrical FV; mirrors src/pgen/maglif.cpp's history probe). 
+  // ---- div(B) reduction (cylindrical FV; mirrors src/pgen/maglif.cpp's history probe).
   auto max_divb = [&]() -> Real {
     Real lmax = 0.0;
     const int nkji = (ke-ks+1)*(je-js+1)*(ie-is+1);
@@ -163,7 +163,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   test.CheckTrue(divb_seed < 1.0e-12,
                  "seeded b0 is divergence-free (axisymmetric B_phi, B_r=B_z=0)");
 
-  // ---- (B) populate the resb bphi: a REAL axisymmetric increment (D_AX) PLUS a zero-mean
+  // ---- (B) populate resb bphi: a REAL axisymmetric increment (D_AX) PLUS a zero-mean
   // phi perturbation (EPS) -- the refined-grid failure mode the write-back must not leak.
   par_for("seed_bphi", DevExeSpace(), 0, nmb1, ks, ke, js, je, is, ie,
   KOKKOS_LAMBDA(const int m, const int k, const int j, const int i) {
@@ -220,7 +220,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   test.CheckTrue(max_change > 0.5*rmin_cell*D_AX,
       "write-back applied the axisymmetric increment (not a no-op stabilization)");
   test.CheckTrue(max_target_err < 1.0e-10,
-      "every x2-face collapsed to the phi-uniform target f(r)*(1+D_AX) (phi noise dropped)");
+      "every x2-face collapsed to the phi-uniform target f(r)*(1+D_AX) (noise dropped)");
 
   test.Finish();
   return;
