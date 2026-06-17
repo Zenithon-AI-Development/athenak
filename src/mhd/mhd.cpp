@@ -279,7 +279,11 @@ MHD::MHD(MeshBlockPack *ppack, ParameterInput *pin) :
                                           : pin->GetOrAddReal("mhd","fld_chi", 1.0);
     Real fld_nl  = pin->GetOrAddReal("mhd","fld_n_larsen", 2.0);
     Real fld_es  = pin->GetOrAddReal("mhd","fld_e_source", -1.0);
-    pfld_op = new FLDGreyOperator(ppack, pin, erad, fld_c, fld_chi, fld_nl, fld_es);
+    // positivity floor for erad (#194): bounds the free-streaming read in the operator
+    // and is the level the post-super-step projection floors negative cells to.
+    Real fld_ef  = pin->GetOrAddReal("mhd","fld_efloor", 1.0e-30);
+    pfld_op = new FLDGreyOperator(ppack, pin, erad, fld_c, fld_chi, fld_nl, fld_es,
+                                  fld_ef);
   }
 
   // Multigroup flux-limited radiation diffusion (FLD) wired operator-split into the MHD

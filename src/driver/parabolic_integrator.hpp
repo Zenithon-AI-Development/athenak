@@ -421,6 +421,8 @@ inline void OperatorSplitStep(const ParabolicIntegrator &integ, ParabolicOperato
   const Real dt_exp = op.ExplicitStableDt();
   OperatorActionFunctor opfunc{&op};
   integ.Superstep(field, dt, dt_exp, opfunc);
+  // positivity / invariant projection after the full super-step (#194); no-op by default.
+  op.PostSuperstepProject(field);
 }
 
 }  // namespace parabolic

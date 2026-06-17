@@ -72,6 +72,12 @@ class ParabolicOperator {
   //! \brief Refresh the ghost zones of a trial state so the next OperatorAction sees a
   //! boundary-consistent stencil.  Default: no-op (override for single-block BCs).
   virtual void ApplyBoundary(DvceArray5D<Real> &u) { (void)u; }
+
+  //! \brief Project the committed field after a full RKL2 super-step (#194): a hook for
+  //! an operator to enforce invariants (e.g. radiation-energy positivity) once the
+  //! stepping is complete.  Default: no-op (conduction / resistive-B need nothing); the
+  //! grey FLD operator overrides it to floor erad >= efloor (multigroup: follow-up).
+  virtual void PostSuperstepProject(DvceArray5D<Real> &u) { (void)u; }
 };
 
 }  // namespace parabolic
