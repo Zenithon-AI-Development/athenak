@@ -1,10 +1,10 @@
 """
 Coupled-stack DENSITY-STABILITY + div(B)-PRESERVATION gate for the faithful B1 run (issue
 #192 [P8]).
-(Grid convergence is REPORTED, not binding: with the runaway fixed the refined leg runs
-clean and
-reveals a genuine resolution sensitivity -- paper rho~2.89 vs refined rho~16 -- tracked as
-#195.)
+(Grid convergence is now BINDING on the refined<->2x pair (#195 bracket): with the
+runaway fixed the refined 432x4x192 and 2x 576x4x256 legs converge to 0.11% on peak
+density (16.106 vs 16.089), so the gate asserts that pair; the paper 288x4x128 leg
+UNDER-RESOLVES the implosion (rho~2.89), reported alongside but not in the binding pair.)
 
 #192 was a paper-resolution (288x4x128) RUNAWAY COMPRESSION in the operator-split
 #parabolic
@@ -29,11 +29,10 @@ branch:
 This test is the TDD red->green anchor for #192: it asserts what the runaway violated -- a
 PHYSICALLY BOUNDED, FINITE peak density AND a clean solenoidal constraint (max|div B| at
 machine
-precision) through the 70 ns experiment window, on BOTH the paper grid and a 1.5x
-refinement.  The
-seeded mode must still grow (not be over-damped).  Grid convergence of the growth curve is
-REPORTED,
-not binding -- see #195 and the convergence block below.
+precision) through the 70 ns experiment window, on ALL THREE grids (paper 288, refined
+432, 2x 576).  The seeded mode must still grow (not be over-damped).  Grid convergence of
+the implosion is now BINDING on the refined<->2x pair (#195 bracket) -- see the
+convergence block below.
 
 RADIATION IS OFF in this gate (``mhd/fld_operator_split=false``,
 ``mhd/mrad_coupling=false``), and
@@ -55,20 +54,19 @@ radiation-OFF
 paper-resolution density (resbguard/reduced.json; r_liner 3.146 matches ADR-0015
 verbatim), reproduced
 by leg-1 of this test (rho_max 2.892 at 70 ns).  NOTE rho=2.89 is the PAPER-RES value and
-is NOT
-grid-converged: the 1.5x-refined leg reaches rho~16 (a sharper, better-resolved
-stagnation; #195).
+is UNDER-RESOLVED: the refined (432) and 2x (576) legs converge to rho~16.1 (a sharper,
+better-resolved stagnation; #195 bracket), so the gate binds convergence on that pair.
 Re-enabling FLD+mrad in this gate is gated on #194.
 
 Measured radiation-OFF behaviour (this fix, full 70 ns window): paper res is WEAK and
 monotone --
 rho_max 1.0 -> 2.89, seeded mode grows 1.92x (a_outer 0.0208 -> 0.0400 mm, still rising at
 t=70), div(B)
-~4e-16.  The 1.5x-refined leg is div(B)-clean (~2e-13) and bounded too, but implodes
-HARDER (rho -> 16,
-sharp stagnation onset ~t=57), so its seeded mode peaks earlier (0.0275 mm at t=57) then
-is crushed --
-the two grids are NOT converged (#195), NONE of these are the contaminated coupled ~14x.
+~4e-16.  The refined (432) and 2x (576) legs are div(B)-clean (~2e-13 / ~4e-13) and
+bounded too, but implode HARDER (rho -> 16.106 / 16.089; sharp stagnation onset ~t=57/54)
+with seeded-mode peaks 0.0275 mm @ t=57 / 0.0255 mm @ t=54.  Paper-288 UNDER-RESOLVES the
+implosion (rho 2.89), but refined and 2x AGREE to 0.11% on peak density -- the #195
+bracket pair, now the gate's binding pair.  NONE are the contaminated coupled ~14x.
 GROWTH_MIN_NORAD
 is an honest floor on the paper-res signal (see below), not borrowed from the stronger
 operators-OFF
@@ -110,6 +108,11 @@ import test_suite.testutils as testutils
 import test_suite.cylindrical.test_verify_maglif_b1_sinars_gpu as b1
 from test_suite.cylindrical.test_verify_maglif_b1_sinars_gpu import (  # noqa: F401
     GPU_FLAGS, bin_convert, bin_dir, build_dir, input_file, trace_file,
+)
+# Shared grid-convergence verdict + bands (pure; CPU-tested in
+# test_unit_maglif_grid_convergence_cpu) so gate and unit test agree on "converged".
+from test_suite.cylindrical.maglif_grid_convergence import (
+    CONV_AMP_RTOL, CONV_RHO_RTOL, CONV_TPEAK_TOL, grid_convergence_verdict,
 )
 
 # Absolute table path: the per-problem build dir runs with cwd build_pgen/maglif/src, so
@@ -162,23 +165,23 @@ RHO_MAX_CODE = 1.0e3  # bounded-density gate, code units (solid Al = 1.0); see d
 # growth (that needs the full coupled stack, gated on #194).
 GROWTH_MIN_NORAD = 1.20
 
-# Grid-convergence companion: 1.5x refinement in the meshed (r, z) plane, same physics.
-# 432x4x192 keeps the committed 144x4x64 MeshBlock tiling (3x1x3 = 9 blocks).
-REF_MESH = [
+# Grid-convergence legs in the meshed (r, z) plane, same physics, committed 144x4x64
+# MeshBlock tiling.  The BINDING convergence pair is refined <-> 2x (the #195 converged
+# pair); paper-288 (the deck default) is the UNDER-RESOLVED outlier, excluded from it.
+REF_MESH = [   # 1.5x refinement: 432x4x192 (3x1x3 = 9 blocks)
     "mesh/nx1=432", "mesh/nx3=192",
     "meshblock/nx1=144", "meshblock/nx3=64",
 ]
-# Grid-convergence band on the seeded-mode peak (amplitude + timing) between the two
-# grids.
-# REPORTED, NOT BINDING (#195): set a priori before any clean refined leg existed.  With
-# the
-# div(B) runaway fixed the refined leg runs clean and FAILS this band on a genuine
-# resolution
-# sensitivity (paper rho~2.89 vs refined rho~16; peaks ~13 ns apart), not a numerical
-# defect.
-# It is reported pending a converged regime / re-derivation from converged data (#195).
-CONV_AMP_RTOL = 0.30
-CONV_TPEAK_TOL = 6.0  # ns
+TWOX_MESH = [  # 2x refinement: 576x4x256 (4x1x4 = 16 blocks)
+    "mesh/nx1=576", "mesh/nx3=256",
+    "meshblock/nx1=144", "meshblock/nx3=64",
+]
+# The grid-convergence bands (CONV_RHO_RTOL / CONV_AMP_RTOL / CONV_TPEAK_TOL) live in
+# maglif_grid_convergence (imported above) and are exercised on CPU by
+# test_unit_maglif_grid_convergence_cpu.  #195 bracket: with the div(B) runaway fixed the
+# refined (432) and 2x (576) legs converge (rho_max 16.106 vs 16.089, 0.11%), so the gate
+# now BINDS convergence on that pair; the paper (288) under-resolves (rho 2.89) and is
+# reported, not in the binding pair.
 # max|div B| (cyl FV) gate; clean ~1e-13, the #192 runaway hit 0.16 -> NaN
 DIVB_MAX = 1.0e-6
 
@@ -271,12 +274,15 @@ def _max_divb(basename):
 
 
 def test_verify_maglif_b1_coupled_gpu():
-    """Radiation-off #192 stack: bounded + finite + div(B)-clean through 70 ns
-    on both grids; seeded mode grows; grid convergence REPORTED (#195)."""
+    """Radiation-off #192 stack: bounded + finite + div(B)-clean through 70 ns on all
+    three grids; seeded mode grows; grid convergence BINDING on refined<->2x (#195)."""
     if not b1._build_dir_is_cuda():
         shutil.rmtree(build_dir, ignore_errors=True)
     try:
-        # --- (1) STABILITY at paper resolution (288x4x128): the #192 red->green gate.
+        # --- (1) STABILITY at paper resolution (288x4x128): the #192 COMPRESSION-runaway
+        # red->green gate (rho ran to ~1e9 here before the fix).  Paper-288 UNDER-RESOLVES
+        # the implosion (rho ~2.89 vs converged ~16; #195), so it is NOT in the binding
+        # convergence pair -- kept as the compression-runaway anchor; reported below.
         files = _run_coupled("b1cpl")
         times, rho_max, a_outer = _density_and_growth(files)
         _print_table("b1cpl 288x4x128", times, rho_max, a_outer)
@@ -303,12 +309,9 @@ def test_verify_maglif_b1_coupled_gpu():
             f"< {GROWTH_MIN_NORAD}x (over-damped by the stabilization?)"
         )
 
-        # --- (2) The 1.5x-refined leg (432x4x192, 9 blocks).  BINDING: it must be
-        # div(B)-clean
-        # and bounded -- this is where the #192 resb div(B) runaway struck (div B -> 0.16
-        # -> NaN).
-        # Its growth-curve convergence vs the paper leg is REPORTED below (#195), not
-        # asserted.
+        # --- (2) The refined leg (432x4x192): the #192 DIV(B)-runaway red->green
+        # gate -- this is where div B ran 1e-11 -> 0.16 -> NaN before the fix.  Bounded +
+        # div(B)-clean.  COARSE leg of the binding refined<->2x convergence pair (#195).
         rfiles = _run_coupled("b1cpl_ref", extra_args=REF_MESH)
         rtimes, rrho_max, ra_outer = _density_and_growth(rfiles)
         _print_table("b1cpl_ref 432x4x192", rtimes, rrho_max, ra_outer)
@@ -322,36 +325,64 @@ def test_verify_maglif_b1_coupled_gpu():
             f"-- the refined-grid resb div(B) runaway (#192) has returned"
         )
 
-        # GRID CONVERGENCE: REPORTED, NOT BINDING (#195).  With the div(B) runaway fixed
-        # the refined
-        # leg runs clean and reveals the implosion is NOT grid-converged at this
-        # resolution pair
-        # (paper rho~2.89 vs refined rho~16; seeded-mode peaks ~13 ns apart) -- a genuine
-        # resolution
-        # sensitivity, not a numerical defect (div(B) clean and mass/etot conserved on
-        # BOTH legs,
-        # gated above).  #192 stays OPEN on this AC; the convergence study is #195.
-        i_pk, ir_pk = int(np.argmax(a_outer)), int(np.argmax(ra_outer))
-        amp_dev = abs(ra_outer[ir_pk] - a_outer[i_pk]) / a_outer[i_pk]
-        tpk_dev = abs(rtimes[ir_pk] - times[i_pk])
-        print(
-            f"[CONVERGENCE #195 REPORTED] seeded-mode peak: "
-            f"paper {a_outer[i_pk]:.4f} mm @ t={times[i_pk]:.1f} ns vs "
-            f"refined {ra_outer[ir_pk]:.4f} mm @ t={rtimes[ir_pk]:.1f} ns "
-            f"(amp dev {amp_dev:.2f} vs band {CONV_AMP_RTOL}; "
-            f"timing dev {tpk_dev:.1f} ns vs band {CONV_TPEAK_TOL}); "
-            f"rho_max paper {rho_max.max():.2f} vs refined {rrho_max.max():.2f}"
+        # --- (3) The 2x leg (576x4x256, 16 blocks): bounded + div(B)-clean.  FINE
+        # (best-estimate) leg of the binding refined<->2x convergence pair (#195).
+        xfiles = _run_coupled("b1cpl_2x", extra_args=TWOX_MESH)
+        xtimes, xrho_max, xa_outer = _density_and_growth(xfiles)
+        _print_table("b1cpl_2x 576x4x256", xtimes, xrho_max, xa_outer)
+        _assert_bounded("b1cpl_2x 576x4x256", xtimes, xrho_max)
+        xdivb = _max_divb("b1cpl_2x")
+        print(f"[b1cpl_2x 576x4x256] max|div B| = {xdivb:.3e} "
+              f"(gate {DIVB_MAX:.0e}; #192)")
+        assert xdivb < DIVB_MAX, (
+            f"[b1cpl_2x 576x4x256] div(B) CONSTRAINT VIOLATED: "
+            f"max|div B| {xdivb:.3e} > {DIVB_MAX:.1e} "
+            f"-- the resb div(B) runaway (#192) has returned at 2x resolution"
         )
-        if amp_dev > CONV_AMP_RTOL or tpk_dev > CONV_TPEAK_TOL:
-            print(
-                "[CONVERGENCE #195 REPORTED] NOT grid-converged at 288x128 vs 432x192 "
-                "(non-binding; resolution study tracked as #195)"
-            )
+
+        # --- (4) GRID CONVERGENCE: now BINDING on refined<->2x (#195 bracket).  With the
+        # runaway fixed the implosion converges between 432 and 576 (rho_max within
+        # CONV_RHO_RTOL) -- this closes #192's last open AC.  The shared verdict logic is
+        # unit-tested on CPU (test_unit_maglif_grid_convergence_cpu).
+        def _peak(t_, rho_, amp_):
+            i = int(np.argmax(amp_))
+            return {"rho_max": float(np.max(rho_)),
+                    "amp_peak": float(amp_[i]), "t_peak_ns": float(t_[i])}
+
+        ref_leg = _peak(rtimes, rrho_max, ra_outer)
+        twox_leg = _peak(xtimes, xrho_max, xa_outer)
+        verdict = grid_convergence_verdict(coarse=ref_leg, fine=twox_leg)
+        print(
+            f"[CONVERGENCE #195 BINDING] refined<->2x: rho_max "
+            f"{ref_leg['rho_max']:.3f} vs {twox_leg['rho_max']:.3f} "
+            f"(dev {verdict['rho_dev']:.4f}/{CONV_RHO_RTOL}); seeded-mode peak "
+            f"{ref_leg['amp_peak']:.4f} mm @ t={ref_leg['t_peak_ns']:.1f} ns vs "
+            f"{twox_leg['amp_peak']:.4f} mm @ t={twox_leg['t_peak_ns']:.1f} ns "
+            f"(amp dev {verdict['amp_dev']:.3f}/{CONV_AMP_RTOL}; "
+            f"timing dev {verdict['tpk_dev']:.1f}/{CONV_TPEAK_TOL} ns)"
+        )
+        assert verdict["converged"], (
+            "[CONVERGENCE #195] refined(432)<->2x(576) NOT grid-converged: "
+            + "; ".join(verdict["failures"])
+            + " -- #192's grid-convergence AC has regressed"
+        )
+
+        # REPORTED: paper-288 UNDER-RESOLVES the implosion (the #195 finding that excludes
+        # it from the binding pair; kept above as the compression-runaway anchor).  NOT a
+        # numerical defect -- div(B) clean and bounded on all three legs (gated above).
+        paper_leg = _peak(times, rho_max, a_outer)
+        paper_v = grid_convergence_verdict(coarse=paper_leg, fine=ref_leg)
+        print(
+            f"[CONVERGENCE #195 REPORTED] paper-288 UNDER-RESOLVED vs refined: "
+            f"rho_max {paper_leg['rho_max']:.2f} vs {ref_leg['rho_max']:.2f} "
+            f"(rho dev {paper_v['rho_dev']:.2f}, amp dev {paper_v['amp_dev']:.2f}, "
+            f"timing dev {paper_v['tpk_dev']:.1f} ns); excluded from the binding pair"
+        )
     finally:
-        for pat in ("b1cpl.*", "b1cpl_ref.*"):
+        for pat in ("b1cpl.*", "b1cpl_ref.*", "b1cpl_2x.*"):
             for f in glob.glob(os.path.join(bin_dir, pat)):
                 os.remove(f)
-        for bn in ("b1cpl", "b1cpl_ref"):
+        for bn in ("b1cpl", "b1cpl_ref", "b1cpl_2x"):
             hst = os.path.join(testutils.pgen_run_dir("maglif"), f"{bn}.user.hst")
             if os.path.exists(hst):
                 os.remove(hst)

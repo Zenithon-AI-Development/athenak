@@ -150,3 +150,40 @@ finer base grid or AMR on the stagnation region. **#192 stays OPEN** on its grid
 acceptance criterion; the convergence study is tracked as **#195**, and the convergence band in
 the gate is REPORTED (non-binding) pending a converged regime. Full-coupled (FLD+mrad)
 re-enable remains gated on **#194**.
+
+## Addendum 2 (#195 follow-up, 2026-06-18): the converged regime is established — the gate band is now BINDING on refined↔2×
+
+The prior addendum (#192, 2026-06-16) left the gate's grid-convergence band **REPORTED (non-binding) "pending a
+converged regime."** The **#195 same-build bracket** (`athenakdev:~/p192/runs/bracket195`,
+all three legs the *same* CUDA build, radiation-OFF stack) supplies it:
+
+| leg | grid | ρ_max [code] | seeded-mode peak | t_peak | max\|div B\| |
+| --- | --- | --- | --- | --- | --- |
+| paper   | 288×4×128 |  2.892 | 0.0400 mm | 70 ns | 4.1e-16 |
+| refined | 432×4×192 | 16.106 | 0.0275 mm | 57 ns | 2.4e-13 |
+| 2×      | 576×4×256 | 16.089 | 0.0255 mm | 54 ns | 4.3e-13 |
+
+Refining 432 → 576 moves ρ_max by **0.11 %** (16.106 → 16.089), the seeded-mode peak by
+7.8 %, and its timing by one 3-ns snapshot — the refined and 2× grids **agree within band**.
+The paper grid is the outlier (ρ 2.89, 82 % from refined): 288×4×128 under-resolves the
+stagnation. This is not a numerical defect — div(B) clean and mass/etot conserved on all
+three legs.
+
+**Decision.** `test_verify_maglif_b1_coupled_gpu` now **BINDS** grid convergence on the
+**refined↔2× pair** via a shared verdict (`maglif_grid_convergence.grid_convergence_verdict`;
+bands `CONV_RHO_RTOL = 0.05` / `CONV_AMP_RTOL = 0.15` / `CONV_TPEAK_TOL = 6.0 ns`), CPU-unit-
+tested against the bracket data (`test_unit_maglif_grid_convergence_cpu`, red→green). Paper-288
+stays in the gate as the **compression-runaway** red→green anchor (ρ→1e9 before the fix) but is
+**excluded from the binding pair**; its under-resolution is REPORTED. This closes #192's last
+open acceptance criterion ("grid convergence REPORTED, not binding").
+
+**Honest scope.** This is a **two-grid (Cauchy-style) agreement** between successive
+refinements — a standard production convergence gate — **not** a formal Richardson
+order-of-accuracy proof (no convergence order *p* is fit; that needs ≥3 grids). The bands are
+calibrated on this single same-build bracket and the radiation-OFF stack; they will need
+re-derivation when the physics stack changes (notably when FLD+mrad re-enable under **#194**).
+#192's grid-convergence AC is binding + green on the CPU verdict, pending a GPU validation run
+of the re-pointed three-leg gate; the bracket itself was the **#195** study deliverable, so
+#195 can close on this. The paper 288×4×128 grid (the FLASH-paper resolution) remains the
+honest comparison point for paper-vs-AthenaK figures and is unaffected by this gate decision.
+
