@@ -202,9 +202,11 @@ class MHD {
   // back to -- the driven azimuthal `b0.x2f`, so resistivity diffuses a zero field and
   // the implosion is unchanged.  When on, the resb super-step is bracketed by a copy-in
   // (`b0.x2f` -> `bphi`) and a write-back (`bphi` -> `b0.x2f`), so resistivity diffuses
-  // the *driving* B_phi (Ohmic dissipation flows to the gas via the unchanged total
-  // energy on the next ConsToPrim).  Gated off by default => byte-identical; only the
-  // `maglif` faithful-B1 setup enables it (`resb_eta` SI calibration is #P7d).
+  // the *driving* B_phi.  The write-back updates u0(IEN) by the per-cell field-energy
+  // change so e_int is invariant under the swap (#192/[P8], ADR-0015; the pre-#192
+  // unchanged-IEN behaviour fed -dB^2/2 into e_int, driving it negative in cold cells
+  // and pumping floor energy until the paper-res run ran away).  Gated off by default
+  // => byte-identical; only the `maglif` faithful-B1 setup enables it.
   bool resb_couple_b0 = false;
 
   // Strang-split orchestration of the coupled timestep (#115/[B2], ADR-0009).  The active

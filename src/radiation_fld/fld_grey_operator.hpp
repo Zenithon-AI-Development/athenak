@@ -96,7 +96,8 @@ class FLDGreyOperator : public parabolic::ParabolicOperator {
   //! exchange (#108/[A1], #110/[A3]).
   FLDGreyOperator(MeshBlockPack *pp, ParameterInput *pin,
                   const DvceArray5D<Real> &erad,
-                  Real c_light, Real chi, Real n_larsen, Real e_source);
+                  Real c_light, Real chi, Real n_larsen, Real e_source,
+                  Real e_floor = 1.0e-30);
   ~FLDGreyOperator();
 
   //! \brief M(u): grey FLD flux divergence div(D grad E_r) into rhs_out(irad); 0 in all
@@ -111,9 +112,18 @@ class FLDGreyOperator : public parabolic::ParabolicOperator {
   //! \brief Dirichlet inner-x1 (radiation source) + zero-gradient ghost-zone refresh.
   void ApplyBoundary(DvceArray5D<Real> &u) override;
 
+  //! \brief Post-superstep positivity projection (#194): floor the committed radiation
+  //! energy to efloor_ over active cells and accumulate the injected (floored-in) energy.
+  void PostSuperstepProject(DvceArray5D<Real> &u) override;
+
   // accessors (used by the verification driver / unit test)
   Real chi() const { return chi_; }
   Real c_light() const { return c_; }
+  Real efloor() const { return efloor_; }
+  //! \brief Total energy added by the positivity floor across all PostSuperstepProject
+  //! calls (Sum of max(efloor-erad,0)*cell_volume): the #194 "accounted injection".
+  //! Rank-local (no MPI reduce); a serial diagnostic / per-rank budget for now.
+  Real injected_energy() const { return injected_energy_; }
 
  private:
   MeshBlockPack *pmy_pack;
@@ -122,6 +132,8 @@ class FLDGreyOperator : public parabolic::ParabolicOperator {
   Real chi_;                    // constant extinction coefficient kappa_R*rho [1/length]
   Real nlarsen_;                // Larsen flux-limiter exponent n
   Real esrc_;                   // inner-x1 Dirichlet source value (<0 => zero-gradient)
+  Real efloor_;                 // positivity floor for erad (#194): read-floor+projection
+  Real injected_energy_;        // energy added by the positivity floor (#194)
   int irad_;                    // evolved radiation-energy component (default 0)
   DvceFaceFld5D<Real> rflx_;    // scratch face-centred radiative flux
   // conservative fine->coarse flux correction at AMR/SMR level boundaries (#33); built

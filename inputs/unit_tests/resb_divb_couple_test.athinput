@@ -1,0 +1,62 @@
+# AthenaK input: resb B_phi write-back div(B)-preservation unit test
+# (unit_tests/resb_divb_couple_test, issue #192).
+#
+# All checks run in ProblemGenerator::UserProblem; the program does NO time integration
+# (nlim = tlim = 0).  The test seeds a divergence-free axisymmetric MHD field on a small
+# cylindrical grid, populates the operator-split resb `bphi` with a phi-structured profile
+# (the 1.5x-refined-grid failure mode), calls the REAL MHD::CoupleResbBphiToB0(), and
+# asserts the write-back did not inject div(B).  resb_operator_split=true allocates the
+# standalone `bphi`; resb_couple_b0=true selects the coupled write-back path under test.
+
+<comment>
+problem   = resb B_phi write-back div(B)-preservation unit test (#192)
+
+<job>
+basename  = resb_divb_couple_test
+
+<coord>
+system    = cylindrical          # (x1,x2,x3) = (r,phi,z); the phi-divergence term is active
+
+<mesh>
+nghost    = 2
+nx1       = 8                    # r
+x1min     = 0.5                  # r_min > 0 (no axis: keeps the div(B) probe simple)
+x1max     = 2.5
+ix1_bc    = outflow
+ox1_bc    = outflow
+
+nx2       = 4                    # phi (>1 so phi structure is representable)
+x2min     = 0.0
+x2max     = 1.0
+ix2_bc    = periodic
+ox2_bc    = periodic
+
+nx3       = 4                    # z
+x3min     = 0.0
+x3max     = 1.0
+ix3_bc    = outflow
+ox3_bc    = outflow
+
+<meshblock>
+nx1       = 8
+nx2       = 4
+nx3       = 4
+
+<time>
+evolution  = dynamic
+integrator = rk2
+cfl_number = 0.2
+nlim       = 0                   # do no integration, just run UserProblem
+tlim       = 0
+ndiag      = 1
+
+<mhd>
+eos                  = ideal
+reconstruct          = plm
+rsolver              = hlld
+gamma                = 1.6666666666666667
+resb_operator_split  = true      # allocate the standalone bphi field + build the resb operator
+resb_eta             = 1.0e-3    # placeholder diffusivity (operator is not stepped here)
+resb_couple_b0       = true      # the coupled write-back path under test (#181/ADR-0012)
+
+<problem>

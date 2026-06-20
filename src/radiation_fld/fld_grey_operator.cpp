@@ -32,13 +32,15 @@ using radiationfld::LarsenLimiter;
 
 FLDGreyOperator::FLDGreyOperator(MeshBlockPack *pp, ParameterInput *pin,
   const DvceArray5D<Real> &erad,
-  Real c_light, Real chi, Real n_larsen, Real e_source) :
+  Real c_light, Real chi, Real n_larsen, Real e_source, Real e_floor) :
   pmy_pack(pp),
   erad_(erad),
   c_(c_light),
   chi_(chi),
   nlarsen_(n_larsen),
   esrc_(e_source),
+  efloor_((e_floor > 0.0) ? e_floor : static_cast<Real>(1.0e-30)),
+  injected_energy_(0.0),
   irad_(0),
   rflx_("fld_op_rflx", erad.extent_int(0), erad.extent_int(1),
         erad.extent_int(2), erad.extent_int(3), erad.extent_int(4)),
@@ -91,14 +93,13 @@ void FLDGreyOperator::OperatorAction(const DvceArray5D<Real> &u_in,
   int nx1 = indcs.nx1;
   auto size = pmy_pack->pmb->mb_size;
   auto csys = pmy_pack->pcoord->coord_system;
-  Real cc = c_, chi = chi_, nl = nlarsen_;
+  Real cc = c_, chi = chi_, nl = nlarsen_, efloor = efloor_;
   int irad = irad_;
   auto &flx1 = rflx_.x1f;
   auto &flx2 = rflx_.x2f;
   auto &flx3 = rflx_.x3f;
   bool one_d = pmy_pack->pmesh->one_d;
   bool two_d = pmy_pack->pmesh->two_d;
-  const Real tiny = 1.0e-30;
 
   // rhs_out is fully overwritten: zero every component first, so the components this
   // operator does not evolve (everything but irad) carry M = 0 and the RKL2 recursion
@@ -112,7 +113,7 @@ void FLDGreyOperator::OperatorAction(const DvceArray5D<Real> &u_in,
     Real er = u_in(m,irad,k,j,i);
     Real dedx = (er - el)/size.d_view(m).dx1;
     Real eface = 0.5*(el + er);
-    Real R = Kokkos::fabs(dedx)/(chi*Kokkos::fmax(eface, tiny));
+    Real R = Kokkos::fabs(dedx)/(chi*Kokkos::fmax(eface, efloor));
     Real D = cc*LarsenLimiter(R, nl)/chi;
     flx1(m,irad,k,j,i) = -D*dedx;
   });
@@ -130,7 +131,7 @@ void FLDGreyOperator::OperatorAction(const DvceArray5D<Real> &u_in,
       }
       Real dedx = (er - el)/CenterWidth2(csys, size.d_view(m).dx2, x1v2);
       Real eface = 0.5*(el + er);
-      Real R = Kokkos::fabs(dedx)/(chi*Kokkos::fmax(eface, tiny));
+      Real R = Kokkos::fabs(dedx)/(chi*Kokkos::fmax(eface, efloor));
       Real D = cc*LarsenLimiter(R, nl)/chi;
       flx2(m,irad,k,j,i) = -D*dedx;
     });
@@ -142,7 +143,7 @@ void FLDGreyOperator::OperatorAction(const DvceArray5D<Real> &u_in,
       Real er = u_in(m,irad,k,j,i);
       Real dedx = (er - el)/size.d_view(m).dx3;
       Real eface = 0.5*(el + er);
-      Real R = Kokkos::fabs(dedx)/(chi*Kokkos::fmax(eface, tiny));
+      Real R = Kokkos::fabs(dedx)/(chi*Kokkos::fmax(eface, efloor));
       Real D = cc*LarsenLimiter(R, nl)/chi;
       flx3(m,irad,k,j,i) = -D*dedx;
     });
@@ -203,9 +204,8 @@ Real FLDGreyOperator::ExplicitStableDt() {
   auto &three_d = pmy_pack->pmesh->three_d;
   auto size = pmy_pack->pmb->mb_size;
   auto &u = erad_;
-  Real cc = c_, chi = chi_, nl = nlarsen_;
+  Real cc = c_, chi = chi_, nl = nlarsen_, efloor = efloor_;
   int irad = irad_;
-  const Real tiny = 1.0e-30;
 
   Real dtnew = static_cast<Real>(std::numeric_limits<float>::max());
   Kokkos::parallel_reduce("fld_op_newdt", Kokkos::RangePolicy<>(DevExeSpace(), 0, nmkji),
@@ -231,7 +231,7 @@ Real FLDGreyOperator::ExplicitStableDt() {
       g2 += gx3*gx3;
       inv += 1.0/SQR(size.d_view(m).dx3);
     }
-    Real R = Kokkos::sqrt(g2)/(chi*Kokkos::fmax(e0, tiny));
+    Real R = Kokkos::sqrt(g2)/(chi*Kokkos::fmax(e0, efloor));
     Real D = cc*LarsenLimiter(R, nl)/chi;
     min_dt = fmin(min_dt, 1.0/(2.0*D*inv));
   }, Kokkos::Min<Real>(dtnew));
@@ -303,4 +303,58 @@ void FLDGreyOperator::ApplyBoundary(DvceArray5D<Real> &u) {
   // SMR/AMR) with neighbor data via the shared synchronous exchange.  Untouched at true
   // physical boundaries (no neighbor), so those keep the physical fill from step (1).
   pbval_->SyncParabolicGhosts(u, coarse_);
+}
+
+//----------------------------------------------------------------------------------------
+//! \fn void FLDGreyOperator::PostSuperstepProject()
+//! \brief Positivity projection run once after each RKL2 super-step (#194): floor the
+//! committed radiation energy to efloor_ over active cells and accumulate the energy
+//! added by the floor (Sum of max(efloor-erad,0)*cell_volume) so the injection stays
+//! bounded and accounted.  Without it the free-streaming / transition-regime FLD operator
+//! (advective under RKL2) overshoots erad negative and the divide-guard cascades to NaN
+//! in the coupled run.
+void FLDGreyOperator::PostSuperstepProject(DvceArray5D<Real> &u) {
+  auto &indcs = pmy_pack->pmesh->mb_indcs;
+  int is = indcs.is, nx1 = indcs.nx1;
+  int js = indcs.js, nx2 = indcs.nx2;
+  int ks = indcs.ks, nx3 = indcs.nx3;
+  const int nmkji = (pmy_pack->nmb_thispack)*nx3*nx2*nx1;
+  const int nkji = nx3*nx2*nx1;
+  const int nji  = nx2*nx1;
+  auto size = pmy_pack->pmb->mb_size;
+  auto csys = pmy_pack->pcoord->coord_system;
+  bool one_d = pmy_pack->pmesh->one_d;
+  bool two_d = pmy_pack->pmesh->two_d;
+  Real efloor = efloor_;
+  int irad = irad_;
+
+  Real injected = 0.0;
+  Kokkos::parallel_reduce("fld_op_project",
+  Kokkos::RangePolicy<>(DevExeSpace(), 0, nmkji),
+  KOKKOS_LAMBDA(const int &idx, Real &linj) {
+    int m = (idx)/nkji;
+    int k = (idx - m*nkji)/nji;
+    int j = (idx - m*nkji - k*nji)/nx1;
+    int i = (idx - m*nkji - k*nji - j*nx1) + is;
+    k += ks;
+    j += js;
+    Real e = u(m,irad,k,j,i);
+    Real deficit = efloor - e;
+    if (deficit > 0.0) {
+      Real dx2 = one_d ? 1.0 : size.d_view(m).dx2;
+      Real dx3 = (one_d || two_d) ? 1.0 : size.d_view(m).dx3;
+      Real vol;
+      if (csys == CoordSystem::cylindrical) {
+        Real x1min = size.d_view(m).x1min, x1max = size.d_view(m).x1max;
+        Real rm = LeftEdgeX(i-is,   nx1, x1min, x1max);
+        Real rp = LeftEdgeX(i+1-is, nx1, x1min, x1max);
+        vol = 0.5*(rp*rp - rm*rm)*dx2*dx3;
+      } else {
+        vol = size.d_view(m).dx1*dx2*dx3;
+      }
+      linj += deficit*vol;
+      u(m,irad,k,j,i) = efloor;
+    }
+  }, Kokkos::Sum<Real>(injected));
+  injected_energy_ += injected;
 }

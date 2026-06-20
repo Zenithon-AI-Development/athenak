@@ -76,6 +76,11 @@ constexpr Real kTwoPiM = 6.2831853071795864769;
 circuit::DriveSource drive_source_;
 bool nocurrent_mode_ = false;
 
+// #192 outer-x1 inflow-guard state (set from <problem> at pgen time; read by MagLIFBCs).
+bool ox1_inflow_guard_ = false;
+Real ox1_vac_dn_ = 0.0;    // vacuum ghost density (code units)
+Real ox1_vac_ei_ = 0.0;    // vacuum ghost internal-energy density (code units)
+
 //----------------------------------------------------------------------------------------
 //! \fn MagLIFBCs
 //! \brief Outer-x1 user BC: fill the cell-centred MHD ghosts by outflow and the B_phi
@@ -107,6 +112,40 @@ void MagLIFBCs(Mesh *pm) {
   // (2) face-centred B: driven / nocurrent B_phi + outflow B_r, B_z (shared helper).
   Real current = drive_source_.Current(pm->time);
   circuit::ApplyDriveBphiBC(pm, current, drive_source_.mu0, nocurrent_mode_);
+
+  // (3) #192 inflow guard (<problem> ox1_inflow_guard, default off): wherever the last
+  // interior cell moves INWARD, replace the zero-gradient hydro ghosts of that column
+  // with a static vacuum state (rho=d_vac, v=0, e_int=p0/(gamma-1), magnetic energy
+  // from the just-filled drive faces).  The plain copy mirrors an inward wind back as
+  // fresh ghost mass and momentum -- an unbounded reservoir: under the resb-diffused
+  // drive field the ghost density tracks the rising outer cell, the wind self-amplifies
+  // and the snowplow crushes the liner (mass x77,000 by 70 ns at paper resolution).
+  // Outflowing columns keep the zero-gradient copy, so the open boundary still vents.
+  // Scalars are zeroed; in the tabulated_3t runs scalar 0 (e_ele) then edge-clamps at
+  // the table floor, exactly how the below-floor vacuum gap is already handled.
+  if (ox1_inflow_guard_) {
+    auto &b0 = pmbp->pmhd->b0;
+    int nmhd = pmbp->pmhd->nmhd;
+    Real dvac = ox1_vac_dn_;
+    Real evac = ox1_vac_ei_;
+    par_for("maglif_diode_ox1", DevExeSpace(), 0,(nmb-1),0,(n3-1),0,(n2-1),
+    KOKKOS_LAMBDA(int m, int k, int j) {
+      if (mb_bcs.d_view(m,BoundaryFace::outer_x1) != BoundaryFlag::user) { return; }
+      if (u0(m,IM1,k,j,ie) >= 0.0) { return; }
+      for (int i=0; i<ng; ++i) {
+        int ig = ie+i+1;
+        Real br   = 0.5*(b0.x1f(m,k,j,ig) + b0.x1f(m,k,j,ig+1));
+        Real bphi = 0.5*(b0.x2f(m,k,j,ig) + b0.x2f(m,k,j+1,ig));
+        Real bz   = 0.5*(b0.x3f(m,k,j,ig) + b0.x3f(m,k+1,j,ig));
+        u0(m,IDN,k,j,ig) = dvac;
+        u0(m,IM1,k,j,ig) = 0.0;
+        u0(m,IM2,k,j,ig) = 0.0;
+        u0(m,IM3,k,j,ig) = 0.0;
+        u0(m,IEN,k,j,ig) = evac + 0.5*(br*br + bphi*bphi + bz*bz);
+        for (int n=nmhd; n<nvar; ++n) { u0(m,n,k,j,ig) = 0.0; }
+      }
+    });
+  }
 }
 }  // namespace
 
@@ -302,6 +341,24 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   if (drive_source_.waveform == circuit::CurrentWaveform::tabulated) {
     std::string cfile = pin->GetOrAddString("problem", "current_file", "unset");
     circuit::ReadCurrentWaveform(cfile, drive_source_);
+  }
+
+  // ---- #192 outer-x1 inflow guard (<problem> ox1_inflow_guard; default off) ----
+  // Read BEFORE the restart return (like the drive config above) so a restarted run
+  // keeps the guarded boundary.  The vacuum ghost state reuses the IC's <problem> and
+  // <units> values; GetOrAdd* is idempotent, so the duplicate reads below see exactly
+  // the numbers the IC normalisation reads later.  e_int uses the ideal p0/(gamma-1):
+  // in the tabulated_3t runs the vacuum sits below the table floor and edge-clamps
+  // regardless, so the exact tiny value is immaterial -- what the guard must pin is
+  // the ghost mass and momentum reservoir.
+  ox1_inflow_guard_ = pin->GetOrAddBoolean("problem", "ox1_inflow_guard", false);
+  if (ox1_inflow_guard_) {
+    Real g_rho = pin->GetOrAddReal("units", "density_cgs", 1.0);
+    Real g_vel = pin->GetOrAddReal("units", "velocity_cgs", 1.0);
+    Real g_prs = g_rho*g_vel*g_vel;
+    Real g_gm1 = pin->GetOrAddReal("mhd", "gamma", 5.0/3.0) - 1.0;
+    ox1_vac_dn_ = pin->GetOrAddReal("problem", "d_vac", 0.01) / g_rho;
+    ox1_vac_ei_ = (pin->GetOrAddReal("problem", "p0", 1.0e-3) / g_prs) / g_gm1;
   }
 
   // Optional: enroll the conservation/div(B) history output (AMR-vs-uniform check, #43).

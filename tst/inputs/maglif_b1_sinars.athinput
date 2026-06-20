@@ -190,6 +190,11 @@ d_vac            = 1.0e-4          # tenuous vacuum gap (r_out to R_out)
 p0               = 1.0e-4          # cold thermal pressure (ideal-EOS fallback; unused if tabulated)
 t_init_ev        = 1.0             # cold-LTE initial temperature [eV], clamped to the Al table floor
 bz0              = 0.0             # no axial premagnetization for this single-mode run
+ox1_inflow_guard = false           # #192: pin open ox1 against ghost-fed inflow (vacuum ghosts
+                                   #   on inflowing columns); false = pre-#192 zero-gradient copy,
+                                   #   so the operators-OFF baseline is untouched.  The coupled
+                                   #   test overrides this ON (AthenaK cmdline overrides need the
+                                   #   key present here).
 # ---- seed: single axial sinusoid (Sinars single-mode MRT) ----
 perturbation     = single_mode     # one axial mode on the liner interfaces
 pert_amp         = 0.002           # radial seed amplitude 20 um (CGS cm; Sinars initial)

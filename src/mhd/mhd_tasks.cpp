@@ -244,11 +244,16 @@ TaskStatus MHD::OperatorSplitResistiveBphi(Driver *pdrive, int stage) {
 //! \fn void MHD::CoupleResbBphiFromB0
 //! \brief Copy the live driven azimuthal face field `b0.x2f` into the resb operator's
 //! standalone `bphi` (component 0) over the active cells (#181/[P7a], ADR-0012 gap a).
-//! In the cylindrical (r,phi,z) maglif column B_phi is the x2-face field and is uniform
-//! in phi (axisymmetric drive), so the lower x2-face value equals the cell-centred B_phi
-//! the operator diffuses.  Ghost zones of `bphi` are refilled by the operator's own
-//! per-substage ApplyBoundary (antisymmetric axis + SyncParabolicGhosts), so only the
-//! active cells are seeded here.
+//! In the cylindrical (r,phi,z) maglif column B_phi is the x2-face field and is
+//! axisymmetric (uniform in phi -- the axisymmetric drive), so the value the operator
+//! diffuses is the per-(r,z)-column phi-AVERAGE of the lower x2-faces.  Seeding the
+//! phi-mean (rather than each phi slice's own face) makes the diffused field exactly
+//! phi-uniform, so no sub-machine phi asymmetry can enter the operator and leak back into
+//! div(B) on write-back (#192; CoupleResbBphiToB0).  For an already-phi-uniform column
+//! the phi-mean equals every slice, so this reduces to a per-slice copy (paper-res leg
+//! and the maglif IC are unchanged to round-off).  Ghost zones of `bphi` are refilled by
+//! the operator's per-substage ApplyBoundary (antisymmetric axis + SyncParabolicGhosts),
+//! so only the active cells are seeded here.
 
 void MHD::CoupleResbBphiFromB0() {
   auto &indcs = pmy_pack->pmesh->mb_indcs;
@@ -256,23 +261,58 @@ void MHD::CoupleResbBphiFromB0() {
   int js = indcs.js, je = indcs.je;
   int ks = indcs.ks, ke = indcs.ke;
   int nmb1 = pmy_pack->nmb_thispack - 1;
+  Real inv_nphi = 1.0/static_cast<Real>(je - js + 1);
   auto bph = bphi;
   auto b2f = b0.x2f;
-  par_for("resb_b0_in", DevExeSpace(), 0, nmb1, ks, ke, js, je, is, ie,
-  KOKKOS_LAMBDA(const int m, const int k, const int j, const int i) {
-    bph(m,0,k,j,i) = b2f(m,k,j,i);
+  // Seed every phi slice of the column with the phi-AVERAGE of b0.x2f so the field the
+  // operator diffuses is exactly axisymmetric (#192).
+  par_for("resb_b0_in", DevExeSpace(), 0, nmb1, ks, ke, is, ie,
+  KOKKOS_LAMBDA(const int m, const int k, const int i) {
+    Real avg = 0.0;
+    for (int j = js; j <= je; ++j) { avg += b2f(m,k,j,i); }
+    avg *= inv_nphi;
+    for (int j = js; j <= je; ++j) { bph(m,0,k,j,i) = avg; }
   });
 }
 
 //----------------------------------------------------------------------------------------
 //! \fn void MHD::CoupleResbBphiToB0
 //! \brief Write the resistively-diffused `bphi` (component 0) back into the live driven
-//! face field `b0.x2f` over the active cells (#181/[P7a], ADR-0012 gap a).  Mirrors the
-//! maglif IC face fill: the lower x2-face of every active cell, plus the top x2-face of
-//! the last cell in phi (j==je) -- B_phi is uniform in phi so that face equals the je
-//! cell value.  The total energy u0(IEN) is left unchanged, so the next ConsToPrim
-//! recovers the magnetic-energy decrement as gas internal energy (Ohmic dissipation);
-//! making that EOS-consistent for tabulated_3t is #P7c/#P7d.
+//! face field `b0.x2f` (#181/[P7a], ADR-0012 gap a) as a PHI-UNIFORM increment.
+//!
+//! DIV(B) (#192): the write touches ONLY the x2 (phi) faces, OUTSIDE the constrained-
+//! transport curl that holds div(B)=0.  In the cylindrical finite-volume divergence the
+//! x2-faces enter as (Face2Area/Vol)*(B_phi(j+1) - B_phi(j)), so the write changes div(B)
+//! by exactly the change in that phi difference -- it is divergence-free IFF the APPLIED
+//! dB_phi is uniform in phi.  The pre-fix per-slice write `b2f(j)=bphi(j)` was div-free
+//! only while `bphi` stayed exactly phi-uniform; at the 1.5x-refined grid a sub-machine
+//! phi asymmetry crept into the diffused `bphi`, per-slice write seeded div(B)!=0, and
+//! constrained transport then faithfully PRESERVED and grew it into a density runaway ->
+//! NaN (the refined leg of test_verify_maglif_b1_coupled_gpu; ADR-0015).  So apply the
+//! per-(r,z)-column phi-AVERAGED increment delta = mean_j(bphi) - mean_j(b0.x2f) to EVERY
+//! x2-face of the column (the active lower faces js..je plus the je+1 top face): the phi
+//! difference of B_phi is unchanged, so div(B) is preserved by construction, while the
+//! physical (phi-mean) resistive diffusion is kept -- only the spurious phi noise is
+//! dropped.  For a phi-uniform column delta equals each slice's own (bphi - b2f),
+//! so the paper-res leg and the IC are unchanged to round-off.
+//!
+//! ENERGY (#192/[P8]): the total energy u0(IEN) is updated by the per-cell magnetic-
+//! energy change of the swap, 0.5*(b_new^2 - b_old^2) with b_new = b_old + delta, so the
+//! gas internal energy ConsToPrim yields (e_int = E - KE - B^2/2) is INVARIANT under the
+//! write-back.  Leaving IEN unchanged (the pre-#192 behaviour) silently fed the field-
+//! energy change into e_int with the WRONG SIGN -- cells the field diffuses INTO are
+//! cooled by -dB^2/2, and in the cold liner skin / tenuous vacuum gap (B^2/2 >> e_int)
+//! that drove e_int negative each step, so the pressure floor refilled it and FABRICATED
+//! energy: on the paper-resolution faithful B1 deck this floor pump injected ~4 orders of
+//! magnitude more energy than the drive had delivered by t=24 ns and ended in the
+//! exponential mass/density runaway documented on #192 (the A100 bisect attributes the
+//! runaway to resb alone; fld+mrad and acond stay bounded).  With the swap made
+//! energy-consistent the field energy a cell gains arrives via the operator's transport
+//! (sourced at the driven boundary, i.e. the circuit does the work) instead of being
+//! billed to the local gas.  The net field energy the super-step DISSIPATES is dropped
+//! (not deposited as heat): Ohmic/Joule heating of the skin is a one-signed, stabilising
+//! omission deferred to a follow-up (it needs the eta J^2 split the RKL2 composite does
+//! not expose); see ADR-0015.
 
 void MHD::CoupleResbBphiToB0() {
   auto &indcs = pmy_pack->pmesh->mb_indcs;
@@ -280,12 +320,30 @@ void MHD::CoupleResbBphiToB0() {
   int js = indcs.js, je = indcs.je;
   int ks = indcs.ks, ke = indcs.ke;
   int nmb1 = pmy_pack->nmb_thispack - 1;
+  Real inv_nphi = 1.0/static_cast<Real>(je - js + 1);
   auto bph = bphi;
   auto b2f = b0.x2f;
-  par_for("resb_b0_out", DevExeSpace(), 0, nmb1, ks, ke, js, je, is, ie,
-  KOKKOS_LAMBDA(const int m, const int k, const int j, const int i) {
-    b2f(m,k,j,i) = bph(m,0,k,j,i);
-    if (j == je) { b2f(m,k,j+1,i) = bph(m,0,k,j,i); }
+  auto u = u0;
+  par_for("resb_b0_out", DevExeSpace(), 0, nmb1, ks, ke, is, ie,
+  KOKKOS_LAMBDA(const int m, const int k, const int i) {
+    // phi-averaged old face value and diffused new value over the active phi cells: the
+    // increment applied is phi-uniform, so the write cannot change (1/r) dB_phi/dphi and
+    // div(B) is preserved by construction (#192).
+    Real old_sum = 0.0, new_sum = 0.0;
+    for (int j = js; j <= je; ++j) {
+      old_sum += b2f(m,k,j,i);
+      new_sum += bph(m,0,k,j,i);
+    }
+    const Real delta = (new_sum - old_sum)*inv_nphi;
+    // shift every x2-face of the column by the same delta (active lower faces js..je plus
+    // the je+1 top face), billing each cell the magnetic-energy change of its own face.
+    for (int j = js; j <= je; ++j) {
+      const Real b_old = b2f(m,k,j,i);
+      const Real b_new = b_old + delta;
+      u(m,IEN,k,j,i) += 0.5*(b_new*b_new - b_old*b_old);
+      b2f(m,k,j,i) = b_new;
+    }
+    b2f(m,k,je+1,i) += delta;
   });
 }
 

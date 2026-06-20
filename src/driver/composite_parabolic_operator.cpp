@@ -97,4 +97,17 @@ void CompositeParabolicOperator::ApplyBoundary(DvceArray5D<Real> &u) {
   }
 }
 
+//----------------------------------------------------------------------------------------
+//! \fn void CompositeParabolicOperator::PostSuperstepProject()
+//! \brief Forward the post-super-step projection to every sub-operator (registration
+//! order).  Without this an operator's positivity projection (#194) is silently skipped
+//! whenever it is advanced as part of a composite super-step: the strang-split coupled
+//! path runs OperatorSplitStep on the composite, not the bare operator.
+
+void CompositeParabolicOperator::PostSuperstepProject(DvceArray5D<Real> &u) {
+  for (auto *op : ops_) {
+    op->PostSuperstepProject(u);
+  }
+}
+
 }  // namespace parabolic

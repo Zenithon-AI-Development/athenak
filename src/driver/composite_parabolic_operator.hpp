@@ -79,6 +79,11 @@ class CompositeParabolicOperator : public ParabolicOperator {
   //! \brief Refresh ghost zones for every sub-operator's stencil (in registration order).
   void ApplyBoundary(DvceArray5D<Real> &u) override;
 
+  //! \brief Forward the post-super-step projection to every sub-operator (registration
+  //! order), so an operator's positivity / invariant projection (#194) still runs when it
+  //! is advanced inside a summed composite super-step (the strang-split coupled path).
+  void PostSuperstepProject(DvceArray5D<Real> &u) override;
+
  private:
   std::vector<ParabolicOperator *> ops_;  //!< non-owning sub-operators
   DvceArray5D<Real> scratch_;             //!< accumulation scratch for the summed action
