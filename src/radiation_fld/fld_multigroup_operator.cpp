@@ -18,6 +18,7 @@
 #include "mesh/meshblock_pack.hpp"
 #include "coordinates/coordinates.hpp"
 #include "coordinates/coord_geometry.hpp"
+#include "coordinates/cell_locations.hpp"
 #include "bvals/bvals.hpp"
 #include "opacity/multigroup_opacity.hpp"
 #include "radiation_fld/fld_multigroup_operator.hpp"
@@ -35,12 +36,15 @@ using radiationfld::LarsenLimiter;
 
 FLDMultigroupOperator::FLDMultigroupOperator(MeshBlockPack *pp, ParameterInput *pin,
   const DvceArray5D<Real> &erad, const opacity::MultigroupOpacity &table, Real c_light,
-  Real rho_bg, Real te_bg, Real n_larsen, Real e_source) :
+  Real rho_bg, Real te_bg, Real n_larsen, Real e_source, Real e_floor) :
   pmy_pack(pp),
   erad_(erad),
   c_(c_light),
   nlarsen_(n_larsen),
   esrc_(e_source),
+  // clamp efloor_ > 0 to avoid a 0/0 NaN from a misconfigured deck (mirror grey #194).
+  efloor_((e_floor > 0.0) ? e_floor : static_cast<Real>(1.0e-30)),
+  injected_energy_(0.0),
   ngroups_(table.ngroups),
   chi_("fld_mg_chi", table.ngroups),
   rflx_("fld_mg_rflx", erad.extent_int(0), erad.extent_int(1),
@@ -119,13 +123,12 @@ void FLDMultigroupOperator::OperatorAction(const DvceArray5D<Real> &u_in,
   auto size = pmy_pack->pmb->mb_size;
   auto csys = pmy_pack->pcoord->coord_system;
   auto chi = chi_;
-  Real cc = c_, nl = nlarsen_;
+  Real cc = c_, nl = nlarsen_, efloor = efloor_;
   auto &flx1 = rflx_.x1f;
   auto &flx2 = rflx_.x2f;
   auto &flx3 = rflx_.x3f;
   bool one_d = pmy_pack->pmesh->one_d;
   bool two_d = pmy_pack->pmesh->two_d;
-  const Real tiny = 1.0e-30;
 
   // rhs_out is fully overwritten: zero first (every group is evolved below, but this
   // keeps the contract -- any unused component carries M = 0 -> frozen background).
@@ -139,7 +142,7 @@ void FLDMultigroupOperator::OperatorAction(const DvceArray5D<Real> &u_in,
     Real er = u_in(m,g,k,j,i);
     Real dedx = (er - el)/size.d_view(m).dx1;
     Real eface = 0.5*(el + er);
-    Real R = Kokkos::fabs(dedx)/(cg*Kokkos::fmax(eface, tiny));
+    Real R = Kokkos::fabs(dedx)/(cg*Kokkos::fmax(eface, efloor));
     Real D = cc*LarsenLimiter(R, nl)/cg;
     flx1(m,g,k,j,i) = -D*dedx;
   });
@@ -152,7 +155,7 @@ void FLDMultigroupOperator::OperatorAction(const DvceArray5D<Real> &u_in,
       Real er = u_in(m,g,k,j,i);
       Real dedx = (er - el)/size.d_view(m).dx2;
       Real eface = 0.5*(el + er);
-      Real R = Kokkos::fabs(dedx)/(cg*Kokkos::fmax(eface, tiny));
+      Real R = Kokkos::fabs(dedx)/(cg*Kokkos::fmax(eface, efloor));
       Real D = cc*LarsenLimiter(R, nl)/cg;
       flx2(m,g,k,j,i) = -D*dedx;
     });
@@ -165,7 +168,7 @@ void FLDMultigroupOperator::OperatorAction(const DvceArray5D<Real> &u_in,
       Real er = u_in(m,g,k,j,i);
       Real dedx = (er - el)/size.d_view(m).dx3;
       Real eface = 0.5*(el + er);
-      Real R = Kokkos::fabs(dedx)/(cg*Kokkos::fmax(eface, tiny));
+      Real R = Kokkos::fabs(dedx)/(cg*Kokkos::fmax(eface, efloor));
       Real D = cc*LarsenLimiter(R, nl)/cg;
       flx3(m,g,k,j,i) = -D*dedx;
     });
@@ -216,8 +219,7 @@ Real FLDMultigroupOperator::ExplicitStableDt() {
   auto size = pmy_pack->pmb->mb_size;
   auto &u = erad_;
   auto chi = chi_;
-  Real cc = c_, nl = nlarsen_;
-  const Real tiny = 1.0e-30;
+  Real cc = c_, nl = nlarsen_, efloor = efloor_;
 
   Real dtnew = static_cast<Real>(std::numeric_limits<float>::max());
   Kokkos::parallel_reduce("fld_mg_newdt",
@@ -246,7 +248,7 @@ Real FLDMultigroupOperator::ExplicitStableDt() {
       g2 += gx3*gx3;
       inv += 1.0/SQR(size.d_view(m).dx3);
     }
-    Real R = Kokkos::sqrt(g2)/(cg*Kokkos::fmax(e0, tiny));
+    Real R = Kokkos::sqrt(g2)/(cg*Kokkos::fmax(e0, efloor));
     Real D = cc*LarsenLimiter(R, nl)/cg;
     min_dt = fmin(min_dt, 1.0/(2.0*D*inv));
   }, Kokkos::Min<Real>(dtnew));
@@ -310,4 +312,61 @@ void FLDMultigroupOperator::ApplyBoundary(DvceArray5D<Real> &u) {
   // (#108/[A1], #111/[A4]).  Untouched at true physical boundaries (no neighbor), so
   // those keep the physical fill above; a no-op on a single block.
   pbval_->SyncParabolicGhosts(u, coarse_);
+}
+
+//----------------------------------------------------------------------------------------
+//! \fn void FLDMultigroupOperator::PostSuperstepProject()
+//! \brief Positivity projection run once after each RKL2 super-step (#197, per-group port
+//! of grey #194): floor the committed per-group radiation energy E_g to efloor_ over all
+//! active cells of every group and accumulate the energy added by the floor (Sum over ALL
+//! groups of max(efloor-E_g,0)*cell_volume) so the injection stays bounded and accounted.
+//! Without it the free-streaming / transition-regime FLD operator (advective under RKL2)
+//! overshoots a thin group's E_g negative and the divide-guard cascades to NaN in the
+//! coupled run.
+void FLDMultigroupOperator::PostSuperstepProject(DvceArray5D<Real> &u) {
+  auto &indcs = pmy_pack->pmesh->mb_indcs;
+  int is = indcs.is, nx1 = indcs.nx1;
+  int js = indcs.js, nx2 = indcs.nx2;
+  int ks = indcs.ks, nx3 = indcs.nx3;
+  const int ng = ngroups_;
+  const int ngmkji = (pmy_pack->nmb_thispack)*ng*nx3*nx2*nx1;
+  const int ngkji = ng*nx3*nx2*nx1;
+  const int nkji = nx3*nx2*nx1;
+  const int nji  = nx2*nx1;
+  auto size = pmy_pack->pmb->mb_size;
+  auto csys = pmy_pack->pcoord->coord_system;
+  bool one_d = pmy_pack->pmesh->one_d;
+  bool two_d = pmy_pack->pmesh->two_d;
+  Real efloor = efloor_;
+
+  Real injected = 0.0;
+  Kokkos::parallel_reduce("fld_mg_project",
+  Kokkos::RangePolicy<>(DevExeSpace(), 0, ngmkji),
+  KOKKOS_LAMBDA(const int &idx, Real &linj) {
+    int m = (idx)/ngkji;
+    int g = (idx - m*ngkji)/nkji;
+    int k = (idx - m*ngkji - g*nkji)/nji;
+    int j = (idx - m*ngkji - g*nkji - k*nji)/nx1;
+    int i = (idx - m*ngkji - g*nkji - k*nji - j*nx1) + is;
+    k += ks;
+    j += js;
+    Real e = u(m,g,k,j,i);
+    Real deficit = efloor - e;
+    if (deficit > 0.0) {
+      Real dx2 = one_d ? 1.0 : size.d_view(m).dx2;
+      Real dx3 = (one_d || two_d) ? 1.0 : size.d_view(m).dx3;
+      Real vol;
+      if (csys == CoordSystem::cylindrical) {
+        Real x1min = size.d_view(m).x1min, x1max = size.d_view(m).x1max;
+        Real rm = LeftEdgeX(i-is,   nx1, x1min, x1max);
+        Real rp = LeftEdgeX(i+1-is, nx1, x1min, x1max);
+        vol = 0.5*(rp*rp - rm*rm)*dx2*dx3;
+      } else {
+        vol = size.d_view(m).dx1*dx2*dx3;
+      }
+      linj += deficit*vol;
+      u(m,g,k,j,i) = efloor;
+    }
+  }, Kokkos::Sum<Real>(injected));
+  injected_energy_ += injected;
 }
