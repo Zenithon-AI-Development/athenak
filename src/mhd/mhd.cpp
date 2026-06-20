@@ -403,6 +403,11 @@ MHD::MHD(MeshBlockPack *ppack, ParameterInput *pin) :
     // resb unit/verification pgens fill their own bphi IC, so they stay byte-identical);
     // the maglif faithful-B1 setup turns it on so resistivity acts on the driving field.
     resb_couple_b0 = pin->GetOrAddBoolean("mhd","resb_couple_b0",false);
+    // Deposit the resistively-dissipated B_phi field energy as Ohmic heat on electrons
+    // (#193).  Default off => the write-back drops the dissipated heat (#192 byte-
+    // identical); the maglif faithful-B1 setup turns it on to close the energy budget
+    // (field energy lost == electron heat gained).
+    resb_deposit_heat = pin->GetOrAddBoolean("mhd","resb_deposit_heat",false);
   }
 
   // Strang-split orchestration of the coupled timestep (#115/[B2], ADR-0009).  Group the
