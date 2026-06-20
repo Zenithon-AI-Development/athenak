@@ -72,7 +72,8 @@ class FLDMultigroupOperator : public parabolic::ParabolicOperator {
   FLDMultigroupOperator(MeshBlockPack *pp, ParameterInput *pin,
                         const DvceArray5D<Real> &erad,
                         const opacity::MultigroupOpacity &table, Real c_light,
-                        Real rho_bg, Real te_bg, Real n_larsen, Real e_source);
+                        Real rho_bg, Real te_bg, Real n_larsen, Real e_source,
+                        Real e_floor = 1.0e-30);
   ~FLDMultigroupOperator();
 
   //! \brief M(u): per-group FLD flux divergence div(D_g grad E_g) into rhs_out(ig) for
@@ -88,6 +89,11 @@ class FLDMultigroupOperator : public parabolic::ParabolicOperator {
   //! applied to every group.
   void ApplyBoundary(DvceArray5D<Real> &u) override;
 
+  //! \brief Post-superstep positivity projection (#197, per-group port of grey #194):
+  //! floor every active-cell per-group E_g to efloor_ and accumulate the injected
+  //! (floored-in) energy summed across ALL groups.
+  void PostSuperstepProject(DvceArray5D<Real> &u) override;
+
   //! \brief Precompute the per-group extinction chi_g = rho*kappa_R,g from the tabulated
   //! Rosseland transport opacity.  PUBLIC and NOT in the constructor on purpose: nvcc
   //! forbids an extended __device__ lambda (the par_for) whose enclosing parent function
@@ -98,6 +104,11 @@ class FLDMultigroupOperator : public parabolic::ParabolicOperator {
   // accessors (used by the verification driver / unit test)
   int ngroups() const { return ngroups_; }
   Real c_light() const { return c_; }
+  Real efloor() const { return efloor_; }
+  //! \brief Total energy added by the positivity floor across all PostSuperstepProject
+  //! calls, summed over ALL groups (Sum of max(efloor-E_g,0)*cell_volume): the #197
+  //! "accounted injection".  Rank-local (no MPI reduce); a serial diagnostic for now.
+  Real injected_energy() const { return injected_energy_; }
   DvceArray1D<Real> chi() const { return chi_; }  // per-group extinction chi_g
   // coarse-mesh scratch (nmb, ngroups, cn3, cn2, cn1); the SAME array the operator uses
   // per-substage (SyncParabolicGhosts) is reused by the AMR regrid restrict/prolong
@@ -110,6 +121,8 @@ class FLDMultigroupOperator : public parabolic::ParabolicOperator {
   Real c_;                    // code-unit speed of light
   Real nlarsen_;              // Larsen flux-limiter exponent n
   Real esrc_;                 // inner-x1 Dirichlet source value (<0 => zero-gradient)
+  Real efloor_;               // positivity floor for E_g (#197): read-floor + projection
+  Real injected_energy_;      // energy added by the floor (#197), summed over groups
   int ngroups_;               // number of photon-energy groups (= table.ngroups)
   DvceArray1D<Real> chi_;     // per-group extinction chi_g = rho*kappa_R,g [1/length]
   DvceFaceFld5D<Real> rflx_;  // scratch face-centred per-group radiative flux

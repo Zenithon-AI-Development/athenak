@@ -25,6 +25,14 @@ c_light   = 1.0        # code-unit speed of light
 n_larsen  = 2.0        # Larsen flux-limiter exponent
 rho_bg    = 1.0e-2     # uniform background mass density (fixture reference node)
 te_bg     = 1.0e2      # uniform background electron temperature (fixture reference node)
+# ----- per-group free-streaming super-step positivity (issue #197) knobs -----
+chi_thin_mg  = 8.0     # transition-regime per-group extinction (RKL2-unstable band)
+esrc_thin_mg = -1.0    # insulated box (esrc<0): let the seeded checkerboard evolve freely
+e_bg_mg      = 1.0     # background radiation energy (O(1) so R sits in transition band)
+seed_amp_mg  = 0.5     # checkerboard seed amplitude (the most-amplified mode)
+dt_fac_mg    = 2.0e3   # super-step over explicit limit (large ratio => RKL2 over-steps)
+nstep_mg     = 1.5e2   # number of RKL2 super-steps in the sustained drive
+mgfld_efloor = 1.0e-10 # per-group erad positivity floor (#197): projection level
 
 <mesh>
 nghost    = 2          # Number of ghost cells

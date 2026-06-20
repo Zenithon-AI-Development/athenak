@@ -310,8 +310,11 @@ MHD::MHD(MeshBlockPack *ppack, ParameterInput *pin) :
     Real mg_te  = pin->GetOrAddReal("mhd","mgfld_te_bg", 1.0);
     Real mg_nl  = pin->GetOrAddReal("mhd","mgfld_n_larsen", 2.0);
     Real mg_es  = pin->GetOrAddReal("mhd","mgfld_e_source", -1.0);
+    // per-group positivity floor for erad (#197): bounds the free-streaming read in the
+    // operator and is the level the post-super-step projection floors negative cells to.
+    Real mg_ef  = pin->GetOrAddReal("mhd","mgfld_efloor", 1.0e-30);
     pmg_op = new FLDMultigroupOperator(ppack, pin, erad_mg, mg_table, mg_c, mg_rho, mg_te,
-                                       mg_nl, mg_es);
+                                       mg_nl, mg_es, mg_ef);
   }
 
   // Anisotropic (magnetized) Braginskii electron+ion thermal conduction wired operator-
