@@ -79,6 +79,29 @@ Real LarsenLimiter(Real R, Real n) {
   return Kokkos::pow(three_n + Rn, -1.0/n);
 }
 
+
+//----------------------------------------------------------------------------------------
+//! \fn Real FaceDeff
+//! \brief Effective FLD face diffusivity used by the forward-Euler stability dt (#194):
+//! the flux-limited diffusivity D = c lambda/chi PLUS the Lax-Friedrichs streaming-
+//! dissipation viscosity 0.5 upwind a w, where a = c lambda R is the local signal speed
+//! (-> 0 thick, -> c free-streaming, capped at c since lambda R <= 1).  It is
+//! built from the SAME face quantities (ea, eb, w) the flux kernel uses, so the stability
+//! estimate is CONSISTENT with the operator it bounds.  The old cell-centred central-
+//! difference estimate over-counted dt at a sharp front (a floored cell beside a bright
+//! neighbour reported a near-zero D), so RKL2 under-staged and the streaming-advection
+//! mode amplified (the #194 stagnation NaN).
+KOKKOS_INLINE_FUNCTION
+Real FaceDeff(Real ea, Real eb, Real w, Real cc, Real chi, Real nl,
+              Real efloor, Real upwind) {
+  Real dedx  = (eb - ea)/w;
+  Real eface = 0.5*(ea + eb);
+  Real R     = Kokkos::fabs(dedx)/(chi*Kokkos::fmax(eface, efloor));
+  Real lam   = LarsenLimiter(R, nl);
+  Real alf   = cc*lam*R*Kokkos::fmax(0.0, 1.0 - 3.0*lam);  // gated LF signal speed
+  return cc*lam/chi + 0.5*upwind*alf*w;   // D + gated-LF numerical viscosity
+}
+
 }  // namespace radiationfld
 
 //----------------------------------------------------------------------------------------
@@ -97,7 +120,7 @@ class FLDGreyOperator : public parabolic::ParabolicOperator {
   FLDGreyOperator(MeshBlockPack *pp, ParameterInput *pin,
                   const DvceArray5D<Real> &erad,
                   Real c_light, Real chi, Real n_larsen, Real e_source,
-                  Real e_floor = 1.0e-30);
+                  Real e_floor = 1.0e-30, Real upwind = 1.0);
   ~FLDGreyOperator();
 
   //! \brief M(u): grey FLD flux divergence div(D grad E_r) into rhs_out(irad); 0 in all
@@ -133,6 +156,7 @@ class FLDGreyOperator : public parabolic::ParabolicOperator {
   Real nlarsen_;                // Larsen flux-limiter exponent n
   Real esrc_;                   // inner-x1 Dirichlet source value (<0 => zero-gradient)
   Real efloor_;                 // positivity floor for erad (#194): read-floor+projection
+  Real upwind_;                 // Lax-Friedrichs streaming-dissipation gate (#194); 1=on
   Real injected_energy_;        // energy added by the positivity floor (#194)
   int irad_;                    // evolved radiation-energy component (default 0)
   DvceFaceFld5D<Real> rflx_;    // scratch face-centred radiative flux

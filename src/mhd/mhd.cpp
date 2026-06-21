@@ -282,8 +282,12 @@ MHD::MHD(MeshBlockPack *ppack, ParameterInput *pin) :
     // positivity floor for erad (#194): bounds the free-streaming read in the operator
     // and is the level the post-super-step projection floors negative cells to.
     Real fld_ef  = pin->GetOrAddReal("mhd","fld_efloor", 1.0e-30);
+    // Lax-Friedrichs streaming-dissipation gate (#194): 1 => streaming-limit advective
+    // mode (which RKL2 cannot damp) is stabilized; 0 => the bare centered flux (unstable
+    // at imploding fronts).  Default 1 (the fix on); thick-limit byte-identical to tol.
+    Real fld_up  = pin->GetOrAddReal("mhd","fld_upwind", 1.0);
     pfld_op = new FLDGreyOperator(ppack, pin, erad, fld_c, fld_chi, fld_nl, fld_es,
-                                  fld_ef);
+                                  fld_ef, fld_up);
   }
 
   // Multigroup flux-limited radiation diffusion (FLD) wired operator-split into the MHD

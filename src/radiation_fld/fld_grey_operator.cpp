@@ -22,6 +22,7 @@
 #include "radiation_fld/fld_grey_operator.hpp"
 
 using radiationfld::LarsenLimiter;
+using radiationfld::FaceDeff;
 
 //----------------------------------------------------------------------------------------
 //! \brief FLDGreyOperator constructor.  Allocates the operator's own cell-centered
@@ -32,7 +33,8 @@ using radiationfld::LarsenLimiter;
 
 FLDGreyOperator::FLDGreyOperator(MeshBlockPack *pp, ParameterInput *pin,
   const DvceArray5D<Real> &erad,
-  Real c_light, Real chi, Real n_larsen, Real e_source, Real e_floor) :
+  Real c_light, Real chi, Real n_larsen, Real e_source, Real e_floor,
+  Real upwind) :
   pmy_pack(pp),
   erad_(erad),
   c_(c_light),
@@ -40,6 +42,7 @@ FLDGreyOperator::FLDGreyOperator(MeshBlockPack *pp, ParameterInput *pin,
   nlarsen_(n_larsen),
   esrc_(e_source),
   efloor_((e_floor > 0.0) ? e_floor : static_cast<Real>(1.0e-30)),
+  upwind_(upwind),
   injected_energy_(0.0),
   irad_(0),
   rflx_("fld_op_rflx", erad.extent_int(0), erad.extent_int(1),
@@ -93,7 +96,7 @@ void FLDGreyOperator::OperatorAction(const DvceArray5D<Real> &u_in,
   int nx1 = indcs.nx1;
   auto size = pmy_pack->pmb->mb_size;
   auto csys = pmy_pack->pcoord->coord_system;
-  Real cc = c_, chi = chi_, nl = nlarsen_, efloor = efloor_;
+  Real cc = c_, chi = chi_, nl = nlarsen_, efloor = efloor_, upwind = upwind_;
   int irad = irad_;
   auto &flx1 = rflx_.x1f;
   auto &flx2 = rflx_.x2f;
@@ -114,8 +117,14 @@ void FLDGreyOperator::OperatorAction(const DvceArray5D<Real> &u_in,
     Real dedx = (er - el)/size.d_view(m).dx1;
     Real eface = 0.5*(el + er);
     Real R = Kokkos::fabs(dedx)/(chi*Kokkos::fmax(eface, efloor));
-    Real D = cc*LarsenLimiter(R, nl)/chi;
-    flx1(m,irad,k,j,i) = -D*dedx;
+    Real lam = LarsenLimiter(R, nl);
+    Real D = cc*lam/chi;
+    // LF streaming dissipation (#194): signal speed cc*lam*R (-> c streaming) GATED by
+    // the advective fraction (1-3 lam)_+ (0 thick where lam=1/3, -> 1 streaming) so it
+    // vanishes as ~R^2 where the scheme is already a stable diffusion (battery B)
+    // and damps the centered-advection (imaginary) mode RKL2 cannot at a sharp front.
+    Real alf = cc*lam*R*Kokkos::fmax(0.0, 1.0 - 3.0*lam);
+    flx1(m,irad,k,j,i) = -D*dedx - 0.5*upwind*alf*(er - el);
   });
 
   if (!one_d) {
@@ -132,8 +141,10 @@ void FLDGreyOperator::OperatorAction(const DvceArray5D<Real> &u_in,
       Real dedx = (er - el)/CenterWidth2(csys, size.d_view(m).dx2, x1v2);
       Real eface = 0.5*(el + er);
       Real R = Kokkos::fabs(dedx)/(chi*Kokkos::fmax(eface, efloor));
-      Real D = cc*LarsenLimiter(R, nl)/chi;
-      flx2(m,irad,k,j,i) = -D*dedx;
+      Real lam = LarsenLimiter(R, nl);
+      Real D = cc*lam/chi;
+      Real alf = cc*lam*R*Kokkos::fmax(0.0, 1.0 - 3.0*lam);  // gated LF (#194)
+      flx2(m,irad,k,j,i) = -D*dedx - 0.5*upwind*alf*(er - el);
     });
   }
   if (!one_d && !two_d) {
@@ -144,8 +155,10 @@ void FLDGreyOperator::OperatorAction(const DvceArray5D<Real> &u_in,
       Real dedx = (er - el)/size.d_view(m).dx3;
       Real eface = 0.5*(el + er);
       Real R = Kokkos::fabs(dedx)/(chi*Kokkos::fmax(eface, efloor));
-      Real D = cc*LarsenLimiter(R, nl)/chi;
-      flx3(m,irad,k,j,i) = -D*dedx;
+      Real lam = LarsenLimiter(R, nl);
+      Real D = cc*lam/chi;
+      Real alf = cc*lam*R*Kokkos::fmax(0.0, 1.0 - 3.0*lam);  // gated LF (#194)
+      flx3(m,irad,k,j,i) = -D*dedx - 0.5*upwind*alf*(er - el);
     });
   }
 
@@ -205,6 +218,8 @@ Real FLDGreyOperator::ExplicitStableDt() {
   auto size = pmy_pack->pmb->mb_size;
   auto &u = erad_;
   Real cc = c_, chi = chi_, nl = nlarsen_, efloor = efloor_;
+  Real upwind = upwind_;
+  auto csys = pmy_pack->pcoord->coord_system;
   int irad = irad_;
 
   Real dtnew = static_cast<Real>(std::numeric_limits<float>::max());
@@ -216,24 +231,36 @@ Real FLDGreyOperator::ExplicitStableDt() {
     int i = (idx - m*nkji - k*nji - j*nx1) + is;
     k += ks;
     j += js;
-    // cell-centred gradient magnitude (central differences over active dims)
+    // face-consistent forward-Euler bound (#194): the effective diffusivity D_eff
+    // (flux-limited D + the LF streaming viscosity) is built per face from the SAME
+    // el/er/eface/R the flux kernel uses, summed over the two faces per active dim:
+    //   dt <= 1 / sum_dim (D_eff_minus + D_eff_plus)/w^2.
+    // In a flat thick cell D_eff_minus=D_eff_plus=D and this reduces to 1/(2 D inv) (the
+    // old estimate); at a streaming front it recovers ~w/(2c), which the old cell-centred
+    // central-difference estimate over-counted (a floored cell beside a bright neighbour
+    // reported a near-zero D -> too-large dt -> RKL2 under-staged -> runaway).
     Real e0 = u(m,irad,k,j,i);
-    Real gx1 = (u(m,irad,k,j,i+1) - u(m,irad,k,j,i-1))/(2.0*size.d_view(m).dx1);
-    Real g2 = gx1*gx1;
-    Real inv = 1.0/SQR(size.d_view(m).dx1);
+    Real w1 = size.d_view(m).dx1;
+    Real Dm = FaceDeff(u(m,irad,k,j,i-1), e0, w1, cc, chi, nl, efloor, upwind);
+    Real Dp = FaceDeff(e0, u(m,irad,k,j,i+1), w1, cc, chi, nl, efloor, upwind);
+    Real invsum = (Dm + Dp)/SQR(w1);
     if (multi_d) {
-      Real gx2 = (u(m,irad,k,j+1,i) - u(m,irad,k,j-1,i))/(2.0*size.d_view(m).dx2);
-      g2 += gx2*gx2;
-      inv += 1.0/SQR(size.d_view(m).dx2);
+      Real x1v = 0.0;
+      if (csys == CoordSystem::cylindrical) {
+        x1v = CellCenterX(i-is, nx1, size.d_view(m).x1min, size.d_view(m).x1max);
+      }
+      Real w2 = CenterWidth2(csys, size.d_view(m).dx2, x1v);
+      Real Dm2 = FaceDeff(u(m,irad,k,j-1,i), e0, w2, cc, chi, nl, efloor, upwind);
+      Real Dp2 = FaceDeff(e0, u(m,irad,k,j+1,i), w2, cc, chi, nl, efloor, upwind);
+      invsum += (Dm2 + Dp2)/SQR(w2);
     }
     if (three_d) {
-      Real gx3 = (u(m,irad,k+1,j,i) - u(m,irad,k-1,j,i))/(2.0*size.d_view(m).dx3);
-      g2 += gx3*gx3;
-      inv += 1.0/SQR(size.d_view(m).dx3);
+      Real w3 = size.d_view(m).dx3;
+      Real Dm3 = FaceDeff(u(m,irad,k-1,j,i), e0, w3, cc, chi, nl, efloor, upwind);
+      Real Dp3 = FaceDeff(e0, u(m,irad,k+1,j,i), w3, cc, chi, nl, efloor, upwind);
+      invsum += (Dm3 + Dp3)/SQR(w3);
     }
-    Real R = Kokkos::sqrt(g2)/(chi*Kokkos::fmax(e0, efloor));
-    Real D = cc*LarsenLimiter(R, nl)/chi;
-    min_dt = fmin(min_dt, 1.0/(2.0*D*inv));
+    if (invsum > 0.0) { min_dt = fmin(min_dt, 1.0/invsum); }
   }, Kokkos::Min<Real>(dtnew));
 
   return dtnew;

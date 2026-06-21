@@ -168,6 +168,16 @@ fld_c_light          = 10.0       # code-unit radiation speed
 fld_chi              = 1000.0     # grey opacity (opaque liner)
 fld_n_larsen         = 2.0        # Larsen flux-limiter exponent
 fld_e_source         = -1.0       # insulated (zero-gradient) radiation boundaries
+fld_efloor           = 1.0e-30    # erad positivity floor (#194); 1e-30 == old divide-guard,
+                                  #   byte-identical (read ONLY when fld_operator_split on, via
+                                  #   GetOrAddReal).  Radiation-ON runs set a real floor
+                                  #   a_rad*T_floor^4 (the #194 green); the coupled radon gate
+                                  #   overrides this to 1e-10.  CLI override needs the key present.
+fld_upwind           = 1.0        # Lax-Friedrichs streaming-dissipation gate (#194); 1 => the
+                                  #   streaming-limit advective mode RKL2 cannot damp is
+                                  #   stabilized (radiation-ON coupled stack stays NaN-clean at
+                                  #   stagnation).  Thick-limit byte-identical; 0 => bare flux.
+                                  #   Read ONLY when fld_operator_split on (via GetOrAddReal).
 mrad_coupling        = false      # point-implicit matter-radiation energy exchange (issue 23)
 mrad_chi_a           = 0.04       # absorption opacity (matter-radiation coupling)
 mrad_cv              = 1.5e-3     # constant heat capacity (EOS-inconsistent placeholder)
