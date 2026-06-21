@@ -205,6 +205,83 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
                    "free-streaming FLD super-step drive keeps erad >= 0 (#194)");
   }
 
+  // ===== (E2) monotone-front streaming runaway: erad_max BOUNDED (issue #194) ==========
+  // Battery (E) seeds a CHECKERBOARD whose Nyquist mode is marginal (a central difference
+  // sees ZERO gradient across it) -- so it does NOT exercise the failure that NaNs the
+  // radiation-ON coupled run: a SUSTAINED MONOTONE STEEP FRONT.  In the streaming limit
+  // the Larsen-limited flux F=-D dE/dx collapses to F=-c*eface*sign(dE) -- the CENTERED
+  // discretization of advection dE/dt = c dE/dx, whose spatial eigenvalues are PURE
+  // IMAGINARY.  RKL2 is a parabolic STS scheme (its stability region hugs the negative-
+  // real axis) and AMPLIFIES every imaginary mode at any stage count, so a ~1-cell front
+  // grows erad_max each super-step (the t~63 ns NaN; erad_max 3.9e-5 -> 2.2e+36 in the
+  // GPU diagnostic).  The low-side floor/projection (batteries E/F) is structurally
+  // blind to this HIGH-side runaway.  Fix (#194): a Lax-Friedrichs streaming-dissipation
+  // term -0.5*a*(er-el) with signal speed a=c*lambda*R (->0 thick, ->c streaming, capped
+  // at c), gated by fld_upwind (default 1 => on), restores a real-negative spectrum.  RED
+  // on the unstabilized centered flux (erad_max -> NaN); GREEN once the LF term lands.
+  // Assert erad stays FINITE and BOUNDED above (not merely >= 0).  Knobs deck-tunable.
+  {
+    const Real chi_fr  = pin->GetOrAddReal("problem", "chi_front", 1.0);    // streaming
+    const Real esrc_fr = pin->GetOrAddReal("problem", "esrc_front", 1.0);   // hot wall
+    const Real e_hi    = pin->GetOrAddReal("problem", "e_hi", 1.0);         // bright side
+    const Real e_lo    = pin->GetOrAddReal("problem", "e_lo", 1.0e-6);      // cold side
+    const Real dtf  = pin->GetOrAddReal("problem", "dt_fac_front", 5.0e1);  // dt/dt_exp
+    const int nstp =
+        static_cast<int>(pin->GetOrAddReal("problem", "nstep_front", 2.0e2));
+
+    DvceArray5D<Real> ef("erad_front", nmb, 1, n3, n2, n1);
+    auto h_ef = Kokkos::create_mirror_view(ef);
+    const int imid = is + N/2;
+    for (int m = 0; m < nmb; ++m) {
+      for (int k = 0; k < n3; ++k) {
+        for (int j = 0; j < n2; ++j) {
+          for (int i = 0; i < n1; ++i) {
+            // sharp monotone front: hot (e_hi) inner half, cold (e_lo) outer half; the
+            // hot inner-x1 Dirichlet wall (esrc_fr>0) sustains it through the drive.
+            h_ef(m, 0, k, j, i) = (i < imid) ? e_hi : e_lo;
+          }
+        }
+      }
+    }
+    Kokkos::deep_copy(ef, h_ef);
+    FLDGreyOperator opf(pmbp, pin, ef, c_light, chi_fr, nl, esrc_fr, efloor);
+    parabolic::ParabolicIntegrator integ2(parabolic::ParabolicMethod::sts);
+    auto efv = ef;
+    const Real e_lo_c = e_lo;
+    for (int step = 0; step < nstp; ++step) {
+      const Real dtx = opf.ExplicitStableDt();
+      parabolic::OperatorSplitStep(integ2, opf, ef, dtf*dtx);
+      // RE-SHARPEN the front every step: hold the cold outer half at e_lo so the steep
+      // gradient persists (the imploding liner front is continually re-steepened by the
+      // hydro).  A STATIC front just diffuses to the wall value and never exposes the
+      // centered-advection RKL2 instability -- which is exactly why battery (E)'s
+      // checkerboard and a one-shot ramp both stay green while the coupled run NaNs.
+      par_for("e2_resharpen", DevExeSpace(), 0, nmb-1, 0, n3-1, 0, n2-1, imid, ie,
+      KOKKOS_LAMBDA(const int m, const int k, const int j, const int i) {
+        efv(m, 0, k, j, i) = e_lo_c;
+      });
+    }
+    auto h_of = Kokkos::create_mirror_view(ef);
+    Kokkos::deep_copy(h_of, ef);
+    bool finite_f = true;
+    Real max_e = -1.0e300, min_e2 = 1.0e300;
+    for (int i = is; i <= ie; ++i) {
+      const Real e = h_of(0, 0, 0, 0, i);
+      if (!std::isfinite(e)) { finite_f = false; }
+      max_e = std::fmax(max_e, e);
+      min_e2 = std::fmin(min_e2, e);
+    }
+    std::cout << "[fld_grey_operator_test] (E2) monotone front: max(erad)=" << max_e
+              << " min(erad)=" << min_e2 << " finite=" << finite_f << " (nstep=" << nstp
+              << ", dt_fac=" << dtf << ", chi=" << chi_fr << ")" << std::endl;
+    test.CheckTrue(finite_f,
+                   "monotone-front FLD super-step stays finite (no NaN) (#194)");
+    test.CheckTrue(max_e <= 1.0e1*e_hi,
+                   "monotone-front FLD super-step keeps erad_max BOUNDED (#194)");
+    test.CheckTrue(min_e2 >= -1.0e-12,
+                   "monotone-front FLD super-step keeps erad >= 0 (#194)");
+  }
+
   // ===== (F) PostSuperstepProject floors negatives to efloor + accounts injection ======
   // Battery E reaches green via the read-floor alone (min(erad) stays positive), so the
   // projection + its energy accounting would otherwise be untested.  Seed a field with
