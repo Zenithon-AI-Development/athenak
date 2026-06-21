@@ -209,6 +209,21 @@ class MHD {
   // => byte-identical; only the `maglif` faithful-B1 setup enables it.
   bool resb_couple_b0 = false;
 
+  // Deposit the resistively-DISSIPATED B_phi field energy as Ohmic (Joule) heat on the
+  // ELECTRONS (#193, ADR-0015 follow-up).  The #192 write-back above bills only the
+  // representation-swap energy 0.5*(b_new^2-b_old^2) to u0(IEN) (so e_int is invariant
+  // under the swap) and DROPS the irreversible eta*J^2 heat the resb super-step removed
+  // -- one-signed and stabilising, so on the #192 baseline TOTAL energy decreases by
+  // exactly that dropped field energy.  When this flag is on, CoupleResbBphiToB0 adds the
+  // field energy the SAME resb stencil removed, per cell, to BOTH u0(IEN) (total energy
+  // restored => conservation exact by construction) AND the electron internal-energy
+  // scalar u0(nmhd) (ADR-0002; ions, recovered by subtraction, stay unchanged).
+  // Depositing the operator's OWN magnetic-energy decrease (not an independently
+  // discretised eta*J^2) keeps the centering matched to the field-energy drop, so no
+  // energy leaks and the #192 energy PUMP is not re-introduced.  Works on the tabulated
+  // path (NOT gated is_ideal, unlike OhmicEnergyFlux).  Default off => #192 byte-ident.
+  bool resb_deposit_heat = false;
+
   // Strang-split orchestration of the coupled timestep (#115/[B2], ADR-0009).  The active
   // stiff operator-split parabolic operators (FLD radiation, anisotropic conduction,
   // resistive B_phi -- built above) are grouped into one CompositeParabolicOperator PER

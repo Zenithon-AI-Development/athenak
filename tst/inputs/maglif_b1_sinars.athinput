@@ -150,6 +150,9 @@ resb_eta             = 1.0e-3     # placeholder diffusivity (superseded when cal
 resb_couple_b0       = true       # couple bphi <-> live driven b0.x2f (#181/[P7a], ADR-0012 gap a):
                                   #   resb now diffuses the DRIVING B_phi (active, not inert).  Read
                                   #   only when resb_operator_split is on => baseline byte-identical.
+resb_deposit_heat    = false      # deposit resistively-dissipated B_phi energy as Ohmic heat on
+                                  #   electrons (#193); default false => #192 drop-the-heat baseline
+                                  #   byte-identical.  Read only when resb_operator_split is on.
 acond_operator_split = false      # anisotropic Braginskii conduction on the gas energy (issue 108)
 acond_kappa_conv     = 0.05       # conduction coefficient (uncalibrated placeholder)
 acond_eos_aware      = true       # recover conducted T from the tabulated_3t electron closure

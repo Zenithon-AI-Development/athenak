@@ -312,7 +312,13 @@ void MHD::CoupleResbBphiFromB0() {
 //! billed to the local gas.  The net field energy the super-step DISSIPATES is dropped
 //! (not deposited as heat): Ohmic/Joule heating of the skin is a one-signed, stabilising
 //! omission deferred to a follow-up (it needs the eta J^2 split the RKL2 composite does
-//! not expose); see ADR-0015.
+//! not expose); see ADR-0015.  #193 adds that heat back -- gated on `resb_deposit_heat`
+//! (default off => this #192 behaviour byte-identical): when on, the per-cell field-
+//! energy decrease 0.5*(b_old^2 - b_new^2) the resb write removed is deposited as Ohmic
+//! heat on BOTH u0(IEN) (so E_tot is conserved) and the electron scalar u0(nmhd) (so the
+//! electrons, not the ions, are heated).  Depositing the operator's own magnetic-energy
+//! decrease keeps the heat centring-matched to the field-energy drop, so no energy leaks
+//! and the #192 pump is not re-introduced.
 
 void MHD::CoupleResbBphiToB0() {
   auto &indcs = pmy_pack->pmesh->mb_indcs;
@@ -324,6 +330,10 @@ void MHD::CoupleResbBphiToB0() {
   auto bph = bphi;
   auto b2f = b0.x2f;
   auto u = u0;
+  // #193: when on, deposit the resistively-dissipated field energy as Ohmic heat on the
+  // electron internal-energy scalar (rides u0(nmhd), ADR-0002); off => #192 byte-ident.
+  const bool deposit = resb_deposit_heat;
+  const int eele_idx = nmhd;
   par_for("resb_b0_out", DevExeSpace(), 0, nmb1, ks, ke, is, ie,
   KOKKOS_LAMBDA(const int m, const int k, const int i) {
     // phi-averaged old face value and diffused new value over the active phi cells: the
@@ -342,6 +352,18 @@ void MHD::CoupleResbBphiToB0() {
       const Real b_new = b_old + delta;
       u(m,IEN,k,j,i) += 0.5*(b_new*b_new - b_old*b_old);
       b2f(m,k,j,i) = b_new;
+      // #193: the irreversible resb dissipation is the magnetic-energy DECREASE of this
+      // cell's own face, q = 0.5*(b_old^2 - b_new^2) >= 0 (the exact negative of the swap
+      // bill just applied).  Depositing the operator's OWN field-energy decrease (rather
+      // than an independently discretised eta*J^2) makes the heat match the field-energy
+      // drop by construction -- so total energy is conserved exactly and the #192 PUMP is
+      // not re-introduced.  Add to BOTH total energy (restores E_tot) and the electron
+      // scalar (heats electrons); ions, recovered by subtraction, are unchanged.
+      if (deposit) {
+        const Real q = 0.5*(b_old*b_old - b_new*b_new);
+        u(m,IEN,k,j,i)      += q;
+        u(m,eele_idx,k,j,i) += q;
+      }
     }
     b2f(m,k,je+1,i) += delta;
   });

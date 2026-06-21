@@ -1,0 +1,67 @@
+# AthenaK input: resb B_phi write-back energy-budget unit test
+# (unit_tests/resb_energy_deposit_test, issue #193).
+#
+# All checks run in ProblemGenerator::UserProblem; the program does NO time integration
+# (nlim = tlim = 0).  The test seeds a div-free axisymmetric MHD field plus a known E_tot
+# and a known electron internal energy (passive scalar 0 = u0(nmhd)), populates the resb
+# `bphi` with the phi-mean seed shrunk by a known factor (a clean stand-in for one resb
+# diffusion super-step that removes a known field energy), calls the REAL
+# MHD::CoupleResbBphiToB0(), and checks the energy budget.  The Python runner overrides
+# <mhd>/resb_deposit_heat on the command line: false => the #192 drop-the-heat baseline
+# (TOTAL energy drops by the field-energy decrease), true => the #193 deposit (TOTAL
+# energy conserved, electrons heated by exactly the dissipated energy, ions unchanged).
+
+<comment>
+problem   = resb B_phi write-back energy-budget unit test (#193)
+
+<job>
+basename  = resb_energy_deposit_test
+
+<coord>
+system    = cylindrical          # (x1,x2,x3) = (r,phi,z)
+
+<mesh>
+nghost    = 2
+nx1       = 8                    # r
+x1min     = 0.5                  # r_min > 0 (no axis; keeps the budget probe simple)
+x1max     = 2.5
+ix1_bc    = outflow
+ox1_bc    = outflow
+
+nx2       = 4                    # phi (>1 so phi structure is representable)
+x2min     = 0.0
+x2max     = 1.0
+ix2_bc    = periodic
+ox2_bc    = periodic
+
+nx3       = 4                    # z
+x3min     = 0.0
+x3max     = 1.0
+ix3_bc    = outflow
+ox3_bc    = outflow
+
+<meshblock>
+nx1       = 8
+nx2       = 4
+nx3       = 4
+
+<time>
+evolution  = dynamic
+integrator = rk2
+cfl_number = 0.2
+nlim       = 0                   # do no integration, just run UserProblem
+tlim       = 0
+ndiag      = 1
+
+<mhd>
+eos                  = ideal
+reconstruct          = plm
+rsolver              = hlld
+gamma                = 1.6666666666666667
+nscalars             = 1         # one passive scalar: the electron energy (e_ele)
+resb_operator_split  = true      # allocate the standalone bphi field + build the resb op
+resb_eta             = 1.0e-3    # placeholder diffusivity (operator is not stepped here)
+resb_couple_b0       = true      # the coupled write-back path under test (#181/ADR-0012)
+resb_deposit_heat    = false     # #193 gate; the runner overrides this on cmdline
+
+<problem>
