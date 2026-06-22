@@ -47,8 +47,19 @@ CONV_RHO_RTOL = 0.05   # implosion strength |rho_fine - rho_coarse| / rho_fine (
 CONV_AMP_RTOL = 0.15   # seeded-mode peak amplitude (tightened from the a-priori 0.30)
 CONV_TPEAK_TOL = 6.0   # ns; seeded-mode peak timing (= 2 x 3-ns snapshot interval)
 
+# Radiation-ON (#199) bands -- RE-DERIVED from the radiation-ON refined<->2x bracket
+# (#194 made the FLD+mrad stack NaN-clean), NOT reused from the radiation-OFF #195
+# bracket above (ADR-0015 addendum 3).  Radiation is nearly inert at the current constant
+# opacity, so these track the #195 values closely; the actual radiation-ON bracket
+# deviations are pinned in test_unit_maglif_grid_convergence_radon_cpu.  PLACEHOLDER =
+# the #195 priors until the GPU bracket lands; finalized from the recorded bracket.
+RADON_CONV_RHO_RTOL = 0.05
+RADON_CONV_AMP_RTOL = 0.15
+RADON_CONV_TPEAK_TOL = 6.0
 
-def grid_convergence_verdict(coarse, fine):
+
+def grid_convergence_verdict(coarse, fine, rho_rtol=CONV_RHO_RTOL,
+                             amp_rtol=CONV_AMP_RTOL, tpk_tol=CONV_TPEAK_TOL):
     """Verdict on whether the coarse->fine refinement has grid-converged.
 
     ``coarse`` / ``fine`` are dicts carrying the leg observables:
@@ -66,25 +77,25 @@ def grid_convergence_verdict(coarse, fine):
     amp_dev = abs(fine["amp_peak"] - coarse["amp_peak"]) / abs(fine["amp_peak"])
     tpk_dev = abs(fine["t_peak_ns"] - coarse["t_peak_ns"])
     failures = []
-    if rho_dev > CONV_RHO_RTOL:
+    if rho_dev > rho_rtol:
         failures.append(
-            f"rho_max dev {rho_dev:.4f} > {CONV_RHO_RTOL} (implosion not converged)"
+            f"rho_max dev {rho_dev:.4f} > {rho_rtol} (implosion not converged)"
         )
-    if amp_dev > CONV_AMP_RTOL:
+    if amp_dev > amp_rtol:
         failures.append(
-            f"seeded-mode peak amp dev {amp_dev:.4f} > {CONV_AMP_RTOL}"
+            f"seeded-mode peak amp dev {amp_dev:.4f} > {amp_rtol}"
         )
-    if tpk_dev > CONV_TPEAK_TOL:
+    if tpk_dev > tpk_tol:
         failures.append(
-            f"seeded-mode peak timing dev {tpk_dev:.2f} ns > {CONV_TPEAK_TOL} ns"
+            f"seeded-mode peak timing dev {tpk_dev:.2f} ns > {tpk_tol} ns"
         )
     return {
         "rho_dev": rho_dev,
         "amp_dev": amp_dev,
         "tpk_dev": tpk_dev,
-        "rho_rtol": CONV_RHO_RTOL,
-        "amp_rtol": CONV_AMP_RTOL,
-        "tpk_tol": CONV_TPEAK_TOL,
+        "rho_rtol": rho_rtol,
+        "amp_rtol": amp_rtol,
+        "tpk_tol": tpk_tol,
         "failures": failures,
         "converged": not failures,
     }
