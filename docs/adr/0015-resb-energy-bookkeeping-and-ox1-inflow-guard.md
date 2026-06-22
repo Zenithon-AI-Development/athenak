@@ -187,3 +187,50 @@ of the re-pointed three-leg gate; the bracket itself was the **#195** study deli
 #195 can close on this. The paper 288×4×128 grid (the FLASH-paper resolution) remains the
 honest comparison point for paper-vs-AthenaK figures and is unaffected by this gate decision.
 
+
+## Addendum 3 (#199, 2026-06-22): radiation-ON convergence — bands re-derived for the full-physics stack
+
+Addendum 2 calibrated the binding band on the **radiation-OFF** bracket and flagged that it
+"will need re-derivation when the physics stack changes (notably when FLD+mrad re-enable under
+**#194**)." **#194** is now merged (PR #205, `d9586947`): the Lax-Friedrichs streaming
+dissipation + face-consistent FLD super-step dt make the **radiation-ON** stack
+(resb+acond+**FLD+mrad**) NaN-clean to 70 ns on both the paper and refined GPU legs. "NaN-clean
+at two grids" is *stability* (the **#194** radon gate), not *convergence* — so the full-physics
+stack still needs a BINDING grid-convergence verdict, and the Addendum-2 bands cannot be reused
+blind once radiation is on. That verdict is **#199**.
+
+**Gate.** `test_verify_maglif_b1_coupled_radon_conv_gpu` is the radiation-ON analog of the
+Addendum-2 gate: the same three legs (paper 288×4×128 / refined 432×4×192 / 2× 576×4×256) to
+70 ns with `mhd/fld_operator_split=true` + `mhd/mrad_coupling=true` (`fld_efloor=1e-10`,
+`fld_upwind=1` — the **#194** LF gate), binding refined↔2× against **re-derived radiation-ON
+bands** `RADON_CONV_RHO_RTOL / RADON_CONV_AMP_RTOL / RADON_CONV_TPEAK_TOL` (a new band set in
+`maglif_grid_convergence`; the radiation-OFF `CONV_*` are untouched, so the #195 gate is
+unaffected). The pure verdict is CPU-unit-tested on the recorded radiation-ON bracket
+(`test_unit_maglif_grid_convergence_radon_cpu`, red→green: refined↔2× converged, paper↔refined
+rejected).
+
+**Radiation-ON same-build bracket** (`athenakdev:~/p192_logs/conv199_gate.log`):
+
+| leg | grid | ρ_max [code] | seeded-mode peak | t_peak | max\|div B\| |
+| --- | --- | --- | --- | --- | --- |
+| paper   | 288×4×128 | _pending GPU bracket_ | _pending_ | _pending_ | _pending_ |
+| refined | 432×4×192 | _pending GPU bracket_ | _pending_ | _pending_ | _pending_ |
+| 2×      | 576×4×256 | _pending GPU bracket_ | _pending_ | _pending_ | _pending_ |
+
+(Table + `RADON_CONV_*` finalized from the recorded bracket; placeholders track the Addendum-2
+radiation-OFF values because radiation is **nearly inert** at the current constant FLD opacity —
+see below.)
+
+**Decision (pending the bracket).** Bind grid convergence of the **radiation-ON** stack on the
+refined↔2× pair via the re-derived `RADON_CONV_*`; keep paper-288 as the under-resolved outlier
+(reported, excluded from the binding pair), exactly as Addendum 2. Closes **#199** and unblocks
+the B1 quantitative anchor **#120** (you cannot assert a quantitative experimental match on a
+full-physics run that is not grid-converged).
+
+**Honest scope.** (i) Same two-grid Cauchy-style agreement as Addendum 2 — *not* a Richardson
+order-of-accuracy proof. (ii) Radiation is **nearly inert** here: the FLD opacity is a single
+density/temperature-independent constant, so the vacuum gap is treated as optically thick and
+radiation barely does work — the radiation-ON bracket therefore tracks the radiation-OFF #195
+bracket closely. Making the opacity κ(ρ,T) from IONMIX (**#204**) will make radiation physical
+and **will require re-deriving these bands again** (a future addendum). The bands here are
+honestly derived from the *current-physics* radiation-ON bracket, not reused from #195.
