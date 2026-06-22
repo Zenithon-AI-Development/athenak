@@ -56,6 +56,15 @@ chi       = 1.0e6      # extinction coefficient (huge => optically-thick diffusi
 n_larsen  = 2.0        # Larsen flux-limiter exponent
 # ----- battery (E) free-streaming super-step positivity (issue #194) knobs -----
 chi_thin  = 8.0        # transition-regime extinction coeff (R~4-8: RKL2-unstable band)
+# (E2) monotone-front streaming-runaway knobs (#194): a SUSTAINED steep front in the
+# RKL2-unstable band reproduces the coupled-run NaN on the unstabilized flux (RED),
+# and the Lax-Friedrichs streaming term keeps erad_max bounded (GREEN).
+chi_front     = 8.0    # front opacity (transition/streaming band, R~4-8)
+esrc_front    = 1.0    # hot inner-x1 Dirichlet wall sustaining the front
+e_hi          = 1.0    # bright (inner) side of the front
+e_lo          = 1.0e-6 # cold (outer) side, re-imposed each step
+dt_fac_front  = 5000.0 # super-step / explicit-dt ratio
+nstep_front   = 300.0  # sustained-front super-steps
 esrc_thin = -1.0       # insulated box (esrc<0): let the seeded checkerboard evolve freely
 e_bg      = 1.0        # background radiation energy (O(1) so R sits in transition band)
 seed_amp  = 0.5        # checkerboard seed amplitude (the most-amplified mode)
