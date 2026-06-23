@@ -103,6 +103,14 @@ TWOX_MESH = [  # 2x refinement: 576x4x256 (4x1x4 = 16 blocks)
     "mesh/nx1=576", "mesh/nx3=256",
     "meshblock/nx1=144", "meshblock/nx3=64",
 ]
+FOURX_MESH = [  # 4x refinement: 1152x4x512 (8x1x8 = 64 blocks); #199 user-requested finer
+    "mesh/nx1=1152", "mesh/nx3=512",   # bracket to test 2x<->4x convergence with the
+    "meshblock/nx1=144", "meshblock/nx3=64",   # current (first-order LF) #194 fix
+]
+# 2x (576) leg metrics recorded from the #199 same-physics bracket run (b8f4b3d,
+# conv199_gate.log) -- reused as the COARSE leg of the 2x<->4x pair so only the 4x leg
+# needs a fresh (expensive) GPU run.  rho still rising at 70 ns (implosion not stagnated).
+TWOX_RECORDED = {"rho_max": 14.449380, "amp_peak": 0.0216, "t_peak_ns": 42.0}
 # The grid-convergence bands (CONV_RHO_RTOL / CONV_AMP_RTOL / CONV_TPEAK_TOL) live in
 # maglif_grid_convergence (imported above) and are exercised on CPU by
 # test_unit_maglif_grid_convergence_cpu.  #195 bracket: with the div(B) runaway fixed the
@@ -319,3 +327,54 @@ def test_verify_maglif_b1_coupled_radon_conv_gpu():
             hst = os.path.join(testutils.pgen_run_dir("maglif"), f"{bn}.user.hst")
             if os.path.exists(hst):
                 os.remove(hst)
+
+
+def test_verify_maglif_b1_coupled_radon_conv_4x_gpu():
+    """#199 (finer-bracket path): run ONLY the 4x (1152x4x512) leg of the radiation-ON
+    stack to 70 ns, assert stability (bounded + finite + div(B)-clean), and report the
+    2x<->4x convergence verdict against the recorded #199 2x leg.  The refined<->2x pair
+    did NOT converge (rho_max dev 17.8%) because the implosion has not stagnated by 70 ns
+    and the first-order LF (#194) numerical diffusion is still resolution-dependent there;
+    this leg tests whether 2x<->4x converges with the current fix (user-chosen path)."""
+    if not b1._build_dir_is_cuda():
+        shutil.rmtree(build_dir, ignore_errors=True)
+    try:
+        xfiles = _run_coupled("b1rconv_4x", extra_args=FOURX_MESH)
+        xtimes, xrho_max, xa_outer = _density_and_growth(xfiles)
+        _print_table("b1rconv_4x 1152x4x512", xtimes, xrho_max, xa_outer)
+        _assert_bounded("b1rconv_4x 1152x4x512", xtimes, xrho_max)
+        xdivb = _max_divb("b1rconv_4x")
+        print(f"[b1rconv_4x 1152x4x512] max|div B| = {xdivb:.3e} (gate {DIVB_MAX:.0e})")
+        assert xdivb < DIVB_MAX, (
+            f"[b1rconv_4x] div(B) VIOLATED: {xdivb:.3e} > {DIVB_MAX:.1e}"
+        )
+        assert np.all(np.isfinite(xa_outer)), "[b1rconv_4x] non-finite seeded-mode amp"
+
+        def _peak(t_, rho_, amp_):
+            i = int(np.argmax(amp_))
+            return {"rho_max": float(np.max(rho_)),
+                    "amp_peak": float(amp_[i]), "t_peak_ns": float(t_[i])}
+
+        fourx_leg = _peak(xtimes, xrho_max, xa_outer)
+        verdict = grid_convergence_verdict(coarse=TWOX_RECORDED, fine=fourx_leg,
+                                           rho_rtol=RADON_CONV_RHO_RTOL,
+                                           amp_rtol=RADON_CONV_AMP_RTOL,
+                                           tpk_tol=RADON_CONV_TPEAK_TOL)
+        tw = TWOX_RECORDED
+        print(
+            f"[CONVERGENCE #199 2x<->4x] rho_max {tw['rho_max']:.3f} vs "
+            f"{fourx_leg['rho_max']:.3f} (dev {verdict['rho_dev']:.4f}); amp "
+            f"{tw['amp_peak']:.4f}mm@{tw['t_peak_ns']:.0f}ns vs "
+            f"{fourx_leg['amp_peak']:.4f}mm@{fourx_leg['t_peak_ns']:.0f}ns "
+            f"(amp dev {verdict['amp_dev']:.3f}; t dev {verdict['tpk_dev']:.1f}ns); "
+            f"converged={verdict['converged']}"
+        )
+        # REPORT ONLY (do not bind here): the binding decision + re-derived bands are
+        # finalized offline from this bracket (the rho is still rising at 70 ns, so this
+        # may still be a mid-implosion comparison -- analyzed before binding #199).
+    finally:
+        for f in glob.glob(os.path.join(bin_dir, "b1rconv_4x.*")):
+            os.remove(f)
+        hst = os.path.join(testutils.pgen_run_dir("maglif"), "b1rconv_4x.user.hst")
+        if os.path.exists(hst):
+            os.remove(hst)
