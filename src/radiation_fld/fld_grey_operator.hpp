@@ -16,9 +16,12 @@
 //
 //     dE_r/dt = div( D grad E_r ),     D = c * lambda(R) / chi,
 //
-// where chi [1/length] is the (Rosseland) extinction coefficient (= kappa_R * rho; here
-// a fixed/analytic constant -- the tabulated multigroup opacity of #7/#24 is a later
-// slice), c is the code-unit speed of light, and lambda(R) is the LARSEN flux limiter of
+// where chi [1/length] is the (Rosseland) extinction coefficient (= kappa_R * rho): a
+// fixed/analytic constant by default, or -- via EnableLocalChi (#204) -- a PER-CELL field
+// chi(rho,Te) refreshed from the tabulated IONMIX opacity, with the face value taken as
+// the harmonic mean of the two cells (a thick|thin liner|gap interface face is dominated
+// by the transparent side, so the surface vents at the streaming-limited flux ~c E).
+// c is the code-unit speed of light, and lambda(R) is the LARSEN flux limiter of
 // the dimensionless gradient R = |grad E_r| / (chi E_r):
 //
 //     lambda(R) = ( 3^n + R^n )^(-1/n)   ->  1/3  (R->0, optically-thick diffusion limit)
@@ -139,8 +142,20 @@ class FLDGreyOperator : public parabolic::ParabolicOperator {
   //! energy to efloor_ over active cells and accumulate the injected (floored-in) energy.
   void PostSuperstepProject(DvceArray5D<Real> &u) override;
 
+  //! \brief Switch the operator to a PER-CELL extinction field chi(m,0,k,j,i) (#204):
+  //! the flux kernels and the stability dt read the face-averaged local chi in place of
+  //! the constant scalar, so a chi(rho,Te) lookup makes the dense liner opaque and the
+  //! tenuous vacuum gap transparent.  The caller owns + refreshes the field (it is
+  //! frozen over a super-step like the rest of the operator-split background); the
+  //! array must be erad-shaped (ghosts included, component 0).
+  void EnableLocalChi(const DvceArray5D<Real> &chi_cell) {
+    chi_c_ = chi_cell;
+    local_chi_ = true;
+  }
+
   // accessors (used by the verification driver / unit test)
   Real chi() const { return chi_; }
+  bool local_chi() const { return local_chi_; }
   Real c_light() const { return c_; }
   Real efloor() const { return efloor_; }
   //! \brief Total energy added by the positivity floor across all PostSuperstepProject
@@ -153,6 +168,8 @@ class FLDGreyOperator : public parabolic::ParabolicOperator {
   DvceArray5D<Real> erad_;      // the live radiation-energy field (for the explicit dt)
   Real c_;                      // code-unit speed of light
   Real chi_;                    // constant extinction coefficient kappa_R*rho [1/length]
+  DvceArray5D<Real> chi_c_;     // optional per-cell extinction field (#204); see
+  bool local_chi_ = false;      //   EnableLocalChi -- false => the constant chi_ path
   Real nlarsen_;                // Larsen flux-limiter exponent n
   Real esrc_;                   // inner-x1 Dirichlet source value (<0 => zero-gradient)
   Real efloor_;                 // positivity floor for erad (#194): read-floor+projection

@@ -18,6 +18,7 @@
 #include "tasklist/task_list.hpp"
 #include "bvals/bvals.hpp"
 #include "eos/eos_table_3t.hpp"  // tabulated 3T (IONMIX) EOS state on the package (#159)
+#include "opacity/multigroup_opacity.hpp"  // per-cell grey chi(rho,Te) lookup (#204)
 
 // forward declarations
 namespace parabolic {
@@ -159,6 +160,23 @@ class MHD {
   DvceArray5D<Real> erad;
   FLDGreyOperator *pfld_op = nullptr;
 
+  // #204: per-cell grey extinction chi(rho,Te) in place of the frozen SI-calibrated
+  // constant.  `<mhd> fld_opacity_local=true` (requires eos=tabulated_3t) reads the
+  // multigroup opacity table (default: the SAME cn4 file as the EOS, density axis
+  // rescaled to g/cc via eos_mass_per_ion), allocates the erad-shaped `fld_chi_cell`,
+  // and registers it with the grey operator (EnableLocalChi).  RefreshFldLocalChi()
+  // re-fills the field from the live u0 (rho + electron energy -> Te closure -> grey
+  // Rosseland mean); it is called once per super-step at the operator-split call sites
+  // (the state, hence chi, is frozen across the RKL2 substages).  Default off ->
+  // byte-identical scalar-chi behavior.
+  bool fld_opacity_local = false;
+  DvceArray5D<Real> fld_chi_cell;
+  opacity::MultigroupOpacity fld_opac_tbl;
+  Real fld_opac_dens_cgs = 1.0;   // code density -> opacity-table density [g/cc]
+  Real fld_opac_len_cgs = 1.0;    // cm per code length (chi cgs -> 1/code-length)
+  Real fld_chi_floor = 0.0;       // positive floor for the refreshed chi
+  void RefreshFldLocalChi();
+
   // Multigroup flux-limited radiation diffusion (FLD), advanced operator-split (RKL2 STS)
   // in the same MHD once-per-step slot (#111/[A4], ADR-0001/ADR-0007).  `erad_mg` is the
   // standalone per-group radiation-energy field (var extent == number of photon-energy
@@ -254,6 +272,8 @@ class MHD {
   Real mrad_arad = 1.0;      // radiation constant a
   Real mrad_clight = 1.0;    // code-unit speed of light c
   bool mrad_eos_aware = false;  // c_v from the tabulated_3t closure (#183/[P7c]) vs const
+  bool mrad_opacity_local = false;  // #204: per-cell Planck chi_a(rho,Te) vs the frozen
+                                    //   constant; shares fld_opac_tbl + the unit convs
 
   // following only used for time-evolving flow
   DvceArray5D<Real> u1;       // conserved variables, second register

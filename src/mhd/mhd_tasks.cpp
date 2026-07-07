@@ -27,6 +27,8 @@
 #include "shearing_box/orbital_advection.hpp"
 #include "driver/driver.hpp"
 #include "driver/parabolic_integrator.hpp"
+#include "diffusion/operator_si_calibration.hpp"
+#include "radiation_fld/grey_opacity_mean.hpp"
 #include "driver/composite_parabolic_operator.hpp"
 #include "radiation_fld/matter_radiation_coupling.hpp"
 #include "radiation_fld/fld_grey_operator.hpp"
@@ -175,6 +177,8 @@ TaskStatus MHD::SaveMHDState(Driver *pdrive, int stage) {
 
 TaskStatus MHD::OperatorSplitFLD(Driver *pdrive, int stage) {
   if (pfld_op == nullptr) { return TaskStatus::complete; }
+  // #204: refresh the per-cell chi(rho,Te) from the live state once per super-step.
+  if (fld_opacity_local) { RefreshFldLocalChi(); }
   parabolic::OperatorSplitStep(pdrive->pparabolic, *pfld_op, erad,
                                pmy_pack->pmesh->dt);
   return TaskStatus::complete;
@@ -397,6 +401,9 @@ TaskStatus MHD::StrangParabolicHalf(Driver *pdrive, int stage) {
       // Strang half acts on the *driving* field.  Off by default => byte-identical.
       const bool couple = (strang_field_ids[n] == SF_BPHI) && resb_couple_b0;
       if (couple) { CoupleResbBphiFromB0(); }
+      // #204: refresh the per-cell grey chi(rho,Te) from the live state once per
+      // Strang half super-step (the erad composite wraps pfld_op).
+      if (strang_field_ids[n] == SF_ERAD && fld_opacity_local) { RefreshFldLocalChi(); }
       parabolic::OperatorSplitStep(pdrive->pparabolic, *strang_comps[n], *field, half_dt);
       if (couple) { CoupleResbBphiToB0(); }
     }
@@ -431,6 +438,11 @@ TaskStatus MHD::MatterRadCouplingHalf(Driver *pdrive, int stage) {
   // read c_v from the same tabulated closure ConsToPrim2T uses, instead of the constant
   // placeholder.  The electron internal energy density rides scalar 0 (index nmhd).
   const bool eos_aware = mrad_eos_aware;
+  // #204: per-cell Planck chi_a(rho,Te) (grey Planck mean of the shared opacity table)
+  // in place of the frozen constant -- the vacuum gap stops exchanging at solid opacity.
+  const bool opac_local = mrad_opacity_local;
+  const Real dens_cgs = fld_opac_dens_cgs, len_cgs = fld_opac_len_cgs;
+  auto opac = fld_opac_tbl;
   const int eele_idx = nmhd;
   auto tbl = pmy_pack->pmhd->eos_tbl;
   par_for("mrad_cpl", DevExeSpace(), 0, nmb1, ks, ke, js, je, is, ie,
@@ -445,17 +457,27 @@ TaskStatus MHD::MatterRadCouplingHalf(Driver *pdrive, int stage) {
     Real e_gas = u(m,IEN,k,j,i) - ke_d - me_d;
     // per-cell heat capacity: tabulated closure (volumetric c_v = rho*(c_v,e + c_v,i) at
     // inverted electron/ion temperatures) when EOS-aware, else the constant placeholder.
+    // Per-cell Planck chi_a(rho,Te) when opacity-local (#204), else the constant.
     Real cv_cell = cv;
-    if (eos_aware && rho > 0.0) {
+    Real chia_cell = chia;
+    if ((eos_aware || opac_local) && rho > 0.0) {
       Real e_ele = u(m,eele_idx,k,j,i);          // electron internal energy density
-      Real e_ion = e_gas - e_ele;                // ion energy by subtraction (ADR-0002)
       Real te = tbl.Te(rho, e_ele/rho);
-      Real ti = tbl.Ti(rho, e_ion/rho);
-      cv_cell = rho*(tbl.CvEle(rho, te) + tbl.CvIon(rho, ti));   // specific -> volumetric
+      if (eos_aware) {
+        Real e_ion = e_gas - e_ele;              // ion energy by subtraction (ADR-0002)
+        Real ti = tbl.Ti(rho, e_ion/rho);
+        cv_cell = rho*(tbl.CvEle(rho, te) + tbl.CvIon(rho, ti));  // specific->volumetric
+      }
+      if (opac_local) {
+        Real rho_cgs = rho*dens_cgs;
+        Real kap = radiationfld::GreyPlanckMean(opac, rho_cgs, te, 1.0);
+        Real ch = op_si_calib::OpacityCodeFromCgs(kap, rho_cgs, len_cgs);
+        chia_cell = (ch > 0.0) ? ch : 0.0;       // no exchange for degenerate lookups
+      }
     }
     Real e_rad_new, e_gas_new;
-    radiationfld::PointImplicitGreyCoupling(er(m,0,k,j,i), e_gas, cv_cell, chia, cl, arad,
-                                            half_dt, e_rad_new, e_gas_new);
+    radiationfld::PointImplicitGreyCoupling(er(m,0,k,j,i), e_gas, cv_cell, chia_cell,
+                                            cl, arad, half_dt, e_rad_new, e_gas_new);
     er(m,0,k,j,i) = e_rad_new;
     u(m,IEN,k,j,i) = e_gas_new + ke_d + me_d;
   });

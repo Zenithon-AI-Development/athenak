@@ -25,6 +25,7 @@
 #include "bvals/bvals.hpp"
 #include "opacity/multigroup_opacity.hpp"
 #include "opacity/ionmix_opacity_reader.hpp"
+#include "radiation_fld/local_grey_opacity.hpp"
 #include "radiation_fld/fld_grey_operator.hpp"
 #include "radiation_fld/fld_multigroup_operator.hpp"
 #include "diffusion/aniso_conduction_operator.hpp"
@@ -288,6 +289,33 @@ MHD::MHD(MeshBlockPack *ppack, ParameterInput *pin) :
     Real fld_up  = pin->GetOrAddReal("mhd","fld_upwind", 1.0);
     pfld_op = new FLDGreyOperator(ppack, pin, erad, fld_c, fld_chi, fld_nl, fld_es,
                                   fld_ef, fld_up);
+    // #204: per-cell chi(rho,Te) lookup replacing the frozen reference-state constant
+    // (which treated the tenuous vacuum gap at solid-liner opacity).  Requires the
+    // tabulated_3t closure for the per-cell Te inversion -- warn + ignore otherwise
+    // (the mrad_eos_aware precedent, #183).
+    fld_opacity_local = pin->GetOrAddBoolean("mhd","fld_opacity_local",false);
+    if (fld_opacity_local && (eqn_of_state.compare("tabulated_3t") != 0)) {
+      std::cout << "### WARNING in " << __FILE__ << " at line " << __LINE__
+                << ": <mhd> fld_opacity_local=true ignored (requires eos=tabulated_3t);"
+                << " grey FLD uses the constant fld_chi." << std::endl;
+      fld_opacity_local = false;
+    }
+    if (fld_opacity_local) {
+      // the opacity records live in the SAME cn4 file as the EOS unless overridden;
+      // eos_mass_per_ion rescales the cn4 ion-number-density axis to g/cc (as the EOS
+      // reader does), so lookups take mass density in g/cc.
+      std::string ofile = pin->GetOrAddString("mhd","fld_opacity_file",
+                                              pin->GetString("mhd","eos_table"));
+      Real mion = pin->GetOrAddReal("mhd","eos_mass_per_ion",1.0);
+      opacity::ReadIonmixCn4Opacity(ofile, fld_opac_tbl, mion);
+      fld_opac_dens_cgs = pin->GetOrAddReal("units","density_cgs",1.0);
+      fld_opac_len_cgs  = pin->GetOrAddReal("units","length_cgs",1.0);
+      fld_chi_floor     = pin->GetOrAddReal("mhd","fld_chi_floor",1.0e-10);
+      Kokkos::realloc(fld_chi_cell, nmb, 1, ncells3, ncells2, ncells1);
+      // defined (constant) values until the first per-super-step refresh
+      Kokkos::deep_copy(fld_chi_cell, fld_chi);
+      pfld_op->EnableLocalChi(fld_chi_cell);
+    }
   }
 
   // Multigroup flux-limited radiation diffusion (FLD) wired operator-split into the MHD
@@ -484,6 +512,26 @@ MHD::MHD(MeshBlockPack *ppack, ParameterInput *pin) :
                 << ": <mhd> mrad_eos_aware=true ignored (requires eos=tabulated_3t); "
                 << "coupling uses the constant mrad_cv." << std::endl;
       mrad_eos_aware = false;
+    }
+    // #204: per-cell Planck absorption chi_a(rho,Te) in place of the frozen constant
+    // (which locked the near-massless vacuum gap to radiative equilibrium at solid
+    // opacity).  Requires the tabulated_3t closure for the per-cell Te; shares the
+    // opacity table + unit conversions with fld_opacity_local, loading them here when
+    // the FLD knob did not.
+    mrad_opacity_local = pin->GetOrAddBoolean("mhd","mrad_opacity_local",false);
+    if (mrad_opacity_local && (eqn_of_state.compare("tabulated_3t") != 0)) {
+      std::cout << "### WARNING in " << __FILE__ << " at line " << __LINE__
+                << ": <mhd> mrad_opacity_local=true ignored (requires eos=tabulated_3t);"
+                << " coupling uses the constant mrad_chi_a." << std::endl;
+      mrad_opacity_local = false;
+    }
+    if (mrad_opacity_local && fld_opac_tbl.ngroups == 0) {
+      std::string ofile = pin->GetOrAddString("mhd","fld_opacity_file",
+                                              pin->GetString("mhd","eos_table"));
+      Real mion = pin->GetOrAddReal("mhd","eos_mass_per_ion",1.0);
+      opacity::ReadIonmixCn4Opacity(ofile, fld_opac_tbl, mion);
+      fld_opac_dens_cgs = pin->GetOrAddReal("units","density_cgs",1.0);
+      fld_opac_len_cgs  = pin->GetOrAddReal("units","length_cgs",1.0);
     }
   }
 
@@ -729,6 +777,21 @@ void MHD::SetSaveWBcc() {
   Kokkos::realloc(bccsaved, nmb, 3,               ncells3, ncells2, ncells1);
 
   wbcc_saved = true;
+}
+
+//----------------------------------------------------------------------------------------
+//! \fn void MHD::RefreshFldLocalChi()
+//! \brief Re-fill the per-cell grey extinction field chi(rho,Te) from the live conserved
+//! state (#204): rho = u0(IDN), Te from the tabulated_3t closure on the electron-energy
+//! scalar, grey Rosseland mean of the multigroup opacity at the local state.  Called
+//! once per RKL2 super-step at the operator-split call sites (the operator-split
+//! background, hence chi, is frozen across the substages).  Ghost cells included -- the
+//! flux kernels read the face-harmonic chi one cell into the ghost region.
+
+void MHD::RefreshFldLocalChi() {
+  radiationfld::RefreshGreyChiField(u0, nmhd, eos_tbl, fld_opac_tbl,
+                                    fld_opac_dens_cgs, fld_opac_len_cgs,
+                                    fld_chi_floor, fld_chi_cell);
 }
 
 } // namespace mhd
