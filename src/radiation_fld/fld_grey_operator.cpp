@@ -45,6 +45,7 @@ FLDGreyOperator::FLDGreyOperator(MeshBlockPack *pp, ParameterInput *pin,
   upwind_(upwind),
   injected_energy_(0.0),
   irad_(0),
+  chi_c_("fld_op_chic", 1, 1, 1, 1, 1),
   rflx_("fld_op_rflx", erad.extent_int(0), erad.extent_int(1),
         erad.extent_int(2), erad.extent_int(3), erad.extent_int(4)),
   pbval_flux_(nullptr),
@@ -97,6 +98,8 @@ void FLDGreyOperator::OperatorAction(const DvceArray5D<Real> &u_in,
   auto size = pmy_pack->pmb->mb_size;
   auto csys = pmy_pack->pcoord->coord_system;
   Real cc = c_, chi = chi_, nl = nlarsen_, efloor = efloor_, upwind = upwind_;
+  auto chic = chi_c_;
+  const bool lchi = local_chi_;
   int irad = irad_;
   auto &flx1 = rflx_.x1f;
   auto &flx2 = rflx_.x2f;
@@ -114,11 +117,19 @@ void FLDGreyOperator::OperatorAction(const DvceArray5D<Real> &u_in,
   KOKKOS_LAMBDA(const int m, const int k, const int j, const int i) {
     Real el = u_in(m,irad,k,j,i-1);
     Real er = u_in(m,irad,k,j,i);
+    // per-cell chi (#204): face value = HARMONIC mean of the two cells' extinction, so
+    // a thick|thin (liner|vacuum-gap) interface face is dominated by the TRANSPARENT
+    // side -- the limiter then sees a large R and the face vents at the streaming-
+    // limited surface flux ~c E (the physical surface luminosity), instead of being
+    // throttled to the opaque side's diffusive trickle as an arithmetic mean would.
+    // For chi_L ~ chi_R (smooth interior) harmonic == arithmetic to O(contrast^2).
+    Real chif = lchi ? 2.0*chic(m,0,k,j,i-1)*chic(m,0,k,j,i)
+                       /(chic(m,0,k,j,i-1) + chic(m,0,k,j,i)) : chi;
     Real dedx = (er - el)/size.d_view(m).dx1;
     Real eface = 0.5*(el + er);
-    Real R = Kokkos::fabs(dedx)/(chi*Kokkos::fmax(eface, efloor));
+    Real R = Kokkos::fabs(dedx)/(chif*Kokkos::fmax(eface, efloor));
     Real lam = LarsenLimiter(R, nl);
-    Real D = cc*lam/chi;
+    Real D = cc*lam/chif;
     // LF streaming dissipation (#194): signal speed cc*lam*R (-> c streaming) GATED by
     // the advective fraction (1-3 lam)_+ (0 thick where lam=1/3, -> 1 streaming) so it
     // vanishes as ~R^2 where the scheme is already a stable diffusion (battery B)
@@ -138,11 +149,13 @@ void FLDGreyOperator::OperatorAction(const DvceArray5D<Real> &u_in,
       if (csys == CoordSystem::cylindrical) {
         x1v2 = CellCenterX(i-is, nx1, size.d_view(m).x1min, size.d_view(m).x1max);
       }
+      Real chif = lchi ? 2.0*chic(m,0,k,j-1,i)*chic(m,0,k,j,i)
+                         /(chic(m,0,k,j-1,i) + chic(m,0,k,j,i)) : chi;  // #204 harmonic
       Real dedx = (er - el)/CenterWidth2(csys, size.d_view(m).dx2, x1v2);
       Real eface = 0.5*(el + er);
-      Real R = Kokkos::fabs(dedx)/(chi*Kokkos::fmax(eface, efloor));
+      Real R = Kokkos::fabs(dedx)/(chif*Kokkos::fmax(eface, efloor));
       Real lam = LarsenLimiter(R, nl);
-      Real D = cc*lam/chi;
+      Real D = cc*lam/chif;
       Real alf = cc*lam*R*Kokkos::fmax(0.0, 1.0 - 3.0*lam);  // gated LF (#194)
       flx2(m,irad,k,j,i) = -D*dedx - 0.5*upwind*alf*(er - el);
     });
@@ -152,11 +165,13 @@ void FLDGreyOperator::OperatorAction(const DvceArray5D<Real> &u_in,
     KOKKOS_LAMBDA(const int m, const int k, const int j, const int i) {
       Real el = u_in(m,irad,k-1,j,i);
       Real er = u_in(m,irad,k,j,i);
+      Real chif = lchi ? 2.0*chic(m,0,k-1,j,i)*chic(m,0,k,j,i)
+                         /(chic(m,0,k-1,j,i) + chic(m,0,k,j,i)) : chi;  // #204 harmonic
       Real dedx = (er - el)/size.d_view(m).dx3;
       Real eface = 0.5*(el + er);
-      Real R = Kokkos::fabs(dedx)/(chi*Kokkos::fmax(eface, efloor));
+      Real R = Kokkos::fabs(dedx)/(chif*Kokkos::fmax(eface, efloor));
       Real lam = LarsenLimiter(R, nl);
-      Real D = cc*lam/chi;
+      Real D = cc*lam/chif;
       Real alf = cc*lam*R*Kokkos::fmax(0.0, 1.0 - 3.0*lam);  // gated LF (#194)
       flx3(m,irad,k,j,i) = -D*dedx - 0.5*upwind*alf*(er - el);
     });
@@ -219,6 +234,8 @@ Real FLDGreyOperator::ExplicitStableDt() {
   auto &u = erad_;
   Real cc = c_, chi = chi_, nl = nlarsen_, efloor = efloor_;
   Real upwind = upwind_;
+  auto chic = chi_c_;
+  const bool lchi = local_chi_;
   auto csys = pmy_pack->pcoord->coord_system;
   int irad = irad_;
 
@@ -240,9 +257,13 @@ Real FLDGreyOperator::ExplicitStableDt() {
     // central-difference estimate over-counted (a floored cell beside a bright neighbour
     // reported a near-zero D -> too-large dt -> RKL2 under-staged -> runaway).
     Real e0 = u(m,irad,k,j,i);
+    Real chi0 = lchi ? chic(m,0,k,j,i) : chi;
     Real w1 = size.d_view(m).dx1;
-    Real Dm = FaceDeff(u(m,irad,k,j,i-1), e0, w1, cc, chi, nl, efloor, upwind);
-    Real Dp = FaceDeff(e0, u(m,irad,k,j,i+1), w1, cc, chi, nl, efloor, upwind);
+    // per-face HARMONIC chi (#204), same as the flux kernels (face-consistent dt).
+    Real chm = lchi ? 2.0*chic(m,0,k,j,i-1)*chi0/(chic(m,0,k,j,i-1) + chi0) : chi;
+    Real chp = lchi ? 2.0*chi0*chic(m,0,k,j,i+1)/(chi0 + chic(m,0,k,j,i+1)) : chi;
+    Real Dm = FaceDeff(u(m,irad,k,j,i-1), e0, w1, cc, chm, nl, efloor, upwind);
+    Real Dp = FaceDeff(e0, u(m,irad,k,j,i+1), w1, cc, chp, nl, efloor, upwind);
     Real invsum = (Dm + Dp)/SQR(w1);
     if (multi_d) {
       Real x1v = 0.0;
@@ -250,14 +271,18 @@ Real FLDGreyOperator::ExplicitStableDt() {
         x1v = CellCenterX(i-is, nx1, size.d_view(m).x1min, size.d_view(m).x1max);
       }
       Real w2 = CenterWidth2(csys, size.d_view(m).dx2, x1v);
-      Real Dm2 = FaceDeff(u(m,irad,k,j-1,i), e0, w2, cc, chi, nl, efloor, upwind);
-      Real Dp2 = FaceDeff(e0, u(m,irad,k,j+1,i), w2, cc, chi, nl, efloor, upwind);
+      Real chm2 = lchi ? 2.0*chic(m,0,k,j-1,i)*chi0/(chic(m,0,k,j-1,i) + chi0) : chi;
+      Real chp2 = lchi ? 2.0*chi0*chic(m,0,k,j+1,i)/(chi0 + chic(m,0,k,j+1,i)) : chi;
+      Real Dm2 = FaceDeff(u(m,irad,k,j-1,i), e0, w2, cc, chm2, nl, efloor, upwind);
+      Real Dp2 = FaceDeff(e0, u(m,irad,k,j+1,i), w2, cc, chp2, nl, efloor, upwind);
       invsum += (Dm2 + Dp2)/SQR(w2);
     }
     if (three_d) {
       Real w3 = size.d_view(m).dx3;
-      Real Dm3 = FaceDeff(u(m,irad,k-1,j,i), e0, w3, cc, chi, nl, efloor, upwind);
-      Real Dp3 = FaceDeff(e0, u(m,irad,k+1,j,i), w3, cc, chi, nl, efloor, upwind);
+      Real chm3 = lchi ? 2.0*chic(m,0,k-1,j,i)*chi0/(chic(m,0,k-1,j,i) + chi0) : chi;
+      Real chp3 = lchi ? 2.0*chi0*chic(m,0,k+1,j,i)/(chi0 + chic(m,0,k+1,j,i)) : chi;
+      Real Dm3 = FaceDeff(u(m,irad,k-1,j,i), e0, w3, cc, chm3, nl, efloor, upwind);
+      Real Dp3 = FaceDeff(e0, u(m,irad,k+1,j,i), w3, cc, chp3, nl, efloor, upwind);
       invsum += (Dm3 + Dp3)/SQR(w3);
     }
     if (invsum > 0.0) { min_dt = fmin(min_dt, 1.0/invsum); }

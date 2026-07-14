@@ -1,0 +1,70 @@
+# AthenaK input file for the tabulated 3T (IONMIX) EOS live-MHD cons->prim unit test
+# (unit_tests/fld_opacity_local_wiring_test, issue [P1]/#159).
+#
+# All checks run in ProblemGenerator::UserProblem on a fully-initialized MHD package and
+# the program exits before any time integration (nlim = tlim = 0).  Selecting
+# eos=tabulated_3t makes the mesh construct the real tabulated-EOS MHD closure, reading the
+# .cn4 table from <mhd>/eos_table into the EosTable3T held on the package -- so reaching
+# UserProblem at all proves the selector + reader path (AC#1).
+#
+# <mhd>/eos_table is the path to a real IONMIX cn4 EOS table.  The default below is a
+# repo-relative placeholder; the Python wrapper (test_unit_tabulated_mhd_c2p_cpu.py)
+# overrides it on the command line with the ABSOLUTE path to inputs/ionmix/al-imx-004.cn4
+# (the test runs from tst/build_unit/<name>/src, so a relative path would not resolve).
+
+<comment>
+problem   = Tabulated 3T (IONMIX) EOS live-MHD cons->prim unit test
+
+<job>
+basename  = fld_opacity_local_wiring_test   # problem ID: basename of output filenames
+
+<mesh>
+nghost    = 2          # Number of ghost cells
+nx1       = 4          # Number of zones in X1-direction
+x1min     = -1.0       # minimum value of X1
+x1max     = 1.0        # maximum value of X1
+ix1_bc    = outflow    # inner-X1 boundary flag
+ox1_bc    = outflow    # outer-X1 boundary flag
+
+nx2       = 4          # Number of zones in X2-direction
+x2min     = -1.0       # minimum value of X2
+x2max     = 1.0        # maximum value of X2
+ix2_bc    = outflow    # inner-X2 boundary flag
+ox2_bc    = outflow    # outer-X2 boundary flag
+
+nx3       = 4          # Number of zones in X3-direction
+x3min     = -1.0       # minimum value of X3
+x3max     = 1.0        # maximum value of X3
+ix3_bc    = outflow    # inner-X3 boundary flag
+ox3_bc    = outflow    # outer-X3 boundary flag
+
+<meshblock>
+nx1       = 4          # Number of cells in each MeshBlock, X1-dir
+nx2       = 4          # Number of cells in each MeshBlock, X2-dir
+nx3       = 4          # Number of cells in each MeshBlock, X3-dir
+
+<time>
+evolution  = dynamic   # dynamic/kinematic/static
+integrator = rk2       # time integration algorithm
+cfl_number = 0.2       # The Courant, Friedrichs, & Lewy (CFL) Number
+nlim       = 0         # cycle limit (0: do no integration, just run UserProblem)
+tlim       = 0         # time limit
+ndiag      = 1         # cycles between diagnostic output
+
+<mhd>
+eos         = tabulated_3t                     # tabulated 3T (IONMIX) real-material EOS
+eos_table   = inputs/ionmix/al-imx-004.cn4     # IONMIX cn4 table (overridden by the test)
+reconstruct = plm                              # spatial reconstruction method
+rsolver     = hlld                             # Riemann solver (unused at nlim=0)
+gamma       = 1.6666666666666667               # ideal-gamma wave-speed bookkeeping (#162)
+nscalars    = 1                                # passive scalar 0 carries e_ele/rho
+fld_operator_split = true                      # grey FLD radiation (erad allocated)
+fld_c_light        = 10.0                      # RSLA code light speed (unused at nlim=0)
+fld_efloor         = 1.0e-10                   # erad positivity floor
+fld_opacity_local  = true                      # #204: per-cell chi(rho,Te) lookup
+fld_chi_floor      = 1.0e-8                    # positive floor for the local chi
+
+<units>
+length_cgs   = 0.1      # B1 deck units: 1 code length = 1 mm
+density_cgs  = 2.7      # 1 code density = solid aluminum
+velocity_cgs = 1.0e8    # 1 code time = 1 ns

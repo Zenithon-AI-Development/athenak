@@ -178,6 +178,17 @@ fld_upwind           = 1.0        # Lax-Friedrichs streaming-dissipation gate (#
                                   #   stabilized (radiation-ON coupled stack stays NaN-clean at
                                   #   stagnation).  Thick-limit byte-identical; 0 => bare flux.
                                   #   Read ONLY when fld_operator_split on (via GetOrAddReal).
+fld_opacity_local    = true       # #204: per-cell grey chi(rho,Te) from the IONMIX table (grey
+                                  #   Rosseland mean; the cn4 opacity records of eos_table) in
+                                  #   place of the frozen solid-density constant above -- opaque
+                                  #   liner, TRANSPARENT vacuum gap (radiation can free-stream
+                                  #   across it and vent the liner surface).  Requires
+                                  #   eos=tabulated_3t; read only when fld_operator_split on.
+fld_chi_floor        = 1.0e-3     # positive floor for the local chi [1/code-length]: bounds the
+                                  #   flat-vacuum thick-branch D = c/(3 chi) (an RKL2 substage-
+                                  #   count guard, NOT physics -- tau over the whole 4.7 mm
+                                  #   domain at the floor is ~5e-3, still transparent).  Raise
+                                  #   if the super-step substage count blows up.
 mrad_coupling        = false      # point-implicit matter-radiation energy exchange (issue 23)
 mrad_chi_a           = 0.04       # absorption opacity (matter-radiation coupling)
 mrad_cv              = 1.5e-3     # constant heat capacity (EOS-inconsistent placeholder)
@@ -185,6 +196,11 @@ mrad_arad            = 1.0e-6     # radiation constant (code units)
 mrad_clight          = 10.0       # coupling light speed (code units)
 mrad_eos_aware       = true       # read c_v from the tabulated_3t closure (rho*(cv_e+cv_i)) not
                                   #   the constant mrad_cv (#183/[P7c], gap c).  Read only when
+                                  #   mrad_coupling is on => baseline byte-identical.
+mrad_opacity_local   = true       # #204: per-cell Planck chi_a(rho,Te) (grey Planck mean of the
+                                  #   same cn4 opacity records) in place of the frozen constant,
+                                  #   so the near-massless gap no longer absorbs/emits at solid
+                                  #   opacity.  Requires eos=tabulated_3t; read only when
                                   #   mrad_coupling is on => baseline byte-identical.
 
 <problem>
