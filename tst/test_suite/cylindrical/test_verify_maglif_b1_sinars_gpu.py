@@ -223,10 +223,45 @@ def _radiograph_mod(x, sigma, zn, k):
     return float(np.hypot(a, b)) / (abs(base) + 1.0e-30)
 
 
+def _spike_bubble_amp(rz):
+    """Spike-bubble amplitude (max - min)/2 of an interface/limb trace.
+
+    The Sinars 2011 observable: radiograph spike-to-bubble excursion (B2 convention,
+    spike = max radius on the run-in).  Unlike the mode-k Fourier projection this does
+    NOT saturate near lambda/2pi or phase-cancel once the mode goes nonlinear -- in
+    b1_window120_204 the fundamental reported 1.3x while this grew 4.5x by 84 ns.
+    """
+    good = rz[np.isfinite(rz)]
+    return float(0.5 * (np.max(good) - np.min(good)))
+
+
+def _limb_edge(x, sigma):
+    """Per-z outermost half-max crossing of the synthetic radiograph Sigma(z, x).
+
+    The bright-limb edge position -- the contour a radiograph measurement tracks.
+    """
+    nz = sigma.shape[0]
+    out = np.full(nz, np.nan)
+    for kz in range(nz):
+        s = sigma[kz]
+        pk = s.max()
+        if pk <= 0.0:
+            continue
+        half = 0.5 * pk
+        idx = np.where(s >= half)[0]
+        hi = idx[-1]
+        if hi == len(x) - 1:
+            out[kz] = x[hi]
+        else:
+            out[kz] = x[hi] + (half - s[hi]) / (s[hi + 1] - s[hi]) * (x[hi + 1] - x[hi])
+    return out
+
+
 def _trajectory(files):
-    """Reduce a run's snapshots to (z, zn, times, R_liner, R_front, a_outer, rad_mod)."""
+    """Reduce a run's snapshots to (z, zn, times, R_liner, R_front, a_outer, rad_mod,
+    a_sb) -- a_sb is the radiograph limb-edge spike-bubble amplitude [mm]."""
     z = zn = None
-    times, r_liner, r_front, a_outer, rad_mod = [], [], [], [], []
+    times, r_liner, r_front, a_outer, rad_mod, a_sb = [], [], [], [], [], []
     for fp in files:
         d = bin_convert.read_binary_as_athdf(fp)
         if z is None:
@@ -239,8 +274,9 @@ def _trajectory(files):
         r_front.append(float(np.nanmean(r_in)))
         a_outer.append(_mode_amp(r_out, zn, PERT_MODE))
         rad_mod.append(_radiograph_mod(xrad, sigma, zn, PERT_MODE))
+        a_sb.append(_spike_bubble_amp(_limb_edge(xrad, sigma)))
     return (z, zn, np.array(times), np.array(r_liner), np.array(r_front),
-            np.array(a_outer), np.array(rad_mod))
+            np.array(a_outer), np.array(rad_mod), np.array(a_sb))
 
 
 def _plot_snapshot(files, z):
@@ -271,7 +307,7 @@ def test_verify_maglif_b1_sinars_gpu():
         shutil.rmtree(build_dir, ignore_errors=True)
     try:
         files = _run("maglif_b1_sinars")
-        z, zn, times, r_liner, r_front, a_outer, rad_mod = _trajectory(files)
+        z, zn, times, r_liner, r_front, a_outer, rad_mod, a_sb = _trajectory(files)
 
         # Final snapshot is finite and stable (the implosion ran in cleanly, no blow-up).
         fin = bin_convert.read_binary_as_athdf(files[-1])
@@ -332,7 +368,7 @@ def test_verify_maglif_b1_sinars_gpu():
         # exactly 1-D (no axial structure) -- proving the growth comes from the seed, not
         # the numerics.  This is the binding control.
         cfiles = _run("maglif_b1_sinars_ctl", 0.0)
-        _, _, ctimes, cr_liner, _, ca_outer, _ = _trajectory(cfiles)
+        _, _, ctimes, cr_liner, _, ca_outer, _, _ = _trajectory(cfiles)
         assert ca_outer.max() < FLAT_TOL, (
             f"pert_amp=0 control developed axial structure (max a_outer="
             f"{ca_outer.max():.3e} >= {FLAT_TOL}); not 1-D without the seed"
@@ -361,8 +397,12 @@ def test_verify_maglif_b1_sinars_gpu():
             )
             exp_points = None
         else:
+            # The committed curve is a radiograph SPIKE-BUBBLE measurement; compare it
+            # against the same observable (a_sb), not the mode-4 Fourier projection,
+            # which saturates near lambda/2pi and phase-rotates once the MRT goes
+            # nonlinear (b1_window120_204: fundamental 1.3x vs spike-bubble 4.5x).
             res = oracle.compare(
-                "B1", "single_mode_amplitude_growth", (times, a_outer)
+                "B1", "single_mode_amplitude_growth", (times, a_sb)
             )
             y_seed = float(min(datum.points, key=lambda p: float(p["x"]))["y"])
             exp_span = max(p["y"] for p in datum.points) / y_seed
@@ -373,16 +413,17 @@ def test_verify_maglif_b1_sinars_gpu():
                      "radiation, NOT strength; ADR-0011), filed as follow-up",
             )
             print(f"[B1] {res}  (reported, not asserted)")
-            print(f"[B1] faithful-SI seeded-mode peak amplitude {a_outer.max():.4f} mm "
-                  f"(Sinars curve spans ~{exp_span:.0f}x its seed)")
+            print(f"[B1] faithful-SI spike-bubble peak amplitude {a_sb.max():.4f} mm "
+                  f"(mode-4 fundamental peak {a_outer.max():.4f} mm; Sinars curve spans "
+                  f"~{exp_span:.0f}x its seed)")
             exp_points = [
                 {"x": p.x, "y": p.exp_value, "band": p.band}
                 for p in res.point_results
             ]
 
         overlay.overlay_curve(
-            "maglif_b1_sinars", times, a_outer, exp_points=exp_points,
-            xlabel="t", ylabel="seeded-mode amplitude [mm]",
+            "maglif_b1_sinars", times, a_sb, exp_points=exp_points,
+            xlabel="t", ylabel="spike-bubble amplitude [mm]",
             x_unit="ns", unit="mm", pending_issue=120,
             title="Faithful single-mode MRT growth vs Sinars 2011 (MagLIF benchmark 1)",
         )
@@ -395,6 +436,7 @@ def test_verify_maglif_b1_sinars_gpu():
                 "R_front": r_front,
                 "a_outer": a_outer,
                 "rad_mod": rad_mod,
+                "a_sb": a_sb,
             },
             coord_label="t",
             xlabel="t [ns]",
