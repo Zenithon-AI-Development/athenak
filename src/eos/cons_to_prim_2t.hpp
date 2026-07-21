@@ -80,8 +80,11 @@ GasState2T ConsToPrim2T(const EosTable3T &table, Real rho, Real e_ele, Real e_io
   // derived, cached temperatures from per-cell monotonic e->T inversion
   s.te = table.Te(rho, e_ele_specific);
   s.ti = table.Ti(rho, e_ion_specific);
-  // species pressures at their own temperatures, summed to close the MHD pressure
-  s.p_ele = table.PressureEle(rho, s.te);
+  // species pressures at their own temperatures, summed to close the MHD pressure.
+  // The electron pressure is floored by the zero-temperature Fermi degeneracy pressure
+  // (#209; zero unless SetDegeneracyFloor enabled it) so a cold dense shell keeps a
+  // physical dP/drho even where the table is ideal-ion nkT or edge-clamped off-table.
+  s.p_ele = fmax(table.PressureEle(rho, s.te), table.DegeneracyPressureFloor(rho));
   s.p_ion = table.PressureIon(rho, s.ti);
   s.p_gas = s.p_ele + s.p_ion;
   return s;

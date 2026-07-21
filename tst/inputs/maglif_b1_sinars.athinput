@@ -114,6 +114,15 @@ ndiag      = 1000
 eos              = tabulated_3t                    # faithful IONMIX 3T EOS (#174); radiation OFF
 eos_table        = inputs/ionmix/al-imx-004.cn4    # FLASH aluminum IONMIX cn4 (overridden by test)
 eos_mass_per_ion = 4.4804e-23                      # Al ion mass [g] -> number-density axis to g/cc
+eos_deg_zstar    = 3.0             # #209: Fermi degeneracy-pressure floor on p_ele, Al valence
+                                   #   Z*.  The cn4 table is ideal-ion nkT (cold Zbar ~ 0) and its
+                                   #   density axis ends at 44.8 g/cc (edge-clamp -> dP/drho = 0),
+                                   #   so the driven cold shell was pressureless dust: peak density
+                                   #   DIVERGED with resolution (4/23/164 code at dr 12.5/8.3/4.2 um,
+                                   #   t=78 ns).  The floor restores rho^(5/3) stiffness through and
+                                   #   beyond the table edge; equilibrium vs the ~16 Mbar drive caps
+                                   #   compression at ~4-6x solid.
+eos_deg_rho0     = 1.0             # floor reference: zero at/below solid Al (quiescent liner)
 nscalars         = 1                               # passive scalar 0 carries e_ele/rho (ADR-0002)
 reconstruct      = plm
 rsolver          = llf                             # required for tabulated_3t: routes p_gas(rho,e) (#162)
