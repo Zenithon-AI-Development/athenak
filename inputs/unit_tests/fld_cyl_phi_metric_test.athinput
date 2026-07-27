@@ -1,0 +1,73 @@
+# AthenaK input file for the FLD azimuthal-metric unit test
+# (unit_tests/fld_cyl_phi_metric_test).
+#
+# Minimal harness driver: all checks run in ProblemGenerator::UserProblem and the program
+# exits before any time integration (nlim = tlim = 0).  A single physics block is required
+# by MeshBlockPack::AddPhysics; unlike the Cartesian FLD unit tests this one cannot use
+# <z4c> (GR-only, and <coord> system = cylindrical is Newtonian-only), so it carries a tiny
+# ideal <mhd> block like the other cylindrical unit tests.  Both FLD operators are built
+# and exercised entirely inside UserProblem on their own radiation-energy arrays and need
+# no matter initial conditions.
+#
+# The mesh is CYLINDRICAL and 2-D in (r, phi), sited at r in [2.5, 3.5] so the r^2 factor
+# in the azimuthal Laplacian is large and unmistakable -- an operator that divides by the
+# raw dx2 (an angle) instead of the arc length r*dphi is off by ~9x here.  chi is huge so
+# the run sits in the optically-thick limit (lambda -> 1/3), which also gates the #194
+# Lax-Friedrichs streaming term off: the batteries then isolate the METRIC alone.
+
+<comment>
+problem   = FLD azimuthal metric on a cylindrical (r,phi) mesh (grey + multigroup)
+
+<job>
+basename  = fld_cyl_phi_metric_test   # problem ID: basename of output filenames
+
+<coord>
+system    = cylindrical  # (x1,x2,x3) = (r,phi,z)
+
+<problem>
+c_light   = 1.0        # code-unit speed of light
+n_larsen  = 2.0        # Larsen flux-limiter exponent
+chi_thick = 1.0e4      # extinction (huge => thick limit; LF streaming term gated off)
+rho_bg    = 1.0        # background density setting the multigroup chi_0 = rho_bg*kappa
+te_bg     = 1.0e2      # background electron temperature for the opacity lookup
+efloor    = 1.0e-30    # radiation-energy read floor
+
+<mesh>
+nghost    = 2          # Number of ghost cells
+nx1       = 16         # Number of zones in X1-direction (r)
+x1min     = 2.5        # minimum value of X1 (r >> 1 so the r^2 metric factor bites)
+x1max     = 3.5        # maximum value of X1
+ix1_bc    = outflow    # inner-X1 boundary flag
+ox1_bc    = outflow    # outer-X1 boundary flag
+
+nx2       = 32         # Number of zones in X2-direction (phi)
+x2min     = 0.0        # minimum value of X2
+x2max     = 6.283185307179586   # 2*pi: a full azimuthal wrap
+ix2_bc    = periodic   # inner-X2 boundary flag
+ox2_bc    = periodic   # outer-X2 boundary flag
+
+nx3       = 1          # Number of zones in X3-direction (z)
+x3min     = -0.5       # minimum value of X3
+x3max     = 0.5        # maximum value of X3
+ix3_bc    = periodic   # inner-X3 boundary flag
+ox3_bc    = periodic   # outer-X3 boundary flag
+
+<meshblock>
+nx1       = 16         # Number of cells in each MeshBlock, X1-dir
+nx2       = 32         # Number of cells in each MeshBlock, X2-dir
+nx3       = 1          # Number of cells in each MeshBlock, X3-dir
+
+<time>
+evolution            = dynamic   # dynamic/kinematic/static
+integrator           = rk2       # hyperbolic time integration algorithm
+parabolic_integrator = sts       # operator-split parabolic backend (RKL2 STS)
+cfl_number           = 0.3       # The Courant, Friedrichs, & Lewy (CFL) Number
+nlim                 = 0         # cycle limit (0: do no integration, just run UserProblem)
+tlim                 = 0         # time limit
+ndiag                = 1         # cycles between diagnostic output
+
+<mhd>
+eos         = ideal
+reconstruct = plm
+rsolver     = hlld
+gamma       = 1.666666666666667

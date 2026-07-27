@@ -38,6 +38,7 @@
 #include "mesh/mesh.hpp"
 #include "opacity/multigroup_opacity.hpp"
 #include "opacity/ionmix_opacity_reader.hpp"
+#include "radiation_fld/fld_grey_operator.hpp"
 #include "radiation_fld/fld_multigroup_operator.hpp"
 #include "driver/parabolic_integrator.hpp"
 #include "driver/composite_parabolic_operator.hpp"
@@ -335,6 +336,172 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
     }
     test.CheckTrue(min_g >= efloor - 1.0e-15,
                    "CompositeParabolicOperator forwards PostSuperstepProject (#197)");
+  }
+
+  // ===== (E2) per-group monotone-front streaming runaway (issue #215 <- #194) ==========
+  // Battery (E) seeds a CHECKERBOARD, whose Nyquist mode a central difference sees as
+  // ZERO gradient -- marginal, and reachable-green by the positivity floor alone.  It
+  // does NOT exercise what NaNs a real coupled run: a SUSTAINED MONOTONE STEEP FRONT.  In
+  // the streaming limit each group's Larsen-limited flux F_g = -D_g dE_g/dx collapses to
+  // F_g = -c*eface*sign(dE_g) -- the CENTERED discretization of advection, whose spatial
+  // eigenvalues are PURE IMAGINARY.  RKL2 is a parabolic STS scheme whose stability
+  // region
+  // hugs the negative-real axis, so it AMPLIFIES every imaginary mode at any stage count
+  // and a ~1-cell front grows E_g,max every super-step.  The floor (#197) is structurally
+  // blind to this HIGH-side runaway -- exactly the finding of #194 on the grey path.
+  //
+  // The grey operator took the fix (a Lax-Friedrichs streaming-dissipation term
+  // -0.5*upwind*alf*(er-el) with signal speed alf = c*lambda*R gated by (1-3 lambda)_+);
+  // the multigroup operator never did.  RED here on the unstabilized centered per-group
+  // flux (E_g,max -> NaN); GREEN once the per-group LF term lands.
+  {
+    const Real chi_fr  = pin->GetOrAddReal("problem", "chi_front_mg", 1.0);   // streaming
+    const Real esrc_fr = pin->GetOrAddReal("problem", "esrc_front_mg", 1.0);  // hot wall
+    const Real e_hi    = pin->GetOrAddReal("problem", "e_hi_mg", 1.0);        // bright
+    const Real e_lo    = pin->GetOrAddReal("problem", "e_lo_mg", 1.0e-6);     // cold
+    const Real dtf = pin->GetOrAddReal("problem", "dt_fac_front_mg", 5.0e1);  // dt/dt_exp
+    const int nstp =
+        static_cast<int>(pin->GetOrAddReal("problem", "nstep_front_mg", 2.0e2));
+
+    // free-streaming table: every group at the same small extinction chi_fr, so all NG
+    // groups sit in the streaming band together (a group-collapsing bug still fails (B)).
+    opacity::MultigroupOpacity tab_fr;
+    tab_fr.Allocate(NG, 2, 2, 1.0, 1.0e3, 1.0e-4, 1.0e0);
+    {
+      const Real kr = chi_fr/rho_bg;
+      auto h_kr = Kokkos::create_mirror_view(tab_fr.rosseland);
+      for (int g = 0; g < NG; ++g) {
+        for (int it = 0; it < tab_fr.ntemp; ++it) {
+          for (int id = 0; id < tab_fr.ndens; ++id) {
+            h_kr(g, it, id) = kr;
+          }
+        }
+      }
+      Kokkos::deep_copy(tab_fr.rosseland, h_kr);
+    }
+
+    DvceArray5D<Real> ef("erad_front_mg", nmb, NG, n3, n2, n1);
+    auto h_ef = Kokkos::create_mirror_view(ef);
+    const int imid = is + N/2;
+    for (int m = 0; m < nmb; ++m) {
+      for (int g = 0; g < NG; ++g) {
+        for (int k = 0; k < n3; ++k) {
+          for (int j = 0; j < n2; ++j) {
+            for (int i = 0; i < n1; ++i) {
+              // sharp monotone front: hot (e_hi) inner half, cold (e_lo) outer half; the
+              // hot inner-x1 Dirichlet wall (esrc_fr>0) sustains it through the drive.
+              h_ef(m, g, k, j, i) = (i < imid) ? e_hi : e_lo;
+            }
+          }
+        }
+      }
+    }
+    Kokkos::deep_copy(ef, h_ef);
+    FLDMultigroupOperator opf(pmbp, pin, ef, tab_fr, c_light, rho_bg, te_bg, nl,
+                              esrc_fr, efloor);
+    parabolic::ParabolicIntegrator integ2(parabolic::ParabolicMethod::sts);
+    auto efv = ef;
+    const Real e_lo_c = e_lo;
+    const int ng1t = NG - 1;
+    for (int step = 0; step < nstp; ++step) {
+      const Real dtx = opf.ExplicitStableDt();
+      parabolic::OperatorSplitStep(integ2, opf, ef, dtf*dtx);
+      // RE-SHARPEN every step (as the hydro continually re-steepens the liner front): a
+      // static front just diffuses to the wall value and never exposes the instability.
+      par_for("e2mg_resharpen", DevExeSpace(), 0, nmb-1, 0, ng1t, 0, n3-1, 0, n2-1,
+              imid, ie,
+      KOKKOS_LAMBDA(const int m, const int g, const int k, const int j, const int i) {
+        efv(m, g, k, j, i) = e_lo_c;
+      });
+    }
+    auto h_of = Kokkos::create_mirror_view(ef);
+    Kokkos::deep_copy(h_of, ef);
+    bool finite_f = true;
+    Real max_e = -1.0e300, min_e2 = 1.0e300;
+    for (int g = 0; g < NG; ++g) {
+      for (int i = is; i <= ie; ++i) {
+        const Real e = h_of(0, g, 0, 0, i);
+        if (!std::isfinite(e)) { finite_f = false; }
+        max_e = std::fmax(max_e, e);
+        min_e2 = std::fmin(min_e2, e);
+      }
+    }
+    std::cout << "[fld_multigroup_operator_test] (E2) per-group monotone front: max(E_g)="
+              << max_e << " min(E_g)=" << min_e2 << " finite=" << finite_f
+              << " (nstep=" << nstp << ", dt_fac=" << dtf << ", chi=" << chi_fr << ")"
+              << std::endl;
+    test.CheckTrue(finite_f,
+                   "per-group monotone-front super-step stays finite (no NaN) (#215)");
+    test.CheckTrue(max_e <= 1.0e1*e_hi,
+                   "per-group monotone-front super-step keeps E_g,max BOUNDED (#215)");
+    test.CheckTrue(min_e2 >= -1.0e-12,
+                   "per-group monotone-front super-step keeps E_g >= 0 (#215)");
+  }
+
+  // ===== (D2) ExplicitStableDt is FACE-CONSISTENT with the flux kernel (#215/#194) ====
+  // The dt the operator reports must bound the scheme the flux kernel actually RUNS.  The
+  // cell-centred estimate builds R from a CENTRAL difference over e0, so a DARK cell
+  // beside a BRIGHT neighbour reports R = |grad|/(chi*e0) -> huge, hence lambda ~ 1/R,
+  // D ~ 0, and
+  // an effectively INFINITE dt for that cell.  The face-consistent bound instead builds
+  // D_eff (flux-limited D + the LF streaming viscosity) per face from the SAME
+  // el/er/eface
+  // the flux kernel uses, where eface = (el+er)/2 stays bright and D_eff stays finite.
+  //
+  // A single front does not expose the gap: the flat interior cells report the thick
+  // limit and the min-reduction is rescued by them.  A PERIOD-4 SQUARE WAVE does -- every
+  // cell then has a nonzero central difference, so none reports the thick limit, and dark
+  // cells' near-zero D lifts the reported dt above the bound the flux kernel needs.
+  //
+  // Oracle: the GREY operator, which already carries the face-consistent bound (#194).
+  // On a SINGLE-group table with chi_g == the grey chi, over the same field, the two
+  // operators
+  // discretize the identical problem and MUST report the identical dt.  RED while the
+  // multigroup bound is cell-centred (it reports ~5x the grey value on this field).
+  {
+    const Real chi_d2 = pin->GetOrAddReal("problem", "chi_dt_mg", 1.0);
+    const Real e_hi   = pin->GetOrAddReal("problem", "e_hi_mg", 1.0);
+    const Real e_lo   = pin->GetOrAddReal("problem", "e_lo_mg", 1.0e-6);
+    opacity::MultigroupOpacity tab_d2;
+    tab_d2.Allocate(1, 2, 2, 1.0, 1.0e3, 1.0e-4, 1.0e0);   // SINGLE group == grey
+    {
+      const Real kr = chi_d2/rho_bg;
+      auto h_kr = Kokkos::create_mirror_view(tab_d2.rosseland);
+      for (int it = 0; it < tab_d2.ntemp; ++it) {
+        for (int id = 0; id < tab_d2.ndens; ++id) { h_kr(0, it, id) = kr; }
+      }
+      Kokkos::deep_copy(tab_d2.rosseland, h_kr);
+    }
+    // period-4 square wave [hi, hi, lo, lo], seeded identically into both operators.
+    auto fill_square = [&](DvceArray5D<Real> &a) {
+      auto h_a = Kokkos::create_mirror_view(a);
+      const int nv = a.extent_int(1);
+      for (int m = 0; m < nmb; ++m) {
+        for (int v = 0; v < nv; ++v) {
+          for (int k = 0; k < n3; ++k) {
+            for (int j = 0; j < n2; ++j) {
+              for (int i = 0; i < n1; ++i) {
+                h_a(m, v, k, j, i) = (((i - is) & 2) == 0) ? e_hi : e_lo;
+              }
+            }
+          }
+        }
+      }
+      Kokkos::deep_copy(a, h_a);
+    };
+    DvceArray5D<Real> ed("erad_dt_mg", nmb, 1, n3, n2, n1);
+    DvceArray5D<Real> eg2("erad_dt_grey", nmb, 1, n3, n2, n1);
+    fill_square(ed);
+    fill_square(eg2);
+    FLDMultigroupOperator opd(pmbp, pin, ed, tab_d2, c_light, rho_bg, te_bg, nl,
+                              -1.0, efloor);
+    FLDGreyOperator opg(pmbp, pin, eg2, c_light, chi_d2, nl, -1.0, efloor);
+    const Real dt_mg = opd.ExplicitStableDt();
+    const Real dt_grey = opg.ExplicitStableDt();
+    std::cout << "[fld_multigroup_operator_test] (D2) dt_multigroup=" << dt_mg
+              << " dt_grey=" << dt_grey << " ratio=" << dt_mg/dt_grey << std::endl;
+    test.CheckNear(dt_mg, dt_grey, 1.0e-12, 0.0,
+                   "ExplicitStableDt matches the grey face-consistent bound (#215)");
   }
 
   test.Finish();

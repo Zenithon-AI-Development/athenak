@@ -358,8 +358,14 @@ MHD::MHD(MeshBlockPack *ppack, ParameterInput *pin) :
     // per-group positivity floor for erad (#197): bounds the free-streaming read in the
     // operator and is the level the post-super-step projection floors negative cells to.
     Real mg_ef  = pin->GetOrAddReal("mhd","mgfld_efloor", 1.0e-30);
+    // Lax-Friedrichs streaming-dissipation gate (#215, per-group port of grey #194):
+    // 1 => the streaming-limit advective mode RKL2 cannot damp is stabilized per group;
+    // 0 => the bare centered flux (which runs away to NaN at an imploding front).
+    // Default 1 (the fix on); in the thick limit the term is gated to zero, so an
+    // optically-thick run is byte-identical to before.
+    Real mg_up  = pin->GetOrAddReal("mhd","mgfld_upwind", 1.0);
     pmg_op = new FLDMultigroupOperator(ppack, pin, erad_mg, mg_table, mg_c, mg_rho, mg_te,
-                                       mg_nl, mg_es, mg_ef);
+                                       mg_nl, mg_es, mg_ef, mg_up);
   }
 
   // Anisotropic (magnetized) Braginskii electron+ion thermal conduction wired operator-
