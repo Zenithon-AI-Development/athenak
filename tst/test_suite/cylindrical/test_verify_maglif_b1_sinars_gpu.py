@@ -81,6 +81,15 @@ LZ = 1.6               # axial domain extent [mm] (x3max - x3min); used to norma
 D_LINER = 1.0          # liner density in code units (2.7 g/cc / density_cgs 2.7)
 HALF = 0.5 * D_LINER   # half-max density level isolating the dense liner
 
+# Synthetic-radiograph instrument response (#212).  A real radiograph cannot resolve
+# structure finer than its own spatial resolution, so the synthetic limb we compare
+# against the Sinars curve must be band-limited the same way -- otherwise the
+# (max - min) excursion also counts grid-seeded MRT, which grows like sqrt(k) and so
+# strengthens with every refinement (a_sb 0.0162 / 0.0403 / 0.0798 mm at 60 ns for
+# 288 / 432 / 864, diverging while the hydro state itself converged to 4.4%).
+RADIOGRAPH_RES_UM = 15.0                                  # quoted Sinars radiograph res
+K_MAX_BAND = int(LZ * 1.0e3 / (2.0 * RADIOGRAPH_RES_UM))  # cycles across LZ (= 53)
+
 # Qualitative pre-check thresholds (fast sign/shape gates; NOT experiment-anchored bars --
 # the seeded growth is anchored against the Sinars curve via the oracle, reported below).
 # NOTE (#174): the "cal ~" values were calibrated on the pre-#174 ideal-MHD raw-current
@@ -223,14 +232,40 @@ def _radiograph_mod(x, sigma, zn, k):
     return float(np.hypot(a, b)) / (abs(base) + 1.0e-30)
 
 
-def _spike_bubble_amp(rz):
+def _band_limit(rz, k_max):
+    """Truncate an axial trace to k <= k_max cycles across the domain (#212).
+
+    NaN rows (failed interface finds) are filled by periodic interpolation first so
+    the transform stays well-posed; the axial direction is periodic by construction
+    (the deck seeds PERT_MODE whole wavelengths across LZ).
+    """
+    r = np.asarray(rz, dtype=float)
+    good = np.isfinite(r)
+    if not np.any(good):
+        return r
+    if not np.all(good):
+        idx = np.arange(r.size, dtype=float)
+        r = np.interp(idx, idx[good], r[good], period=float(r.size))
+    f = np.fft.rfft(r)
+    f[int(k_max) + 1:] = 0.0
+    return np.fft.irfft(f, n=r.size)
+
+
+def _spike_bubble_amp(rz, k_max=None):
     """Spike-bubble amplitude (max - min)/2 of an interface/limb trace.
 
     The Sinars 2011 observable: radiograph spike-to-bubble excursion (B2 convention,
     spike = max radius on the run-in).  Unlike the mode-k Fourier projection this does
     NOT saturate near lambda/2pi or phase-cancel once the mode goes nonlinear -- in
     b1_window120_204 the fundamental reported 1.3x while this grew 4.5x by 84 ns.
+
+    With k_max set (#212) the trace is first band-limited to the radiograph's own
+    resolution, so the excursion counts the seeded mode and its resolvable harmonics
+    but not grid-seeded structure the instrument could never have seen.  Without it
+    the metric is resolution-divergent and cannot be compared to the measurement.
     """
+    if k_max is not None:
+        rz = _band_limit(rz, k_max)
     good = rz[np.isfinite(rz)]
     return float(0.5 * (np.max(good) - np.min(good)))
 
@@ -259,9 +294,16 @@ def _limb_edge(x, sigma):
 
 def _trajectory(files):
     """Reduce a run's snapshots to (z, zn, times, R_liner, R_front, a_outer, rad_mod,
-    a_sb) -- a_sb is the radiograph limb-edge spike-bubble amplitude [mm]."""
+    a_sb, a_sb_raw).
+
+    a_sb is the radiograph limb-edge spike-bubble amplitude [mm] band-limited to the
+    instrument resolution (#212) -- the quantity compared against Sinars.  a_sb_raw is
+    the unfiltered excursion, kept as a diagnostic: the gap between the two IS the
+    grid-seeded content, so a widening gap under refinement is the tell.
+    """
     z = zn = None
-    times, r_liner, r_front, a_outer, rad_mod, a_sb = [], [], [], [], [], []
+    times, r_liner, r_front, a_outer, rad_mod = [], [], [], [], []
+    a_sb, a_sb_raw = [], []
     for fp in files:
         d = bin_convert.read_binary_as_athdf(fp)
         if z is None:
@@ -274,9 +316,12 @@ def _trajectory(files):
         r_front.append(float(np.nanmean(r_in)))
         a_outer.append(_mode_amp(r_out, zn, PERT_MODE))
         rad_mod.append(_radiograph_mod(xrad, sigma, zn, PERT_MODE))
-        a_sb.append(_spike_bubble_amp(_limb_edge(xrad, sigma)))
+        edge = _limb_edge(xrad, sigma)
+        a_sb.append(_spike_bubble_amp(edge, k_max=K_MAX_BAND))
+        a_sb_raw.append(_spike_bubble_amp(edge))
     return (z, zn, np.array(times), np.array(r_liner), np.array(r_front),
-            np.array(a_outer), np.array(rad_mod), np.array(a_sb))
+            np.array(a_outer), np.array(rad_mod), np.array(a_sb),
+            np.array(a_sb_raw))
 
 
 def _plot_snapshot(files, z):
@@ -307,7 +352,8 @@ def test_verify_maglif_b1_sinars_gpu():
         shutil.rmtree(build_dir, ignore_errors=True)
     try:
         files = _run("maglif_b1_sinars")
-        z, zn, times, r_liner, r_front, a_outer, rad_mod, a_sb = _trajectory(files)
+        (z, zn, times, r_liner, r_front, a_outer, rad_mod, a_sb,
+         a_sb_raw) = _trajectory(files)
 
         # Final snapshot is finite and stable (the implosion ran in cleanly, no blow-up).
         fin = bin_convert.read_binary_as_athdf(files[-1])
@@ -368,7 +414,7 @@ def test_verify_maglif_b1_sinars_gpu():
         # exactly 1-D (no axial structure) -- proving the growth comes from the seed, not
         # the numerics.  This is the binding control.
         cfiles = _run("maglif_b1_sinars_ctl", 0.0)
-        _, _, ctimes, cr_liner, _, ca_outer, _, _ = _trajectory(cfiles)
+        _, _, ctimes, cr_liner, _, ca_outer, _, _, _ = _trajectory(cfiles)
         assert ca_outer.max() < FLAT_TOL, (
             f"pert_amp=0 control developed axial structure (max a_outer="
             f"{ca_outer.max():.3e} >= {FLAT_TOL}); not 1-D without the seed"
@@ -401,6 +447,8 @@ def test_verify_maglif_b1_sinars_gpu():
             # against the same observable (a_sb), not the mode-4 Fourier projection,
             # which saturates near lambda/2pi and phase-rotates once the MRT goes
             # nonlinear (b1_window120_204: fundamental 1.3x vs spike-bubble 4.5x).
+            # a_sb carries the instrument band limit (#212), so this compares two
+            # traces of the same spatial resolution.
             res = oracle.compare(
                 "B1", "single_mode_amplitude_growth", (times, a_sb)
             )
@@ -416,6 +464,10 @@ def test_verify_maglif_b1_sinars_gpu():
             print(f"[B1] faithful-SI spike-bubble peak amplitude {a_sb.max():.4f} mm "
                   f"(mode-4 fundamental peak {a_outer.max():.4f} mm; Sinars curve spans "
                   f"~{exp_span:.0f}x its seed)")
+            # Band-limited vs raw: the gap IS the sub-instrument (grid-seeded) content.
+            print(f"[B1] instrument band k<={K_MAX_BAND} ({RADIOGRAPH_RES_UM:.0f} um): "
+                  f"peak a_sb {a_sb.max():.4f} mm vs unfiltered {a_sb_raw.max():.4f} mm "
+                  f"({a_sb_raw.max() / max(a_sb.max(), 1.0e-30):.2f}x)")
             exp_points = [
                 {"x": p.x, "y": p.exp_value, "band": p.band}
                 for p in res.point_results
@@ -437,6 +489,7 @@ def test_verify_maglif_b1_sinars_gpu():
                 "a_outer": a_outer,
                 "rad_mod": rad_mod,
                 "a_sb": a_sb,
+                "a_sb_raw": a_sb_raw,
             },
             coord_label="t",
             xlabel="t [ns]",
