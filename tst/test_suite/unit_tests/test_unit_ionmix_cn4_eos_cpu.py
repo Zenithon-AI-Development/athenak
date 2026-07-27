@@ -56,15 +56,19 @@ def _probe_args(dec):
         f"problem/pit0={it0}", f"problem/pid0={id0}",
         f"problem/pit1={it1}", f"problem/pid1={id1}",
     ]
+    # The reader converts the JOULE-based cn4 EOS records to CGS at load (J -> erg,
+    # x 1e7; #209/#210, dimensional anchor in ionmix_cn4_units_test), so the raw-decode
+    # oracle carries the same factor.  zbar is dimensionless.
+    j2erg = 1.0e7
     for tag, it, idx in (("0", it0, id0), ("1", it1, id1)):
         args += [
-            f"problem/exp_eele{tag}={float(dec['eele'][idx][it])!r}",
-            f"problem/exp_eion{tag}={float(dec['eion'][idx][it])!r}",
-            f"problem/exp_pele{tag}={float(dec['pele'][idx][it])!r}",
-            f"problem/exp_pion{tag}={float(dec['pion'][idx][it])!r}",
+            f"problem/exp_eele{tag}={float(dec['eele'][idx][it])*j2erg!r}",
+            f"problem/exp_eion{tag}={float(dec['eion'][idx][it])*j2erg!r}",
+            f"problem/exp_pele{tag}={float(dec['pele'][idx][it])*j2erg!r}",
+            f"problem/exp_pion{tag}={float(dec['pion'][idx][it])*j2erg!r}",
             f"problem/exp_zbar{tag}={float(dec['zbar'][idx][it])!r}",
-            f"problem/exp_cvele{tag}={float(dec['cvele'][idx][it])!r}",
-            f"problem/exp_cvion{tag}={float(dec['cvion'][idx][it])!r}",
+            f"problem/exp_cvele{tag}={float(dec['cvele'][idx][it])*j2erg!r}",
+            f"problem/exp_cvion{tag}={float(dec['cvion'][idx][it])*j2erg!r}",
         ]
     return args
 

@@ -126,6 +126,19 @@ MHD::MHD(MeshBlockPack *ppack, ParameterInput *pin) :
     Real u_rho = pin->GetOrAddReal("units","density_cgs",1.0);
     Real u_vel = pin->GetOrAddReal("units","velocity_cgs",1.0);
     eos_tbl.ScaleToCodeUnits(u_rho, u_vel);
+    // #209: opt-in zero-temperature Fermi degeneracy-pressure floor on the electron
+    // pressure.  The cn4 table is ideal-ion nkT with a near-zero cold Zbar AND its
+    // density axis edge-clamps (dP/drho = 0 off-table), so a magnetically driven cold
+    // shell is pressureless and its peak density diverges with resolution.  Z* is the
+    // COLD (valence) ionization for n_e = Z* rho/m_ion (Al: 3); the floor vanishes at
+    // and below eos_deg_rho0 (the solid reference) so the quiescent pre-drive liner is
+    // untouched.  Enabled BEFORE the eos_data.eos_tbl copy below so the cons->prim
+    // closure and the Riemann/newdt interface pressure carry the same floor.
+    Real deg_zstar = pin->GetOrAddReal("mhd","eos_deg_zstar",0.0);
+    if (deg_zstar > 0.0) {
+      Real deg_rho0 = pin->GetOrAddReal("mhd","eos_deg_rho0",1.0);
+      eos_tbl.SetDegeneracyFloor(deg_zstar, eos_mass_per_ion, u_rho, u_vel, deg_rho0);
+    }
     peos = new TabulatedMHD(ppack, pin);
     // hand the populated table to the EOS data so the live hyperbolic pressure/wave-speed
     // (LLF Riemann solver + newdt) can close p_gas from the table (#162); the cons->prim

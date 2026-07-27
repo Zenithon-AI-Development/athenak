@@ -217,12 +217,16 @@ constexpr Real kCn4LogFloor = 1.0e-30;
 //!  capacities.  The intermediate cn4 records this 2T/3T path does not use (the
 //!  temperature/density derivatives dZdT, dP/dT, dE/dN) are skipped.
 //!
-//!  Values are loaded faithfully in the table's native units (energies/pressures as
-//!  stored, eV temperatures); the only transform is the optional `mass_per_ion`
-//!  (grams/ion): IONMIX tabulates the density axis as ion number density [cm^-3], so
-//!  when `mass_per_ion > 0` the axis is rescaled to mass density [g/cc] (= n_ion*m_ion)
-//!  for the mass-density consumers.  The default (`mass_per_ion = 1`) keeps the axis as
-//!  number density, which is what the ingestion-verification test queries.
+//!  Values are converted to CGS at load (#209/#210): the cn4 EOS records are
+//!  JOULE-based (energies/heat capacities J/g, pressures J/cm^3 -- the FLASH
+//!  loadIonmix convention), and the code-unit boundary (ScaleToCodeUnits, ADR-0010)
+//!  divides by CGS scales, so J -> erg (x 1e7) is applied here.  Temperatures stay eV.
+//!  The other transform is the optional `mass_per_ion` (grams/ion): IONMIX tabulates
+//!  the density axis as ion number density [cm^-3], so when `mass_per_ion > 0` the
+//!  axis is rescaled to mass density [g/cc] (= n_ion*m_ion) for the mass-density
+//!  consumers.  The default (`mass_per_ion = 1`) keeps the axis as number density,
+//!  which is what the ingestion-verification test queries (its oracle carries the same
+//!  J -> erg factor).
 inline void ReadIonmixCn4Eos(const std::string &fname, EosTable3T &table,
                              Real mass_per_ion = 1.0) {
   ionmix_cn4::Cn4Reader r(fname);
@@ -252,24 +256,32 @@ inline void ReadIonmixCn4Eos(const std::string &fname, EosTable3T &table,
   // 2-D cn4 blocks are density-major with temperature varying fastest (flat index
   // id*ntemp + it); EosTable3T stores (it, id), so the inner loop is over `it`.  `floor`
   // clamps the log-interpolated fields up to kCn4LogFloor; `zbar` is stored raw (>= 0).
-  auto read_block = [&](decltype(h_zbar) &h, bool floor) {
+  // The cn4 EOS records are JOULE-based (specific energies / heat capacities in J/g,
+  // pressures in J/cm^3 -- the FLASH loadIonmix convention; the tabulated ion pressure
+  // is ideal n_i k_B T in J/cm^3 to table precision, the dimensional anchor
+  // ionmix_cn4_units_test pins).  The code-unit boundary (ScaleToCodeUnits, ADR-0010)
+  // divides by CGS scales, so convert J -> erg here at load (#209/#210); without this
+  // every tabulated_3t pressure/energy/cv is 1e7x too small in code units and a driven
+  // liner is thermally pressureless at all temperatures.
+  constexpr Real kJouleToErg = 1.0e7;
+  auto read_block = [&](decltype(h_zbar) &h, bool floor, Real scale) {
     for (int id = 0; id < ndens; ++id) {
       for (int it = 0; it < ntemp; ++it) {
-        Real v = r.Next();
+        Real v = r.Next()*scale;
         h(it, id) = floor ? Kokkos::fmax(v, kCn4LogFloor) : Kokkos::fmax(v, 0.0);
       }
     }
   };
-  read_block(h_zbar,   false);                  // zbar
+  read_block(h_zbar,   false, 1.0);             // zbar (dimensionless)
   r.Skip(ndens*ntemp);                          // dzdt   (unused)
-  read_block(h_p_ion,  true);                   // pion
-  read_block(h_p_ele,  true);                   // pele
+  read_block(h_p_ion,  true, kJouleToErg);      // pion   [J/cm^3 -> erg/cm^3]
+  read_block(h_p_ele,  true, kJouleToErg);      // pele   [J/cm^3 -> erg/cm^3]
   r.Skip(ndens*ntemp);                          // dpidt  (unused)
   r.Skip(ndens*ntemp);                          // dpedt  (unused)
-  read_block(h_e_ion,  true);                   // eion
-  read_block(h_e_ele,  true);                   // eele
-  read_block(h_cv_ion, true);                   // cvion
-  read_block(h_cv_ele, true);                   // cvele
+  read_block(h_e_ion,  true, kJouleToErg);      // eion   [J/g -> erg/g]
+  read_block(h_e_ele,  true, kJouleToErg);      // eele   [J/g -> erg/g]
+  read_block(h_cv_ion, true, kJouleToErg);      // cvion  [J/g/eV -> erg/g/eV]
+  read_block(h_cv_ele, true, kJouleToErg);      // cvele  [J/g/eV -> erg/g/eV]
   // deidn, deedn and the opacity records that follow are not part of the EOS read.
 
   Kokkos::deep_copy(table.zbar,   h_zbar);

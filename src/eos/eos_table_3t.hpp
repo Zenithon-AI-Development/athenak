@@ -66,6 +66,13 @@ struct EosTable3T {
   Real inv_dlog_temp = 0.0; //!< 1 / dlog_temp (precomputed for the hot path)
   Real inv_dlog_rho = 0.0;  //!< 1 / dlog_rho
 
+  // --- degeneracy-pressure floor (#209; opt-in via SetDegeneracyFloor) ---
+  // P_ele >= deg_k * max(0, rho^(5/3) - deg_rho053), all in CODE units.  Zero deg_k
+  // (the default) disables the floor and keeps every closure byte-identical.
+  Real deg_k = 0.0;       //!< K = (2/5)(hbar^2/2m_e)(3pi^2)^(2/3)(Z* rho_u/m_i)^(5/3)
+                          //!<     / (rho_u v_u^2)
+  Real deg_rho053 = 0.0;  //!< rho0^(5/3): solid reference where the floor vanishes
+
   // --- per-node table data, shape (ntemp, nrho) ---
   DvceArray2D<Real> e_ele;   //!< specific electron internal energy e_e(T,rho)
   DvceArray2D<Real> e_ion;   //!< specific ion internal energy e_i(T,rho)
@@ -132,6 +139,53 @@ struct EosTable3T {
     ScaleField(p_ele,  inv_p);
     ScaleField(p_ion,  inv_p);
     // zbar (dimensionless) and the temperature axis (eV) are unchanged.
+  }
+
+  //--------------------------------------------------------------------------------------
+  //! \fn SetDegeneracyFloor
+  //! \brief Host-side: enable the zero-temperature Fermi degeneracy-pressure floor on
+  //!  the ELECTRON pressure (#209).  The IONMIX table is ideal-ion nkT with Zbar ~ 0
+  //!  below ~1 eV and its density axis edge-clamps (dP/drho = 0 off-table), so a
+  //!  magnetically driven cold shell is pressureless and its peak density diverges with
+  //!  resolution.  The floor
+  //!      P_deg(rho) = K * max(0, rho^(5/3) - rho0^(5/3)),
+  //!      K = (2/5)(hbar^2/2 m_e)(3 pi^2)^(2/3) (Z* rho_u/m_ion)^(5/3) / (rho_u v_u^2)
+  //!  is the ideal Fermi-gas pressure of Z* electrons per ion (Z* = COLD/valence
+  //!  ionization -- the table's own near-zero cold Zbar would neuter it), referenced to
+  //!  zero at the solid density rho0 (cold-curve binding cancels the Fermi pressure at
+  //!  solid, so the quiescent pre-drive liner feels nothing).  rho^(5/3) keeps rising
+  //!  through and beyond the table edge, restoring dP/drho > 0 everywhere.  Pressure-
+  //!  only (the energy tables and the e->T inversion are untouched): compression work
+  //!  against the floor lands in the gas energy through the ordinary conservative
+  //!  update.  Call any time after the reader fills the table (independent of
+  //!  ScaleToCodeUnits; the unit conversion is folded into K here).
+  //!  \param zstar         cold (valence) ionization used for n_e = Z* rho/m_ion
+  //!  \param mion_g        ion mass [g]
+  //!  \param density_cgs   code->CGS density conversion (the <units> value)
+  //!  \param velocity_cgs  code->CGS velocity conversion (the <units> value)
+  //!  \param rho0_code     solid reference density [code] where the floor is zero
+  void SetDegeneracyFloor(Real zstar, Real mion_g, Real density_cgs, Real velocity_cgs,
+                          Real rho0_code) {
+    const Real hbar = 1.054571817e-27;   // [erg s]
+    const Real m_e  = 9.1093837015e-28;  // [g]
+    const Real pi   = 3.14159265358979323846;
+    // (2/5)(hbar^2/2m_e)(3pi^2)^(2/3): ideal Fermi P = C * n_e^(5/3)  [erg/cc, n_e cm^-3]
+    const Real c_fermi = 0.4*(hbar*hbar/(2.0*m_e))*std::pow(3.0*pi*pi, 2.0/3.0);
+    deg_k = c_fermi*std::pow(zstar*density_cgs/mion_g, 5.0/3.0)
+            /(density_cgs*velocity_cgs*velocity_cgs);
+    deg_rho053 = std::pow(rho0_code, 5.0/3.0);
+  }
+
+  //--------------------------------------------------------------------------------------
+  //! \fn DegeneracyPressureFloor
+  //! \brief Device: the #209 electron-pressure floor at a code density (0 when disabled
+  //!  or at/below the solid reference).  Applied in ConsToPrim2T as
+  //!  p_ele = max(p_ele_table, floor).
+  KOKKOS_INLINE_FUNCTION
+  Real DegeneracyPressureFloor(Real rho) const {
+    if (!(deg_k > 0.0)) { return 0.0; }
+    Real excess = Kokkos::pow(rho, 5.0/3.0) - deg_rho053;
+    return (excess > 0.0) ? deg_k*excess : 0.0;
   }
 
   //--------------------------------------------------------------------------------------
