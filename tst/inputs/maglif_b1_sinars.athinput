@@ -5,8 +5,12 @@
 # here is a faithful, dimensional value, mirroring the faithful Ellison B2 setup
 # (maglif_b2_ellison.athinput / #163) but for the SINGLE-MODE, initially-solid-aluminum
 # Sinars 2010/2011 experiment (Phys. Rev. Lett. 105, 185001; Phys. Plasmas 18, 056301):
-#   * a representative AR6 aluminum liner (r_in 2.8875 / r_out 3.4688 mm) -- the #160/[P3]
-#     dimensional geometry, with solid-Al density 2.7 g/cc as the code density unit;
+#   * the SERIES-1 aluminum liner (r_in 2.876 / r_out 3.168 mm, a 292 um wall), as given in
+#     arXiv:2504.10760 section 3.1 for this benchmark's target, with solid-Al density
+#     2.7 g/cc as the code density unit.  #219: this was previously a REPRESENTATIVE AR6
+#     liner (r_out 3.4688 mm, a 581 um wall) carrying ~2x the mass, which suppressed the
+#     MRT feed -- g ~ B_phi^2/(rho dr) and Gamma ~ sqrt(g), so a 2x wall is a ~sqrt(2)x
+#     error in the growth exponent;
 #   * the REAL measured z2173 Z-machine load current -- the #160/[P3] tabulated drive
 #     (peak about 20 MA at about 100 ns; the Sinars and z2173 shots share the Z driver);
 #   * a SINGLE seeded axial sinusoid at lambda 400 um (within the published 25 to 400 um
@@ -77,7 +81,7 @@ velocity_cgs = 1.0e8      # cm/s per code velocity, conditioned so 1 code time i
 nghost    = 2
 nx1       = 288       # radial zones (uniform) over [0, 3.6] mm, dr 12.5 um (finest)
 x1min     = 0.0       # r 0 axis
-x1max     = 3.6       # outer radius R_out 3.6 mm (driven boundary; beyond r_out 3.4688)
+x1max     = 3.6       # outer radius R_out 3.6 mm (driven boundary; beyond r_out 3.168)
 ix1_bc    = axis      # cylindrical r 0 axisymmetric boundary (issue #16)
 ox1_bc    = user      # circuit-driven B_phi outer boundary (issue #21)
 
@@ -219,9 +223,10 @@ current_waveform = tabulated        # prescribed I(t) replayed from the measured
 current_file     = z2173_current.dat  # committed trace (tst/inputs); peak 20 MA, rise 100 ns
 current_si       = true            # convert the trace from SI (ns, MA) to code units (ADR-0010)
 mu0              = 1.0              # code-unit permeability (Heaviside-Lorentz)
-# ---- AR6 Al liner target geometry, PHYSICAL CGS (normalised by <units>) ----
-r_fuel           = 0.28875         # liner inner radius r_in 2.8875 mm (hollow-interior wall)
-r_liner          = 0.34688         # liner outer radius r_out 3.4688 mm (liner/vacuum)
+# ---- Series-1 Al liner target geometry, PHYSICAL CGS (normalised by <units>).
+#      Radii from arXiv:2504.10760 section 3.1 (the Sinars 2011 Series-1 target); see #219.
+r_fuel           = 0.2876          # liner inner radius r_in 2.876 mm (hollow-interior wall)
+r_liner          = 0.3168          # liner outer radius r_out 3.168 mm (liner/vacuum)
 d_fuel           = 1.0e-3          # low-density interior fill (hollow tube; setup choice)
 d_liner          = 2.7             # solid Al liner density 2.7 g/cc, maps to 1.0 code
 d_vac            = 1.0e-4          # tenuous vacuum gap (r_out to R_out)
