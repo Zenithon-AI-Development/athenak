@@ -27,17 +27,46 @@ reported (scorecard + overlay) and escalated as a "needs investigation" note -- 
 import numpy as np
 
 
-def outer_surface_extrema(r_out):
+def band_limit(rz, k_max):
+    """Truncate a periodic axial trace to modes ``k <= k_max`` cycles across the domain.
+
+    Mirror of the #212 B1 fix: a radiograph cannot resolve structure finer than its own
+    spatial resolution, so a synthetic spike/bubble excursion compared against it must be
+    band-limited the same way -- otherwise (max - min) also counts grid-seeded modes,
+    which grow like sqrt(k) and strengthen with every refinement.  NaN zones (failed
+    interface finds) are filled by periodic interpolation first so the transform stays
+    well-posed (the axial domain is periodic by construction).
+    """
+    r = np.asarray(rz, dtype=float)
+    good = np.isfinite(r)
+    if not np.any(good):
+        return r
+    if not np.all(good):
+        idx = np.arange(r.size, dtype=float)
+        r = np.interp(idx, idx[good], r[good], period=float(r.size))
+    f = np.fft.rfft(r)
+    f[int(k_max) + 1:] = 0.0
+    return np.fft.irfft(f, n=r.size)
+
+
+def outer_surface_extrema(r_out, k_max=None):
     """Return ``(R_spike, R_bubble)`` = (max, min) of the finite outer-interface radii.
 
     ``r_out`` is the per-axial-zone driven (liner/vacuum) interface radius r(z) (the same
     half-max crossing the Stage-1 test reduces); NaNs (zones with no resolved interface)
     are ignored.  Returns ``(nan, nan)`` if nothing is finite.
+
+    With ``k_max`` set (#229, mirroring #212) the trace is first band-limited to
+    ``k <= k_max`` cycles across the periodic axial domain, so the extrema count the
+    seeded modes and their resolvable harmonics but not grid-scale structure the
+    radiograph (McBride 2012: 15 um spatial resolution) could never have seen.
     """
     r = np.asarray(r_out, dtype=float)
-    good = np.isfinite(r)
-    if not good.any():
+    if not np.isfinite(r).any():
         return float("nan"), float("nan")
+    if k_max is not None:
+        r = band_limit(r, k_max)
+    good = np.isfinite(r)
     return float(np.max(r[good])), float(np.min(r[good]))
 
 
@@ -65,6 +94,39 @@ def convergence_x(r_bubble, r_outer0):
 def linear_law(x, slope, intercept):
     """Evaluate a McBride printed fit law ``slope*x + intercept`` at convergence ``x``."""
     return float(slope) * float(x) + float(intercept)
+
+
+def in_validity_window(x, laws):
+    """Whether convergence ``x`` lies in McBride's measured abscissa domain (#229).
+
+    The [0.05, 0.15] growth-fraction band is stated for the NONLINEAR regime near
+    stagnation -- Fig. 7a's data span x in [0.4, 0.95] (the committed
+    ``fit_laws["x_valid_range"]``).  Outside that domain the band is not a published
+    claim at all (the amplitude law 450x - 90 is even negative below x = 0.2), so a
+    comparison there is a category error, not a physics verdict.  NaN -> False.
+    """
+    lo, hi = laws["x_valid_range"]
+    x = float(x)
+    if not np.isfinite(x):
+        return False
+    return lo <= x <= hi
+
+
+def law_implied_growth_fraction(x, laws, r0_um):
+    """The growth fraction McBride's OWN fit laws imply at convergence ``x`` (#229).
+
+    growth fraction = amplitude / distance moved = (450x - 90) / (r0_um * x), with
+    ``r0_um`` the initial outer-liner radius in um.  Inside the validity window this
+    lands in the published [0.05, 0.15] band (self-consistency); at shallow convergence
+    it falls far below the band (and is negative below x = 0.2), which is WHY an
+    out-of-window band comparison cannot be met even by the reference data themselves.
+    Returns ``nan`` for ``x <= 0`` (no convergence -> fraction undefined).
+    """
+    x = float(x)
+    if not np.isfinite(x) or x <= 0.0:
+        return float("nan")
+    amp = laws["amplitude_um"]
+    return linear_law(x, amp["slope"], amp["intercept"]) / (float(r0_um) * x)
 
 
 def fit_laws(meta):

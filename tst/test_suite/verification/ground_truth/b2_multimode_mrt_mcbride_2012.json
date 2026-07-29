@@ -209,6 +209,11 @@
   "fit_laws": {
     "description": "McBride 2012 Fig. 7 printed linear fits of the MRT bubble-spike amplitude and dominant-mode wavelength (um) vs the dimensionless convergence x. SOFT/report-only quantitative anchor (#155 [B2-S2]); applied to the dimensional SI deep-convergence run, where the printed fits are valid (amplitude_um = 450*x - 90 is positive only for x > 0.2). NOT figure-digitized points -- the published analytic fit laws (ADR-0008).",
     "x_definition": "1 - R_bubble/R_outer(0)",
+    "x_valid_range": [
+      0.4,
+      0.95
+    ],
+    "x_valid_range_basis": "McBride 2012 Fig. 7(a) measured abscissa domain (same domain as the committed multimode_amplitude_law x_valid_range); the growth-fraction band is the amplitude law expressed as a fraction of distance moved, stated by the text as 'nearly constant ... in the range of 0.05-0.15' over that nonlinear-regime domain ('consistent with results from classical hydrodynamic Rayleigh-Taylor experiments in the nonlinear regime'). Outside it the band is not a published claim; comparisons at shallower convergence are recorded PENDING, not FAIL (#229).",
     "growth_fraction_band": [
       0.05,
       0.15
