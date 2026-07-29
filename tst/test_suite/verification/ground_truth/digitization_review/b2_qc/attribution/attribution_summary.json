@@ -1,0 +1,92 @@
+{
+ "recorded_miss": {
+  "growth_fraction": 0.345496,
+  "x": 0.214,
+  "band": [
+   0.05,
+   0.15
+  ],
+  "source": "plots/scorecard.txt"
+ },
+ "timing_convention": {
+  "law_implied_gf_at_gate_x": 0.00862,
+  "law_implied_gf_in_window": {
+   "0.4": 0.0649,
+   "0.6": 0.0865,
+   "0.8": 0.0973,
+   "0.95": 0.1024
+  },
+  "deep_run_window_series": [
+   {
+    "t": 25.00026891205428,
+    "x": 0.6578,
+    "gf_band": 0.4333,
+    "gf_pct": 0.4132,
+    "law_implied": 0.0903
+   },
+   {
+    "t": 27.500877590788516,
+    "x": 0.6077,
+    "gf_band": 0.1438,
+    "gf_pct": 0.1223,
+    "law_implied": 0.087
+   },
+   {
+    "t": 30.000090092374997,
+    "x": 0.6853,
+    "gf_band": 0.6738,
+    "gf_pct": 0.6298,
+    "law_implied": 0.0919
+   },
+   {
+    "t": 32.50084502398185,
+    "x": 0.7838,
+    "gf_band": 0.8212,
+    "gf_pct": 0.6898,
+    "law_implied": 0.0966
+   },
+   {
+    "t": 35.00027840701414,
+    "x": 0.7669,
+    "gf_band": 0.801,
+    "gf_pct": 0.6653,
+    "law_implied": 0.0959
+   }
+  ]
+ },
+ "stale_pre211_data": {
+  "gate_rerun_gf": 0.3455,
+  "gate_rerun_x": 0.21423,
+  "deck_eos": "ideal (cn4/#210 path never exercised)"
+ },
+ "seed_amplitude_dT": {
+  "dT10": {
+   "gf_final": 0.1312,
+   "x_final": 0.1954,
+   "gf_at_x0.14": 0.0998
+  },
+  "repro_dT100": {
+   "gf_final": 0.3455,
+   "x_final": 0.2142,
+   "gf_at_x0.14": 0.2837
+  },
+  "dT1000": {
+   "gf_final": 0.3598,
+   "x_final": 0.1437,
+   "gf_at_x0.14": 0.3592
+  }
+ },
+ "resolution": {
+  "gate_gf_at_matched_x": 0.3253,
+  "res2x_gf_at_matched_x": 0.3846,
+  "matched_x": 0.19
+ },
+ "reduction_mismatch": {
+  "gate_gf_raw_vs_band": [
+   0.3455,
+   0.3455
+  ],
+  "note": "identical at the gate by construction (Nyquist 24 < k_band 53)",
+  "gate_gf_pct_final": 0.2515
+ }
+}

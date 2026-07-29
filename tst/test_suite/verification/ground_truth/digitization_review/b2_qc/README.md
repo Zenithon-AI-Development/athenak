@@ -61,3 +61,28 @@ is the **center-of-mass of the trailing MRT spike structure** — not raw per-zo
 extrema. The synthetic reduction band-limits the interface trace to the instrument band
 (k <= 53 across the 1.6 mm axial extent) before taking extrema (#229, mirroring the
 #212 B1 fix).
+
+## Attribution evidence (#229 AC#1)
+
+`attribution/` holds the discriminating-run results behind the #229 Stage-3
+attribution of the recorded `growth_fraction = 0.345` vs [0.05, 0.15] miss — one JSON
+per case from `b2_attribution_runs.py` (run on athenakdev, CPU/OpenMP, post-#211
+origin/main code) plus `attribution_summary.json` from `b2_attribution_summary.py`.
+Headlines (full narrative on issue #229):
+
+* **Timing convention (primary)**: McBride's own laws imply gf ~ 0.0086 at the gate's
+  x = 0.214 vs 0.065–0.102 inside the x = [0.4, 0.95] window — the band comparison at
+  the gate's convergence was a category error. The `deep` run measures gf INSIDE the
+  window at gate resolution: 0.43–0.82 (bulk-statistic 0.27–0.69), a real in-window
+  residual that survives the convention fix.
+* **Stale pre-#211 data: exonerated** — the gate rerun reproduces gf = 0.3455 at
+  x = 0.2142 bit-consistently on post-#211 code, and the Stage-1 deck is `eos=ideal`
+  (the cn4 path never executes).
+* **Seed amplitude dT**: at matched shallow x = 0.14, gf = 0.100 / 0.284 / 0.359 for
+  dT = 10 / 100 / 1000 K — strongly seed-dependent below the window (no universal
+  fraction exists there), saturating above the faithful 100 K nominal.
+* **Resolution + reduction mismatch (one term)**: raw max-min extrema are
+  resolution-divergent (+18% per 2x refinement at matched x = 0.19: 0.325 -> 0.385)
+  while the bulk percentile statistic is grid-converged (0.2515 vs 0.2476); the
+  instrument band-limit is a no-op below paper resolution (Nyquist < 53) by
+  construction. Extreme-value inflation bounds ~27% of the measured gate value.
