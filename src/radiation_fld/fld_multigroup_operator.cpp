@@ -21,8 +21,10 @@
 #include "coordinates/cell_locations.hpp"
 #include "bvals/bvals.hpp"
 #include "opacity/multigroup_opacity.hpp"
+#include "radiation_fld/fld_grey_operator.hpp"    // radiationfld::FaceDeff (#215)
 #include "radiation_fld/fld_multigroup_operator.hpp"
 
+using radiationfld::FaceDeff;
 using radiationfld::LarsenLimiter;
 
 //----------------------------------------------------------------------------------------
@@ -36,7 +38,7 @@ using radiationfld::LarsenLimiter;
 
 FLDMultigroupOperator::FLDMultigroupOperator(MeshBlockPack *pp, ParameterInput *pin,
   const DvceArray5D<Real> &erad, const opacity::MultigroupOpacity &table, Real c_light,
-  Real rho_bg, Real te_bg, Real n_larsen, Real e_source, Real e_floor) :
+  Real rho_bg, Real te_bg, Real n_larsen, Real e_source, Real e_floor, Real upwind) :
   pmy_pack(pp),
   erad_(erad),
   c_(c_light),
@@ -44,6 +46,7 @@ FLDMultigroupOperator::FLDMultigroupOperator(MeshBlockPack *pp, ParameterInput *
   esrc_(e_source),
   // clamp efloor_ > 0 to avoid a 0/0 NaN from a misconfigured deck (mirror grey #194).
   efloor_((e_floor > 0.0) ? e_floor : static_cast<Real>(1.0e-30)),
+  upwind_(upwind),
   injected_energy_(0.0),
   ngroups_(table.ngroups),
   chi_("fld_mg_chi", table.ngroups),
@@ -123,7 +126,8 @@ void FLDMultigroupOperator::OperatorAction(const DvceArray5D<Real> &u_in,
   auto size = pmy_pack->pmb->mb_size;
   auto csys = pmy_pack->pcoord->coord_system;
   auto chi = chi_;
-  Real cc = c_, nl = nlarsen_, efloor = efloor_;
+  Real cc = c_, nl = nlarsen_, efloor = efloor_, upwind = upwind_;
+  int nx1 = indcs.nx1;
   auto &flx1 = rflx_.x1f;
   auto &flx2 = rflx_.x2f;
   auto &flx3 = rflx_.x3f;
@@ -143,8 +147,15 @@ void FLDMultigroupOperator::OperatorAction(const DvceArray5D<Real> &u_in,
     Real dedx = (er - el)/size.d_view(m).dx1;
     Real eface = 0.5*(el + er);
     Real R = Kokkos::fabs(dedx)/(cg*Kokkos::fmax(eface, efloor));
-    Real D = cc*LarsenLimiter(R, nl)/cg;
-    flx1(m,g,k,j,i) = -D*dedx;
+    Real lam = LarsenLimiter(R, nl);
+    Real D = cc*lam/cg;
+    // LF streaming dissipation (#215, per-group port of grey #194): signal speed
+    // cc*lam*R (-> c streaming) GATED by the advective fraction (1-3 lam)_+ (0 where
+    // lam=1/3 thick, -> 1 streaming), so it vanishes as ~R^2 where the group is already
+    // a stable diffusion and damps the centered-advection (imaginary) mode RKL2 cannot
+    // at a sharp front.  Without it a sustained steep front runs away to NaN per group.
+    Real alf = cc*lam*R*Kokkos::fmax(0.0, 1.0 - 3.0*lam);
+    flx1(m,g,k,j,i) = -D*dedx - 0.5*upwind*alf*(er - el);
   });
 
   if (!one_d) {
@@ -153,11 +164,20 @@ void FLDMultigroupOperator::OperatorAction(const DvceArray5D<Real> &u_in,
       Real cg = chi(g);
       Real el = u_in(m,g,k,j-1,i);
       Real er = u_in(m,g,k,j,i);
-      Real dedx = (er - el)/size.d_view(m).dx2;
+      // azimuthal gradient uses the physical ARC LENGTH (cyl CenterWidth2 = x1v*dx2,
+      // Cartesian = dx2 -> bit-identical), so the cross-axis phi diffusion is geometric.
+      // Dividing by the raw dx2 (an ANGLE on a cylindrical mesh) is wrong by r (#215).
+      Real x1v2 = 0.0;
+      if (csys == CoordSystem::cylindrical) {
+        x1v2 = CellCenterX(i-is, nx1, size.d_view(m).x1min, size.d_view(m).x1max);
+      }
+      Real dedx = (er - el)/CenterWidth2(csys, size.d_view(m).dx2, x1v2);
       Real eface = 0.5*(el + er);
       Real R = Kokkos::fabs(dedx)/(cg*Kokkos::fmax(eface, efloor));
-      Real D = cc*LarsenLimiter(R, nl)/cg;
-      flx2(m,g,k,j,i) = -D*dedx;
+      Real lam = LarsenLimiter(R, nl);
+      Real D = cc*lam/cg;
+      Real alf = cc*lam*R*Kokkos::fmax(0.0, 1.0 - 3.0*lam);  // gated LF (#215)
+      flx2(m,g,k,j,i) = -D*dedx - 0.5*upwind*alf*(er - el);
     });
   }
   if (!one_d && !two_d) {
@@ -169,8 +189,10 @@ void FLDMultigroupOperator::OperatorAction(const DvceArray5D<Real> &u_in,
       Real dedx = (er - el)/size.d_view(m).dx3;
       Real eface = 0.5*(el + er);
       Real R = Kokkos::fabs(dedx)/(cg*Kokkos::fmax(eface, efloor));
-      Real D = cc*LarsenLimiter(R, nl)/cg;
-      flx3(m,g,k,j,i) = -D*dedx;
+      Real lam = LarsenLimiter(R, nl);
+      Real D = cc*lam/cg;
+      Real alf = cc*lam*R*Kokkos::fmax(0.0, 1.0 - 3.0*lam);  // gated LF (#215)
+      flx3(m,g,k,j,i) = -D*dedx - 0.5*upwind*alf*(er - el);
     });
   }
 
@@ -184,11 +206,24 @@ void FLDMultigroupOperator::OperatorAction(const DvceArray5D<Real> &u_in,
   // accessors, exactly as the hydro/MHD RKUpdate and FLDGreyOperator do.
   par_for("fld_mg_div", DevExeSpace(), 0, nmb1, 0, ng1, ks, ke, js, je, is, ie,
   KOKKOS_LAMBDA(const int m, const int g, const int k, const int j, const int i) {
+    // cylindrical face radii (rm,rp) / cell radius (x1v) feed the curvilinear flux
+    // divergence (1/r) d(r F)/dr and (1/r) dF/dphi; default 0 -> Cartesian (fr-fl)/dx,
+    // byte-identical.  Required for the operator to run on the cylindrical MagLIF mesh
+    // at all (#215) -- without them FluxDivX1 evaluates 0/0 at EVERY cell and every group
+    // goes NaN, exactly as the grey operator did before #116/[B3].  Benchmarks 5-6 run on
+    // that mesh, so this is a hard blocker for them, not an accuracy detail.
+    Real rm = 0.0, rp = 0.0, x1v = 0.0;
+    if (csys == CoordSystem::cylindrical) {
+      Real x1min = size.d_view(m).x1min, x1max = size.d_view(m).x1max;
+      rm  = LeftEdgeX(i-is,    nx1, x1min, x1max);
+      rp  = LeftEdgeX(i+1-is,  nx1, x1min, x1max);
+      x1v = CellCenterX(i-is,  nx1, x1min, x1max);
+    }
     Real divf = FluxDivX1(csys, flx1(m,g,k,j,i), flx1(m,g,k,j,i+1),
-                          size.d_view(m).dx1);
+                          size.d_view(m).dx1, rm, rp);
     if (!one_d) {
       divf += FluxDivX2(csys, flx2(m,g,k,j,i), flx2(m,g,k,j+1,i),
-                        size.d_view(m).dx2);
+                        size.d_view(m).dx2, x1v);
     }
     if (!one_d && !two_d) {
       divf += FluxDivX3(csys, flx3(m,g,k,j,i), flx3(m,g,k+1,j,i),
@@ -201,8 +236,10 @@ void FLDMultigroupOperator::OperatorAction(const DvceArray5D<Real> &u_in,
 //----------------------------------------------------------------------------------------
 //! \fn Real FLDMultigroupOperator::ExplicitStableDt()
 //! \brief Forward-Euler stability dt for the flux-limited diffusion of the current field,
-//! minimised over all groups: dt = min_g 1/(2 D_g (1/dx1^2 + 1/dx2^2 + 1/dx3^2)), with
-//! the cell-centred per-group diffusivity D_g = c lambda(R_g)/chi_g.
+//! minimised over all groups.  Face-consistent (#215, per-group port of grey #194): the
+//! effective per-face diffusivity D_eff (flux-limited D_g + the Lax-Friedrichs streaming
+//! viscosity) is built from the SAME el/er/eface the flux kernel uses, so the reported
+//! bound is the one the scheme it advances actually needs.
 
 Real FLDMultigroupOperator::ExplicitStableDt() {
   auto &indcs = pmy_pack->pmesh->mb_indcs;
@@ -217,9 +254,10 @@ Real FLDMultigroupOperator::ExplicitStableDt() {
   auto &multi_d = pmy_pack->pmesh->multi_d;
   auto &three_d = pmy_pack->pmesh->three_d;
   auto size = pmy_pack->pmb->mb_size;
+  auto csys = pmy_pack->pcoord->coord_system;
   auto &u = erad_;
   auto chi = chi_;
-  Real cc = c_, nl = nlarsen_, efloor = efloor_;
+  Real cc = c_, nl = nlarsen_, efloor = efloor_, upwind = upwind_;
 
   Real dtnew = static_cast<Real>(std::numeric_limits<float>::max());
   Kokkos::parallel_reduce("fld_mg_newdt",
@@ -233,24 +271,37 @@ Real FLDMultigroupOperator::ExplicitStableDt() {
     k += ks;
     j += js;
     Real cg = chi(g);
-    // cell-centred gradient magnitude (central differences over active dims)
+    // face-consistent forward-Euler bound (#215, per-group port of grey #194): the
+    // effective diffusivity D_eff (flux-limited D_g + the LF streaming viscosity) is
+    // built
+    // per face from the SAME el/er/eface/R_g the flux kernel uses, summed over the two
+    // faces per active dim:  dt <= 1 / sum_dim (D_eff_minus + D_eff_plus)/w^2.
+    // In a flat thick cell D_eff_minus = D_eff_plus = D and this reduces to 1/(2 D inv)
+    // (the old cell-centred estimate).  At a front the old estimate over-counted: a DARK
+    // cell beside a BRIGHT neighbour has R_g = |grad|/(chi_g e0) -> huge from the central
+    // difference, so lambda ~ 1/R, D ~ 0, and it reported an effectively infinite dt.
     Real e0 = u(m,g,k,j,i);
-    Real gx1 = (u(m,g,k,j,i+1) - u(m,g,k,j,i-1))/(2.0*size.d_view(m).dx1);
-    Real g2 = gx1*gx1;
-    Real inv = 1.0/SQR(size.d_view(m).dx1);
+    Real w1 = size.d_view(m).dx1;
+    Real Dm = FaceDeff(u(m,g,k,j,i-1), e0, w1, cc, cg, nl, efloor, upwind);
+    Real Dp = FaceDeff(e0, u(m,g,k,j,i+1), w1, cc, cg, nl, efloor, upwind);
+    Real invsum = (Dm + Dp)/SQR(w1);
     if (multi_d) {
-      Real gx2 = (u(m,g,k,j+1,i) - u(m,g,k,j-1,i))/(2.0*size.d_view(m).dx2);
-      g2 += gx2*gx2;
-      inv += 1.0/SQR(size.d_view(m).dx2);
+      Real x1v = 0.0;
+      if (csys == CoordSystem::cylindrical) {
+        x1v = CellCenterX(i-is, nx1, size.d_view(m).x1min, size.d_view(m).x1max);
+      }
+      Real w2 = CenterWidth2(csys, size.d_view(m).dx2, x1v);
+      Real Dm2 = FaceDeff(u(m,g,k,j-1,i), e0, w2, cc, cg, nl, efloor, upwind);
+      Real Dp2 = FaceDeff(e0, u(m,g,k,j+1,i), w2, cc, cg, nl, efloor, upwind);
+      invsum += (Dm2 + Dp2)/SQR(w2);
     }
     if (three_d) {
-      Real gx3 = (u(m,g,k+1,j,i) - u(m,g,k-1,j,i))/(2.0*size.d_view(m).dx3);
-      g2 += gx3*gx3;
-      inv += 1.0/SQR(size.d_view(m).dx3);
+      Real w3 = size.d_view(m).dx3;
+      Real Dm3 = FaceDeff(u(m,g,k-1,j,i), e0, w3, cc, cg, nl, efloor, upwind);
+      Real Dp3 = FaceDeff(e0, u(m,g,k+1,j,i), w3, cc, cg, nl, efloor, upwind);
+      invsum += (Dm3 + Dp3)/SQR(w3);
     }
-    Real R = Kokkos::sqrt(g2)/(cg*Kokkos::fmax(e0, efloor));
-    Real D = cc*LarsenLimiter(R, nl)/cg;
-    min_dt = fmin(min_dt, 1.0/(2.0*D*inv));
+    if (invsum > 0.0) { min_dt = fmin(min_dt, 1.0/invsum); }
   }, Kokkos::Min<Real>(dtnew));
 
   return dtnew;

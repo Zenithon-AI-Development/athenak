@@ -69,11 +69,13 @@ class FLDMultigroupOperator : public parabolic::ParabolicOperator {
   //! per-group extinction chi_g = rho_bg * kappa_R,g(rho_bg, te_bg), the Larsen exponent
   //! `n_larsen`, and the inner-x1 Dirichlet source `e_source` (e_source < 0 => inner-x1
   //! zero-gradient).
+  //! `upwind` gates the Lax-Friedrichs streaming dissipation (#215, per-group port of the
+  //! grey #194 fix); 1 => on, 0 => the bare centered flux.
   FLDMultigroupOperator(MeshBlockPack *pp, ParameterInput *pin,
                         const DvceArray5D<Real> &erad,
                         const opacity::MultigroupOpacity &table, Real c_light,
                         Real rho_bg, Real te_bg, Real n_larsen, Real e_source,
-                        Real e_floor = 1.0e-30);
+                        Real e_floor = 1.0e-30, Real upwind = 1.0);
   ~FLDMultigroupOperator();
 
   //! \brief M(u): per-group FLD flux divergence div(D_g grad E_g) into rhs_out(ig) for
@@ -122,6 +124,7 @@ class FLDMultigroupOperator : public parabolic::ParabolicOperator {
   Real nlarsen_;              // Larsen flux-limiter exponent n
   Real esrc_;                 // inner-x1 Dirichlet source value (<0 => zero-gradient)
   Real efloor_;               // positivity floor for E_g (#197): read-floor + projection
+  Real upwind_;               // Lax-Friedrichs streaming-dissipation gate (#215); 1=on
   Real injected_energy_;      // energy added by the floor (#197), summed over groups
   int ngroups_;               // number of photon-energy groups (= table.ngroups)
   DvceArray1D<Real> chi_;     // per-group extinction chi_g = rho*kappa_R,g [1/length]
