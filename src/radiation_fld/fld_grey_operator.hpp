@@ -162,6 +162,11 @@ class FLDGreyOperator : public parabolic::ParabolicOperator {
   //! calls (Sum of max(efloor-erad,0)*cell_volume): the #194 "accounted injection".
   //! Rank-local (no MPI reduce); a serial diagnostic / per-rank budget for now.
   Real injected_energy() const { return injected_energy_; }
+  // coarse-mesh scratch (nmb, 1, cn3, cn2, cn1); the SAME array the operator uses
+  // per-substage (SyncParabolicGhosts) is reused by the AMR regrid restrict/prolong
+  // (#248, the grey port of the #111/[A4] erad_mg registration), exposed as a non-const
+  // lvalue reference for mesh_refinement.cpp / load_balance.cpp.
+  DvceArray5D<Real> &coarse() { return coarse_; }
 
  private:
   MeshBlockPack *pmy_pack;

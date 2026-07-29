@@ -155,7 +155,9 @@ class MHD {
   // the MHD once-per-step slot (#110/[A3], ADR-0001).  `erad` is the standalone radiation
   // energy density E_r the operator diffuses; `pfld_op` is non-null only when grey FLD is
   // on AND operator-split is enabled, so default runs allocate nothing and stay
-  // byte-identical (mirrors hydro's operator-split conduction).
+  // byte-identical (mirrors hydro's operator-split conduction).  Like erad_mg, `erad`
+  // IS registered with the AMR regrid machinery (mesh_refinement.cpp /
+  // load_balance.cpp, #248), so it survives a dynamic re-refinement.
   bool fld_operator_split = false;
   DvceArray5D<Real> erad;
   FLDGreyOperator *pfld_op = nullptr;
@@ -208,7 +210,9 @@ class MHD {
   // allocate nothing and stay byte-identical.  Stiff (#109) => super-time-stepped, so it
   // does not limit the hyperbolic dt.  The operator owns its own ghost-exchange boundary
   // object so it runs multi-block/MPI/AMR via SyncParabolicGhosts (#108/[A1]), with the
-  // antisymmetric axis ghost kept only at the true r=0 domain face.
+  // antisymmetric axis ghost kept only at the true r=0 domain face.  Like erad_mg,
+  // `bphi` IS registered with the AMR regrid machinery (mesh_refinement.cpp /
+  // load_balance.cpp, #248), so it survives a dynamic re-refinement.
   bool resb_operator_split = false;
   DvceArray5D<Real> bphi;
   DvceArray4D<Real> eta_resb;
