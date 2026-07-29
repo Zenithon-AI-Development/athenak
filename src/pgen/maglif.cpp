@@ -35,9 +35,21 @@
 //!                     applied as a per-zone pressure factor T/T_0 at fixed density (mass
 //!                     conserving; unperturbed at dT=0).  Reproducible by seed.
 //!
-//! Drive wiring (ADR-0005): reuses the circuit::DriveSource + the reusable circuit-driven
-//! B_phi outer-radial user boundary (circuit/drive_bphi_bc.hpp, issue [9a]/#21), just as
-//! driven_pinch.cpp does -- the enrolled user_bcs_func evaluates I(pm->time) each step.
+//! Drive wiring (ADR-0005): `<problem> current_mode` selects the origin of the boundary
+//! current (issue #236 promotes modes B/C from the coupled_liner USER pgen into this
+//! suite path):
+//!   * driven / nocurrent (A) -- prescribed I(t) via circuit::DriveSource + the reusable
+//!     circuit-driven B_phi outer-radial user boundary (circuit/drive_bphi_bc.hpp, #21),
+//!     just as driven_pinch.cpp does (user_bcs_func evaluates I(pm->time) each step);
+//!   * voltage_rlc (B) -- open-circuit voltage source + fixed series RLC: the lumped-
+//!     element circuit ODE (circuit/lumped_circuit.hpp, #34) is advanced host-side once
+//!     per MHD step by RK4 and its integrated current I(t) drives the same boundary;
+//!   * coupled_circuit (C) -- identical, plus the Faraday load voltage V_load = d(Phi)/dt
+//!     (the global poloidal-flux reduction, circuit/faraday_voltage.hpp, #31) fed back
+//!     into the loop -- current loss + the stagnation voltage spike.
+//! Modes B/C expose the circuit waveforms (I, V_C, V_load, Phi) as user history columns;
+//! all circuit parameters are deck-driven (tabulated/analytic V_oc(t) + R/L/C elements +
+//! the r_loss loss-resistor hook the z3018 calibration [B5] will drive).
 //!
 //! Coordinate note: ADR-0004 ships 2-D (r,z) as the production MagLIF geometry, but
 //! AthenaK's mesh forbids the (nx2=1, nx3>1) topology ("2-D in the x1-x3 plane"), so an
@@ -53,6 +65,7 @@
 #include <string>
 
 #include "athena.hpp"
+#include "globals.hpp"
 #include "parameter_input.hpp"
 #include "mesh/mesh.hpp"
 #include "coordinates/coordinates.hpp"
@@ -65,8 +78,14 @@
 #include "outputs/outputs.hpp"
 #include "circuit/drive_source.hpp"
 #include "circuit/drive_bphi_bc.hpp"
+#include "circuit/faraday_voltage.hpp"
+#include "circuit/lumped_circuit.hpp"
 #include "pgen/maglif_temperature_seed.hpp"
 #include "pgen.hpp"
+
+// Forward declaration (defined below): the cons/div(B) history filler, reused by the
+// circuit-mode combined history (#236).
+void MagLIFConsHistory(HistoryData *pdata, Mesh *pm);
 
 namespace {
 //! 2*pi as a Real (device-safe; avoids the host-only M_PI macro in a device kernel).
@@ -75,6 +94,16 @@ constexpr Real kTwoPiM = 6.2831853071795864769;
 // File-scope drive state shared with the (stateless-signature) user_bcs_func.
 circuit::DriveSource drive_source_;
 bool nocurrent_mode_ = false;
+
+// #236 circuit-drive state (ADR-0005 modes B/C promoted into the maglif suite path):
+// the voltage-driven lumped-element circuit ODE advanced host-side once per MHD step by
+// the user BC, plus the Faraday d(Phi)/dt monitor supplying the mode-C feedback.
+bool circuit_mode_ = false;          // current_mode is voltage_rlc / coupled_circuit
+circuit::LumpedCircuit circuit_;     // series-loop ODE (ADR-0005 modes B/C, #34)
+circuit::FaradayVoltage faraday_;    // d(Phi)/dt monitor -> mode-C load voltage (#31)
+Real circ_t_ = 0.0;                  // circuit internal clock (tracks the MHD time)
+Real v_load_last_ = 0.0;             // most recent load voltage fed to the circuit
+Real r_loss_ = 0.0;                  // loss resistor R_loss (constant; z3018 hook, B5)
 
 // #192 outer-x1 inflow-guard state (set from <problem> at pgen time; read by MagLIFBCs).
 bool ox1_inflow_guard_ = false;
@@ -89,6 +118,24 @@ Real ox1_vac_ei_ = 0.0;    // vacuum ghost internal-energy density (code units)
 void MagLIFBCs(Mesh *pm) {
   MeshBlockPack *pmbp = pm->pmb_pack;
   if (pmbp->pmhd == nullptr) return;
+
+  // --- #236 circuit drive (modes B/C): advance the circuit ODE once per MHD step ---
+  // pm->time is constant across integrator stages and advances once per cycle, so the
+  // strict ">" guard advances the circuit exactly once per MHD step (and never on the
+  // pre-loop ghost fill, where pm->time == circ_t_).  Mode C first reduces the global
+  // poloidal flux and differences it into the Faraday load voltage V_load = d(Phi)/dt
+  // (the coupled feedback); mode B has no load feedback and skips the reduction.
+  if (circuit_mode_ && pm->time > circ_t_) {
+    Real v_load = 0.0;
+    if (circuit_.mode == circuit::DriveMode::coupled_circuit) {
+      Real flux = circuit::PoloidalFluxGlobal(pm);        // Phi at the current MHD state
+      v_load = faraday_.Update(flux, pm->time);           // (Phi - Phi_prev)/(t - t_prev)
+    }
+    circuit_.SetLossResistance(r_loss_);
+    circuit_.Step(pm->time - circ_t_, circ_t_, v_load);   // RK4 over [circ_t_, pm->time]
+    v_load_last_ = v_load;
+    circ_t_ = pm->time;
+  }
 
   auto &indcs = pm->mb_indcs;
   int &ng = indcs.ng;
@@ -110,8 +157,11 @@ void MagLIFBCs(Mesh *pm) {
   });
 
   // (2) face-centred B: driven / nocurrent B_phi + outflow B_r, B_z (shared helper).
-  Real current = drive_source_.Current(pm->time);
-  circuit::ApplyDriveBphiBC(pm, current, drive_source_.mu0, nocurrent_mode_);
+  // The boundary current is the prescribed waveform (mode A) or the circuit ODE's
+  // integrated current (modes B/C, #236).
+  Real current = circuit_mode_ ? circuit_.Current() : drive_source_.Current(pm->time);
+  Real mu0 = circuit_mode_ ? circuit_.mu0 : drive_source_.mu0;
+  circuit::ApplyDriveBphiBC(pm, current, mu0, nocurrent_mode_);
 
   // (3) #192 inflow guard (<problem> ox1_inflow_guard, default off): wherever the last
   // interior cell moves INWARD, replace the zero-gradient hydro ghosts of that column
@@ -309,6 +359,54 @@ void MagLIFConsHistory(HistoryData *pdata, Mesh *pm) {
   for (int n=pdata->nhist; n<NHISTORY_VARIABLES; ++n) { pdata->hdata[n] = 0.0; }
 }
 
+namespace {
+//----------------------------------------------------------------------------------------
+//! \fn void MagLIFAppendCircuitHistory()
+//! \brief Append the four circuit-drive columns (I_circuit, V_cap, V_load, Bphi_flux)
+//! after the pdata->nhist columns already filled (#236, ADR-0005 modes B/C).  MPI-safe
+//! by construction (the coupled_liner pattern): the circuit scalars are global host
+//! values (identical on every rank) written on rank 0 only, and the flux column is the
+//! per-rank LOCAL partial, so history.cpp's in-place MPI_Reduce(SUM) yields the global
+//! values on the root rank.
+
+void MagLIFAppendCircuitHistory(HistoryData *pdata, Mesh *pm) {
+  int n0 = pdata->nhist;
+  pdata->nhist = n0 + 4;
+  pdata->label[n0+0] = "I_circuit";
+  pdata->label[n0+1] = "V_cap";
+  pdata->label[n0+2] = "V_load";
+  pdata->label[n0+3] = "Bphi_flux";
+
+  bool root = (global_variable::my_rank == 0);
+  pdata->hdata[n0+0] = root ? circuit_.Current()    : 0.0;
+  pdata->hdata[n0+1] = root ? circuit_.CapVoltage() : 0.0;
+  pdata->hdata[n0+2] = root ? v_load_last_          : 0.0;
+  pdata->hdata[n0+3] = circuit::PoloidalFluxLocal(pm);
+  for (int n=pdata->nhist; n<NHISTORY_VARIABLES; ++n) { pdata->hdata[n] = 0.0; }
+}
+
+//----------------------------------------------------------------------------------------
+//! \fn void MagLIFCircuitHistory()
+//! \brief User history for the circuit-driven modes B/C: the circuit waveforms only --
+//! the observables the circuit verification (#236) baselines.
+
+void MagLIFCircuitHistory(HistoryData *pdata, Mesh *pm) {
+  pdata->nhist = 0;
+  MagLIFAppendCircuitHistory(pdata, pm);
+}
+
+//----------------------------------------------------------------------------------------
+//! \fn void MagLIFConsCircuitHistory()
+//! \brief Combined user history for a circuit-driven run that also asks for the
+//! conservation/div(B) diagnostics (problem/user_hist=true): the MagLIFConsHistory
+//! columns first, then the four circuit columns.
+
+void MagLIFConsCircuitHistory(HistoryData *pdata, Mesh *pm) {
+  MagLIFConsHistory(pdata, pm);
+  MagLIFAppendCircuitHistory(pdata, pm);
+}
+}  // namespace
+
 //----------------------------------------------------------------------------------------
 //! \fn void ProblemGenerator::UserProblem()
 //! \brief Initialize the MagLIF liner/fuel/vacuum target (+ B_z premag + perturbation
@@ -330,17 +428,59 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
     exit(EXIT_FAILURE);
   }
 
-  // ---- drive-source configuration (<problem> block; ADR-0005 mode A) ----
+  // ---- drive-source configuration (<problem> block; ADR-0005 modes A/B/C) ----
+  // Mode A (driven / nocurrent) keeps the prescribed-current source; modes B/C (#236)
+  // instead configure the voltage-driven lumped-element circuit (the coupled_liner
+  // wiring promoted into this suite path).  Read before the restart return so a
+  // restarted run keeps the same drive; the circuit state itself restarts from rest at
+  // the restart time (ODE-state continuity across restarts is out of scope, as in
+  // coupled_liner).  Every mode-A deck takes the else branch below unchanged
+  // (byte-identical reads in the same order).
   std::string mode = pin->GetOrAddString("problem", "current_mode", "driven");
   nocurrent_mode_ = (mode == "nocurrent");
-  std::string wf = pin->GetOrAddString("problem", "current_waveform", "linear_ramp");
-  drive_source_.waveform = circuit::ParseWaveform(wf);
-  drive_source_.i0     = pin->GetOrAddReal("problem", "i0", 1.0);
-  drive_source_.t_rise = pin->GetOrAddReal("problem", "t_rise", 1.0);
-  drive_source_.mu0    = pin->GetOrAddReal("problem", "mu0", 1.0);
-  if (drive_source_.waveform == circuit::CurrentWaveform::tabulated) {
-    std::string cfile = pin->GetOrAddString("problem", "current_file", "unset");
-    circuit::ReadCurrentWaveform(cfile, drive_source_);
+  circuit_mode_ = (mode == "voltage_rlc" || mode == "coupled_circuit");
+  if (!circuit_mode_ && !nocurrent_mode_ && mode != "driven") {
+    std::cout << "### FATAL ERROR in " << __FILE__ << " at line " << __LINE__
+              << std::endl << "unknown problem/current_mode '" << mode
+              << "' (expected driven|nocurrent|voltage_rlc|coupled_circuit)"
+              << std::endl;
+    exit(EXIT_FAILURE);
+  }
+  if (circuit_mode_) {
+    // ADR-0005 modes B/C: the open-circuit voltage source V_oc(t) reuses the
+    // prescribed-source waveform machinery (constant/linear_ramp/sin_squared/tabulated;
+    // its i0 is the PEAK VOLTAGE) + deck-driven series elements.  r_loss is the
+    // loss-resistor hook (constant here; the z3018 calibration [B5] will drive it).
+    circuit_.mode = (mode == "coupled_circuit") ? circuit::DriveMode::coupled_circuit
+                                                : circuit::DriveMode::voltage_rlc;
+    std::string vwf = pin->GetOrAddString("problem", "voltage_waveform", "constant");
+    circuit_.voltage_source.waveform = circuit::ParseWaveform(vwf);
+    circuit_.voltage_source.i0     = pin->GetOrAddReal("problem", "v_oc", 1.0);
+    circuit_.voltage_source.t_rise = pin->GetOrAddReal("problem", "t_rise", 1.0);
+    circuit_.L   = pin->GetOrAddReal("problem", "circuit_L", 1.0);
+    circuit_.cap = pin->GetOrAddReal("problem", "circuit_C", 0.0);  // <=0 -> pure RL
+    circuit_.Z0  = pin->GetOrAddReal("problem", "circuit_Z0", 0.0);
+    circuit_.mu0 = pin->GetOrAddReal("problem", "mu0", 1.0);
+    r_loss_      = pin->GetOrAddReal("problem", "r_loss", 0.0);
+    if (circuit_.voltage_source.waveform == circuit::CurrentWaveform::tabulated) {
+      std::string vfile = pin->GetOrAddString("problem", "voltage_file", "unset");
+      circuit::ReadCurrentWaveform(vfile, circuit_.voltage_source);
+    }
+    // Start the circuit (and its clock + flux monitor) from rest at the mesh time.
+    circuit_.Reset(0.0, 0.0);
+    faraday_.Reset();
+    circ_t_ = pmy_mesh_->time;
+    v_load_last_ = 0.0;
+  } else {
+    std::string wf = pin->GetOrAddString("problem", "current_waveform", "linear_ramp");
+    drive_source_.waveform = circuit::ParseWaveform(wf);
+    drive_source_.i0     = pin->GetOrAddReal("problem", "i0", 1.0);
+    drive_source_.t_rise = pin->GetOrAddReal("problem", "t_rise", 1.0);
+    drive_source_.mu0    = pin->GetOrAddReal("problem", "mu0", 1.0);
+    if (drive_source_.waveform == circuit::CurrentWaveform::tabulated) {
+      std::string cfile = pin->GetOrAddString("problem", "current_file", "unset");
+      circuit::ReadCurrentWaveform(cfile, drive_source_);
+    }
   }
 
   // ---- #192 outer-x1 inflow guard (<problem> ox1_inflow_guard; default off) ----
@@ -364,7 +504,14 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   // Optional: enroll the conservation/div(B) history output (AMR-vs-uniform check, #43).
   // Default off, so the plain integrated-target run (#32) is unchanged.  Set on restart
   // too (before the restart return) so a resumed run keeps writing the history columns.
-  if (pin->GetOrAddBoolean("problem", "user_hist", false)) {
+  // The circuit-driven modes B/C (#236) ALWAYS expose the circuit waveforms (I, V_C,
+  // V_load, Phi) -- the verification observables; with user_hist=true the cons columns
+  // come first and the circuit columns are appended.
+  bool cons_hist = pin->GetOrAddBoolean("problem", "user_hist", false);
+  if (circuit_mode_) {
+    user_hist = true;
+    user_hist_func = cons_hist ? MagLIFConsCircuitHistory : MagLIFCircuitHistory;
+  } else if (cons_hist) {
     user_hist = true;
     user_hist_func = MagLIFConsHistory;
   }
@@ -418,8 +565,9 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   Real p0      = pin->GetOrAddReal("problem", "p0", 1.0e-3) / u_prs;
   Real bz0     = pin->GetOrAddReal("problem", "bz0", 0.0);   // axial premag field (code)
   bool rod_target = (r_rod > 0.0);
-  Real i_init  = drive_source_.Current(0.0);
-  Real mu0     = drive_source_.mu0;
+  // Modes B/C (#236) start from the circuit's rest state (I=0 -> no IC drive field).
+  Real i_init  = circuit_mode_ ? circuit_.Current() : drive_source_.Current(0.0);
+  Real mu0     = circuit_mode_ ? circuit_.mu0 : drive_source_.mu0;
 
   // ---- perturbation seeding (axial, requires z resolved) ----
   // Build a unified per-mode (k_n, amplitude, phase) table; dr(z) = sum over modes of

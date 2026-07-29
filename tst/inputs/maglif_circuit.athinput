@@ -1,0 +1,98 @@
+# AthenaK input file for the CIRCUIT-DRIVEN MagLIF path (issue #236, ADR-0005 modes B/C).
+#
+# Promotes the voltage-driven lumped-element circuit (modes B `voltage_rlc` and C
+# `coupled_circuit`) into the `maglif` pgen: the series-loop ODE
+#   L dI/dt + (Z0 + R_loss) I + V_C + V_load = V_oc(t),   dV_C/dt = I / C,
+# is advanced once per MHD step by RK4 on the host, and the integrated current I(t) sets
+# the outer-radial B_phi boundary.  Mode C additionally feeds the Faraday load voltage
+# V_load = d(Phi)/dt (global poloidal-flux reduction) back into the loop.
+#
+# This deck is the MODE-C base: 1-D radial cylindrical MHD (x1=r in [0, R_out]) with the
+# fuel | liner | vacuum MagLIF target and a constant open-circuit voltage source.  With
+# circuit_Z0 = circuit_C = r_loss = 0 the series loop reduces to the pure inductor +
+# coupled load, L dI/dt = V_oc - V_load, so flux is conserved in the (series L + load)
+# loop:
+#   L*I(t) + Phi(t) = V_oc * t        (constant V_oc, started from rest),
+# the exact coupled-circuit reference tst/test_suite/cylindrical/
+# test_verify_maglif_circuit_cpu.py checks against.  The mode-B (voltage_rlc) companion
+# test reuses this deck with command-line overrides (tabulated voltage source + full RLC).
+#
+# Built with -D PROBLEM=maglif (a USER pgen; not in the default suite binary).
+
+<comment>
+problem   = MagLIF circuit-driven implosion (ADR-0005 modes B/C in the maglif path, #236)
+
+<job>
+basename  = maglif_circuit
+
+<mesh>
+nghost    = 2
+nx1       = 128        # radial zones
+x1min     = 0.0        # r = 0 axis
+x1max     = 1.0        # outer radius R_out (driven boundary)
+ix1_bc    = axis       # cylindrical r=0 axisymmetric boundary (issue #16)
+ox1_bc    = user       # circuit-driven B_phi boundary (ADR-0005 modes B/C)
+
+nx2       = 1          # 1-D radial (phi trivial)
+x2min     = 0.0
+x2max     = 1.0
+ix2_bc    = periodic
+ox2_bc    = periodic
+
+nx3       = 1          # z trivial (poloidal-flux height H = x3max - x3min = 1)
+x3min     = 0.0
+x3max     = 1.0
+ix3_bc    = periodic
+ox3_bc    = periodic
+
+<meshblock>
+nx1       = 128
+nx2       = 1
+nx3       = 1
+
+<coord>
+system    = cylindrical  # (x1,x2,x3) = (r,phi,z)
+
+<time>
+evolution  = dynamic
+integrator = rk2
+cfl_number = 0.3
+nlim       = -1
+tlim       = 1.25
+ndiag      = 200
+
+<mhd>
+eos         = ideal
+reconstruct = plm
+rsolver     = hlld
+gamma       = 1.6666666666666667
+dfloor      = 1.0e-4      # density floor (well below all IC values; only the deep vacuum)
+pfloor      = 1.0e-6      # pressure floor (idem)
+
+<problem>
+user_hist        = true            # cons/div(B) history; circuit columns appended (B/C)
+# --- circuit drive (ADR-0005 mode C promoted into the maglif path, #236) ---
+current_mode     = coupled_circuit # driven | nocurrent | voltage_rlc | coupled_circuit
+voltage_waveform = constant        # open-circuit voltage V_oc(t): constant source
+voltage_file     = unset           # tabulated V_oc(t) file (voltage_waveform=tabulated)
+v_oc             = 2.0             # open-circuit (peak) voltage [code units]
+circuit_L        = 1.0             # series inductance
+circuit_Z0       = 0.0             # series/line resistance (0 -> pure L + coupled load)
+circuit_C        = 0.0             # series capacitance (<=0 -> capacitor dropped)
+r_loss           = 0.0             # (constant) loss resistor R_loss [z3018 hook, B5]
+mu0              = 1.0             # code-unit permeability (Heaviside-Lorentz: 1)
+# --- MagLIF target IC (fuel | liner | vacuum); circuit starts at rest -> B_phi=0 ---
+r_fuel           = 0.4             # fuel/liner interface radius
+r_liner          = 0.6             # liner/vacuum interface (liner outer edge)
+d_fuel           = 0.02            # fuel (inner gas) density
+d_liner          = 1.0             # liner (dense shell) density
+d_vac            = 0.01            # vacuum (outer gap) density
+p0               = 1.0e-3          # uniform (low) thermal pressure
+bz0              = 0.0             # no axial premagnetization (pure B_phi drive)
+perturbation     = none            # clean bulk implosion (1-D radial anyway)
+
+<output1>
+file_type      = hst
+data_format    = %24.16e
+user_hist_only = true           # cons columns + I_circuit, V_cap, V_load, Bphi_flux
+dt             = 0.005          # dense current/voltage traces (~250 samples over [0,tlim])
