@@ -19,6 +19,8 @@
 #include "mhd/mhd.hpp"
 #include "radiation/radiation.hpp"
 #include "radiation_fld/fld_multigroup_operator.hpp"  // erad_mg AMR load-balance pack
+#include "radiation_fld/fld_grey_operator.hpp"        // erad AMR load-balance pack
+#include "diffusion/resistive_bphi_operator.hpp"      // bphi AMR load-balance pack
 #include "z4c/z4c.hpp"
 
 #if MPI_PARALLEL_ENABLED
@@ -148,6 +150,13 @@ void MeshRefinement::InitRecvAMR(int nleaf) {
     // standalone multigroup radiation group-energy array (#111/[A4])
     if (pmy_mesh->pmb_pack->pmhd->pmg_op != nullptr) {
       ncc_tosend += pmy_mesh->pmb_pack->pmhd->erad_mg.extent_int(1);
+    }
+    // standalone grey radiation energy + resb B_phi arrays (#248)
+    if (pmy_mesh->pmb_pack->pmhd->pfld_op != nullptr) {
+      ncc_tosend += pmy_mesh->pmb_pack->pmhd->erad.extent_int(1);
+    }
+    if (pmy_mesh->pmb_pack->pmhd->presb_op != nullptr) {
+      ncc_tosend += pmy_mesh->pmb_pack->pmhd->bphi.extent_int(1);
     }
   }
   if (pmy_mesh->pmb_pack->prad != nullptr) {
@@ -408,6 +417,13 @@ void MeshRefinement::PackAndSendAMR(int nleaf) {
     if (pmy_mesh->pmb_pack->pmhd->pmg_op != nullptr) {
       ncc_tosend += pmy_mesh->pmb_pack->pmhd->erad_mg.extent_int(1);
     }
+    // standalone grey radiation energy + resb B_phi arrays (#248)
+    if (pmy_mesh->pmb_pack->pmhd->pfld_op != nullptr) {
+      ncc_tosend += pmy_mesh->pmb_pack->pmhd->erad.extent_int(1);
+    }
+    if (pmy_mesh->pmb_pack->pmhd->presb_op != nullptr) {
+      ncc_tosend += pmy_mesh->pmb_pack->pmhd->bphi.extent_int(1);
+    }
   }
   if (pmy_mesh->pmb_pack->prad != nullptr) {
     ncc_tosend += (pmy_mesh->pmb_pack->prad->prgeo->nangles);
@@ -555,6 +571,16 @@ void MeshRefinement::PackAndSendAMR(int nleaf) {
     if (pmhd->pmg_op != nullptr) {
       PackAMRBuffersCC(pmhd->erad_mg, pmhd->pmg_op->coarse(), ncc_sent, nfc_sent);
       ncc_sent += pmhd->erad_mg.extent_int(1);
+    }
+    // standalone grey radiation energy + resb B_phi arrays (#248); their coarse()
+    // companions were likewise refreshed at the top of RedistAndRefineMeshBlocks
+    if (pmhd->pfld_op != nullptr) {
+      PackAMRBuffersCC(pmhd->erad, pmhd->pfld_op->coarse(), ncc_sent, nfc_sent);
+      ncc_sent += pmhd->erad.extent_int(1);
+    }
+    if (pmhd->presb_op != nullptr) {
+      PackAMRBuffersCC(pmhd->bphi, pmhd->presb_op->coarse(), ncc_sent, nfc_sent);
+      ncc_sent += pmhd->bphi.extent_int(1);
     }
   }
   if (prad != nullptr) {
@@ -851,6 +877,16 @@ void MeshRefinement::ClearRecvAndUnpackAMR() {
     if (pmhd->pmg_op != nullptr) {
       UnpackAMRBuffersCC(pmhd->erad_mg, pmhd->pmg_op->coarse(), ncc_recv, nfc_recv);
       ncc_recv += pmhd->erad_mg.extent_int(1);
+    }
+    // standalone grey radiation energy + resb B_phi arrays (#248); same order as the
+    // pack so the per-MB buffer offsets line up
+    if (pmhd->pfld_op != nullptr) {
+      UnpackAMRBuffersCC(pmhd->erad, pmhd->pfld_op->coarse(), ncc_recv, nfc_recv);
+      ncc_recv += pmhd->erad.extent_int(1);
+    }
+    if (pmhd->presb_op != nullptr) {
+      UnpackAMRBuffersCC(pmhd->bphi, pmhd->presb_op->coarse(), ncc_recv, nfc_recv);
+      ncc_recv += pmhd->bphi.extent_int(1);
     }
   }
   if (prad != nullptr) {

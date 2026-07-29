@@ -91,6 +91,12 @@ class ResistiveBphiOperator : public parabolic::ParabolicOperator {
 
   static constexpr int IBPHI = 0;   // component slot holding B_phi in the field array
 
+  // coarse-mesh scratch (nmb, 1, cn3, cn2, cn1); the SAME array the operator uses
+  // per-substage (SyncParabolicGhosts) is reused by the AMR regrid restrict/prolong
+  // (#248, the resb port of the #111/[A4] erad_mg registration), exposed as a non-const
+  // lvalue reference for mesh_refinement.cpp / load_balance.cpp.
+  DvceArray5D<Real> &coarse() { return coarse_; }
+
  private:
   MeshBlockPack *pmy_pack;
   DvceArray5D<Real> bphi_;      // the live B_phi field (for the explicit-dt loop)
