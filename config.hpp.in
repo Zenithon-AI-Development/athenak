@@ -6,9 +6,12 @@
 // Licensed under the 3-clause BSD License (the "LICENSE")
 //========================================================================================
 
-// problem generator (string)
-#define PROBLEM_GENERATOR "@PROBLEM@"
-#define USER_PROBLEM_ENABLED @USER_PROBLEM_ENABLED@
+// NOTE: the problem-generator identity macros (PROBLEM_GENERATOR, USER_PROBLEM_ENABLED)
+// are deliberately NOT defined here. This header reaches every translation unit, so
+// baking the pgen name into it forces a whole-tree recompile for every `-D PROBLEM=...`
+// build (each per-test pgen build in CI paid ~2 minutes for it, #250). They are injected
+// as per-source compile definitions on their only consumers (pgen/pgen.cpp,
+// utils/show_config.cpp) in src/CMakeLists.txt.
 
 #define TWO_PUNCTURES @TWO_PUNCTURES@
 

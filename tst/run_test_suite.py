@@ -65,6 +65,12 @@ parser.add_argument(
     "--gpu", nargs="*", help="Run test on GPU. Can add optional cmake arguments."
 )
 parser.add_argument("--test", type=str, help="Run a specific test by name.")
+parser.add_argument(
+    "--fast",
+    action="store_true",
+    help="Fast CI tier (#250): exclude tests marked 'heavy' (long simulations). "
+    "The weekly heavy-ci workflow runs the full suite without this flag.",
+)
 
 
 args = parser.parse_args()
@@ -100,17 +106,22 @@ if args.test is not None:
 
 tests = os.path.abspath(tests)
 
+# --fast excludes the `heavy`-marked long simulations (see test_suite/conftest.py,
+# #250); --durations surfaces the slowest tests in every log so the tier list stays
+# honest as the suite grows.
+extra = ["--durations=25"] + (["-m", "not heavy"] if args.fast else [])
+
 if args.cpu is not None:
     testutils.clean_make(flags=cmake_flags(args.cpu, []))
-    test([tests, "-k", "_cpu"])  # run all scripts with _cpu in name
+    test([tests, "-k", "_cpu"] + extra)  # run all scripts with _cpu in name
 
 if args.mpicpu is not None:
     testutils.clean_make(flags=cmake_flags(args.mpicpu, ["-D", "Athena_ENABLE_MPI=ON"]))
-    test([tests, "-k", "_mpicpu"])  # run all scripts with _mpicpu in name
+    test([tests, "-k", "_mpicpu"] + extra)  # run all scripts with _mpicpu in name
 
 if args.gpu is not None:
     testutils.clean_make(flags=cmake_flags(args.gpu, ["-D", "Kokkos_ENABLE_CUDA=On"]))
-    test([tests, "-k", "_gpu"])  # run all scripts with _gpu in name
+    test([tests, "-k", "_gpu"] + extra)  # run all scripts with _gpu in name
 
 os.chdir(original_dir)
 testutils.clean()

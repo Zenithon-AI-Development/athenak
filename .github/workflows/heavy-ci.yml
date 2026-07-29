@@ -1,0 +1,123 @@
+name: AthenaK heavy CI
+
+# The FULL test suite, including the tests marked `heavy` (long simulations -- see
+# HEAVY_TEST_MODULES in tst/test_suite/conftest.py). The per-PR gate (main.yml) runs
+# only the fast tier (#250); this workflow covers the rest:
+#   * weekly, so a regression in a heavy test is caught within a week of merging;
+#   * on manual dispatch (Actions -> AthenaK heavy CI -> Run workflow);
+#   * on any pull request labeled `heavy-ci` -- apply the label to risky PRs (physics
+#     operators, EOS, solvers) to get full coverage before merge.
+# A scheduled-run failure is reported as a comment on issue #250 so it cannot rot
+# silently in the Actions tab.
+
+on:
+  schedule:
+    - cron: '0 3 * * 1' # Mondays 03:00 UTC
+  workflow_dispatch:
+  pull_request:
+    types: [labeled, synchronize]
+    branches: [main]
+
+concurrency:
+  group: heavy-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  heavy-cpu:
+    name: Heavy CPU regression (full suite)
+    # For pull_request events, run only when the PR carries the heavy-ci label.
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'heavy-ci')
+    runs-on: ubuntu-latest
+    timeout-minutes: 420
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install deps
+        run: |
+          sudo apt-get update && sudo apt-get install -y ccache
+          python3 -m pip install --upgrade numpy pytest flake8 matplotlib h5py
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-cpu-${{ github.sha }}-heavy
+          restore-keys: |
+            ccache-cpu-
+      - name: Run FULL CPU test suite (heavy included)
+        run: |
+          export PATH="/usr/lib/ccache:$PATH"
+          cd tst
+          python3 run_test_suite.py --cpu
+      - name: Upload CPU test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: heavy-cpu-test-log
+          path: tst/test_log.txt
+          if-no-files-found: ignore
+
+  heavy-mpicpu:
+    name: Heavy MPI CPU regression (full suite)
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'heavy-ci')
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      OMPI_MCA_rmaps_base_oversubscribe: "true"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ccache libopenmpi-dev openmpi-bin
+          python3 -m pip install --upgrade numpy pytest flake8 matplotlib h5py
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-mpi-${{ github.sha }}-heavy
+          restore-keys: |
+            ccache-mpi-
+      - name: Run FULL MPI CPU test suite (heavy included)
+        run: |
+          export PATH="/usr/lib/ccache:$PATH"
+          cd tst
+          python3 run_test_suite.py --mpicpu
+      - name: Upload MPI CPU test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: heavy-mpicpu-test-log
+          path: tst/test_log.txt
+          if-no-files-found: ignore
+
+  report-failure:
+    name: Report scheduled-run failure on the tracker
+    needs: [heavy-cpu, heavy-mpicpu]
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Comment on issue 250
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue comment 250 -R "${{ github.repository }}" --body \
+            "Weekly heavy CI FAILED on $(date -u +%F): ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} -- triage before the next merge builds on a broken heavy tier."
