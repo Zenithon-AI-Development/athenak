@@ -90,6 +90,17 @@ HALF = 0.5 * D_LINER   # half-max density level isolating the dense liner
 RADIOGRAPH_RES_UM = 15.0                                  # quoted Sinars radiograph res
 K_MAX_BAND = int(LZ * 1.0e3 / (2.0 * RADIOGRAPH_RES_UM))  # cycles across LZ (= 53)
 
+# Paper density-contour observable (#222).  Ellison SS3.1 (Fig. 3) measures the B1
+# spike-bubble reduction as the (max - min) radius of the ABSOLUTE rho = 0.1 g/cc
+# density contour at the vacuum/conductor interface -- stated to be "not very
+# sensitive to the exact choice of density threshold".  This is independent of the
+# radiograph limb (a_sb): the limb's half-max is a RELATIVE criterion that moves as
+# the shell decompresses and can switch features when a brighter structure appears
+# in the projection (the suspected 51->54 ns 2.1x jump on the 432 leg).
+DENSITY_CGS = 2.7                  # g/cc per code density; must match athinput units
+RHO_CONTOUR_GCC = 0.1              # the paper's contour threshold [g/cc]
+CONTOUR_THRESHOLDS_GCC = (0.05, 0.1, 0.2)   # the paper's insensitivity band [g/cc]
+
 # Qualitative pre-check thresholds (fast sign/shape gates; NOT experiment-anchored bars --
 # the seeded growth is anchored against the Sinars curve via the oracle, reported below).
 # NOTE (#174): the "cal ~" values were calibrated on the pre-#174 ideal-MHD raw-current
@@ -157,9 +168,9 @@ def _run(basename, pert_amp=None):
     return files
 
 
-def _cross(r, p, i, j):
-    """Sub-cell radius where the density profile p crosses HALF between cells i and j."""
-    return r[i] + (HALF - p[i]) / (p[j] - p[i]) * (r[j] - r[i])
+def _cross(r, p, i, j, level=HALF):
+    """Sub-cell radius where the density profile p crosses level between cells i and j."""
+    return r[i] + (level - p[i]) / (p[j] - p[i]) * (r[j] - r[i])
 
 
 def _interfaces(d):
@@ -292,18 +303,74 @@ def _limb_edge(x, sigma):
     return out
 
 
+def _contour_edge(d, rho_gcc=RHO_CONTOUR_GCC):
+    """Per-z outermost radial crossing of the ABSOLUTE density level rho_gcc [g/cc].
+
+    The paper's contour criterion (#222, Ellison SS3.1/Fig. 3): unlike the limb's
+    relative half-max, the level is fixed in physical units, so it keeps tracking the
+    same material edge as the shell decompresses and cannot be re-keyed by a brighter
+    interior feature.  Slices with no material at/above the level give NaN.
+    """
+    level = float(rho_gcc) / DENSITY_CGS
+    r = np.asarray(d["x1v"], dtype=float)
+    dens = np.asarray(d["dens"], dtype=float)            # (nz, nphi, nr)
+    nz = dens.shape[0]
+    out = np.full(nz, np.nan)
+    for kz in range(nz):
+        p = dens[kz].mean(axis=0)                        # (nr,) phi-averaged
+        idx = np.where(p >= level)[0]
+        if len(idx) == 0:
+            continue
+        hi = idx[-1]
+        if hi == len(r) - 1:
+            out[kz] = r[hi]
+        else:
+            out[kz] = _cross(r, p, hi, hi + 1, level)
+    return out
+
+
+def _contour_amp(rz):
+    """a_contour: FULL max - min excursion [mm] of a contour trace over z.
+
+    Paper convention (#222): the B1 Fig.-3 quantity is the max-minus-min radius of
+    the rho = 0.1 g/cc contour -- NOT halved (a_sb is the HALF excursion).  NaN rows
+    (slices below the threshold) are skipped; all-NaN gives NaN.
+    """
+    good = rz[np.isfinite(rz)]
+    if good.size == 0:
+        return float("nan")
+    return float(np.max(good) - np.min(good))
+
+
+def _contour_threshold_spread(d, thresholds_gcc=CONTOUR_THRESHOLDS_GCC):
+    """a_contour at each threshold + max relative deviation from the paper's 0.1.
+
+    Mirrors the paper's insensitivity claim (#222 AC): a_contour should vary by
+    <10% for thresholds 0.05-0.2 g/cc.  Returns ({rho_gcc: amp}, spread); spread is
+    NaN when the reference amplitude is not finite/positive.
+    """
+    amps = {thr: _contour_amp(_contour_edge(d, thr)) for thr in thresholds_gcc}
+    ref = _contour_amp(_contour_edge(d, RHO_CONTOUR_GCC))
+    if not np.isfinite(ref) or ref <= 0.0:
+        return amps, float("nan")
+    spread = max(abs(a - ref) for a in amps.values()) / ref
+    return amps, float(spread)
+
+
 def _trajectory(files):
     """Reduce a run's snapshots to (z, zn, times, R_liner, R_front, a_outer, rad_mod,
-    a_sb, a_sb_raw).
+    a_sb, a_sb_raw, a_contour).
 
     a_sb is the radiograph limb-edge spike-bubble amplitude [mm] band-limited to the
     instrument resolution (#212) -- the quantity compared against Sinars.  a_sb_raw is
     the unfiltered excursion, kept as a diagnostic: the gap between the two IS the
-    grid-seeded content, so a widening gap under refinement is the tell.
+    grid-seeded content, so a widening gap under refinement is the tell.  a_contour
+    (#222) is the paper's independent second observable: the FULL max - min radius of
+    the absolute rho = 0.1 g/cc density contour (Ellison SS3.1/Fig. 3).
     """
     z = zn = None
     times, r_liner, r_front, a_outer, rad_mod = [], [], [], [], []
-    a_sb, a_sb_raw = [], []
+    a_sb, a_sb_raw, a_contour = [], [], []
     for fp in files:
         d = bin_convert.read_binary_as_athdf(fp)
         if z is None:
@@ -319,9 +386,10 @@ def _trajectory(files):
         edge = _limb_edge(xrad, sigma)
         a_sb.append(_spike_bubble_amp(edge, k_max=K_MAX_BAND))
         a_sb_raw.append(_spike_bubble_amp(edge))
+        a_contour.append(_contour_amp(_contour_edge(d)))
     return (z, zn, np.array(times), np.array(r_liner), np.array(r_front),
             np.array(a_outer), np.array(rad_mod), np.array(a_sb),
-            np.array(a_sb_raw))
+            np.array(a_sb_raw), np.array(a_contour))
 
 
 def _plot_snapshot(files, z):
@@ -353,7 +421,7 @@ def test_verify_maglif_b1_sinars_gpu():
     try:
         files = _run("maglif_b1_sinars")
         (z, zn, times, r_liner, r_front, a_outer, rad_mod, a_sb,
-         a_sb_raw) = _trajectory(files)
+         a_sb_raw, a_contour) = _trajectory(files)
 
         # Final snapshot is finite and stable (the implosion ran in cleanly, no blow-up).
         fin = bin_convert.read_binary_as_athdf(files[-1])
@@ -414,7 +482,7 @@ def test_verify_maglif_b1_sinars_gpu():
         # exactly 1-D (no axial structure) -- proving the growth comes from the seed, not
         # the numerics.  This is the binding control.
         cfiles = _run("maglif_b1_sinars_ctl", 0.0)
-        _, _, ctimes, cr_liner, _, ca_outer, _, _, _ = _trajectory(cfiles)
+        _, _, ctimes, cr_liner, _, ca_outer, _, _, _, _ = _trajectory(cfiles)
         assert ca_outer.max() < FLAT_TOL, (
             f"pert_amp=0 control developed axial structure (max a_outer="
             f"{ca_outer.max():.3e} >= {FLAT_TOL}); not 1-D without the seed"
@@ -468,6 +536,20 @@ def test_verify_maglif_b1_sinars_gpu():
             print(f"[B1] instrument band k<={K_MAX_BAND} ({RADIOGRAPH_RES_UM:.0f} um): "
                   f"peak a_sb {a_sb.max():.4f} mm vs unfiltered {a_sb_raw.max():.4f} mm "
                   f"({a_sb_raw.max() / max(a_sb.max(), 1.0e-30):.2f}x)")
+            # #222: the paper's independent contour observable, reported next to a_sb,
+            # with the threshold-insensitivity check (paper claims <10% over
+            # 0.05-0.2 g/cc) evaluated at the a_contour peak snapshot.
+            i_ct = int(np.nanargmax(a_contour))
+            amps, spread = _contour_threshold_spread(
+                bin_convert.read_binary_as_athdf(files[i_ct])
+            )
+            amp_str = ", ".join(
+                f"{thr:g}: {amps[thr]:.4f}" for thr in CONTOUR_THRESHOLDS_GCC
+            )
+            print(f"[B1] rho={RHO_CONTOUR_GCC:g} g/cc contour (Ellison Fig. 3): peak "
+                  f"a_contour {a_contour[i_ct]:.4f} mm at t={times[i_ct]:.1f} ns; "
+                  f"threshold sweep [g/cc: mm] {{{amp_str}}} -> spread {spread:.1%} "
+                  f"(paper claims <10%)")
             exp_points = [
                 {"x": p.x, "y": p.exp_value, "band": p.band}
                 for p in res.point_results
@@ -490,6 +572,7 @@ def test_verify_maglif_b1_sinars_gpu():
                 "rad_mod": rad_mod,
                 "a_sb": a_sb,
                 "a_sb_raw": a_sb_raw,
+                "a_contour": a_contour,
             },
             coord_label="t",
             xlabel="t [ns]",
