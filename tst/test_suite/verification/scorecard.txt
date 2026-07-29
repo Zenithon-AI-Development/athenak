@@ -1,0 +1,34 @@
+Benchmark  Observable                                                                                                                                           Sim                     Experiment           Band         Verdict
+---------  ---------------------------------------------------------------------------------------------------------------------------------------------------  ----------------------  -------------------  -----------  -------------------------------------------------------------------------------------------------------------------------------------
+B2         MRT growth fraction (R_spike - R_bubble)/(R0 - R_bubble) near stagnation                                                                             0.345496 dimensionless  0.1 dimensionless    +/-0.05      FAIL (reported)
+    note: needs investigation (#155 Stage 3): reduced CPU gate, deepest convergence x~0.214; FLASH matched B2, so a persistent miss flags our setup, not a regression
+B2         MRT amplitude um vs McBride 450x-90                                                                                                                  --                      --                   --           PENDING (#123); reduced CPU gate at x~0.214 under-resolves the um-scale amplitude; quantitative law match needs the paper-res SI run)
+B2         MRT wavelength um vs McBride 750x                                                                                                                    --                      --                   --           PENDING (#123); needs the paper-resolution dimensional SI run)
+B4         minimum fuel column radius at stagnation                                                                                                             0.126976 mm             0.45 mm              +/-0.045     FAIL (reported)
+    note: faithful reduced-res CPU gate; SI hard-assert is the paper-res GPU run
+B4         peak fuel mass density at stagnation                                                                                                                 6.06996 g/cc            10 g/cc              +/-2         FAIL (reported)
+    note: faithful reduced-res CPU gate; SI hard-assert is the paper-res GPU run
+B4         directly-measured inertial confinement time at stagnation                                                                                            21 ns                   14 ns                +/-1.96      FAIL (reported)
+    note: faithful reduced-res CPU gate; SI hard-assert is the paper-res GPU run
+B4         inner liner radius vs time at stagnation (experiment radiograph)                                                                                     1.09268 mm              0.48 mm              +/-0.024     FAIL (reported)
+    note: faithful reduced-res CPU gate; SI hard-assert is the paper-res GPU run
+B4         density_radius_profile                                                                                                                               --                      --                   --           PENDING (#121)
+B4         minimum fuel column radius at stagnation                                                                                                             0.101758 mm             0.45 mm              +/-0.045     FAIL (reported)
+    note: reduced 1-D surrogate; absolute-SI hard-assert is #121 (EOS #118)
+B4         peak fuel mass density at stagnation                                                                                                                 5.06893 g/cc            10 g/cc              +/-2         FAIL (reported)
+    note: reduced 1-D surrogate; absolute-SI hard-assert is #121 (EOS #118)
+B4         directly-measured inertial confinement time at stagnation                                                                                            39.9977 ns              14 ns                +/-1.96      FAIL (reported)
+    note: reduced 1-D surrogate; absolute-SI hard-assert is #121 (EOS #118)
+B4         inner liner radius vs time at stagnation (experiment radiograph)                                                                                     1.0907 mm               0.48 mm              +/-0.024     FAIL (reported)
+    note: reduced 1-D surrogate; absolute-SI hard-assert is #121 (EOS #118)
+B2         multimode_amplitude_growth                                                                                                                           --                      --                   --           PENDING (paywalled, not digitizable here -- #143)
+B1         seeded single-mode MRT perturbation amplitude vs time                                                                                                0.030026 mm             0.9133 mm            +/-0.136995  FAIL (reported)
+    note: reduced nondim surrogate, reported as growth-factor G(t)=a/a0 on the Sinars seed+window; absolute-SI compare is #120
+B3         Dimensionless RM perturbation-amplitude growth factor over the radiographed first-shock phase (growth vs normalized interface displacement, Fig. 8)  1.60192 dimensionless   4.8 dimensionless    +/-1.92      FAIL (reported)
+    note: compact CPU surrogate; binding magnitude hard-assert is the paper-resolution GPU SI run (#119)
+B3         Dimensionless transmitted-shock to interface velocity ratio V_S,T / v_i (EOS-robust shock-strength anchor)                                           2.12867 dimensionless   1.369 dimensionless  +/-0.16      FAIL (reported)
+    note: compact CPU surrogate; binding magnitude hard-assert is the paper-resolution GPU SI run (#119)
+B3         converging-RM inner liner radius vs time (experiment PDV)                                                                                            0.421875 mm             3.226 mm             +/-0.3226    FAIL (reported)
+    note: compact CPU surrogate; binding magnitude hard-assert is the paper-resolution GPU SI run (#119)
+B3         converging-RM shock radius vs time (experiment PDV)                                                                                                  0.427694 mm             1.675 mm             +/-0.1675    FAIL (reported)
+    note: compact CPU surrogate; binding magnitude hard-assert is the paper-resolution GPU SI run (#119)
