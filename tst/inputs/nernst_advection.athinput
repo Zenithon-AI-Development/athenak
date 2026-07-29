@@ -1,0 +1,91 @@
+# AthenaK input file for the Nernst B_z-advection verification (RED-first, #238,
+# ADR-0017).
+#
+# 1-D box, static uniform-pressure medium carrying a linear electron-temperature ramp
+# T(x) = (p0/d0)*(1 - eps*(x-xt0)) (imposed through rho = p0/T, so v=0 + uniform p is an
+# exact hydro equilibrium), threaded by a passive Gaussian axial-field bump
+#   B_z(x) = bz0 exp(-((x-xc)/w)^2).
+# Under the (future) upwinded Nernst operator the bump advects down the temperature
+# gradient at the Braginskii Nernst velocity
+#   v_N = -(beta_wedge(x_e)/x_e) (tau_e/m_e) grad(k_B T_e),
+# so its centroid must translate by v_N*tlim (~ +0.21 code units with the conversions
+# below).  tst/test_suite/verification/test_verify_nernst_advection_cpu.py measures the
+# centroid displacement and checks it against that analytic velocity; until the operator
+# exists the bump does not move and the test is RED.  Built with
+# -D PROBLEM=nernst_advection.
+
+<comment>
+problem   = Nernst advection of a passive B_z bump down a static T_e ramp
+
+<job>
+basename  = nernst_advection
+
+<mesh>
+nghost    = 2
+nx1       = 256        # zones in X1
+x1min     = 0.0
+x1max     = 1.0
+ix1_bc    = outflow    # ramp is not periodic; bump stays interior over tlim
+ox1_bc    = outflow
+
+nx2       = 1          # 1-D run
+x2min     = 0.0
+x2max     = 1.0
+ix2_bc    = periodic
+ox2_bc    = periodic
+
+nx3       = 1
+x3min     = 0.0
+x3max     = 1.0
+ix3_bc    = periodic
+ox3_bc    = periodic
+
+<meshblock>
+nx1       = 256
+nx2       = 1
+nx3       = 1
+
+<time>
+evolution  = dynamic
+integrator = rk2
+cfl_number = 0.3
+nlim       = -1
+tlim       = 1.0
+ndiag      = 500
+
+<mhd>
+eos          = ideal
+reconstruct  = plm
+rsolver      = hlld
+gamma        = 1.66666666667
+
+# Nernst advection of B by the electron heat flux (#238, ADR-0017).  The gate and the
+# linear code<->SI conversions below are CONSUMED BY THE FUTURE OPERATOR and are ignored
+# today (red phase).  Conversions mirror the resist_*_si pattern and are chosen so
+# n_e ~ 1e26 m^-3, T_e ~ 100 eV, box = 1 mm, code velocity 1 = 1e4 m/s (t_code 1 =
+# 100 ns): an unmagnetized Nernst velocity v_N ~ 2.1e3 m/s -> ~0.21 code units per tlim.
+nernst           = true
+nernst_dens_si   = 0.167          # code density -> SI [kg m^-3]  (n_e ~ 1e26 m^-3)
+nernst_temp_si   = 1.160451e6     # code temperature -> K         (T_e = 100 eV at T=1)
+nernst_bmag_si   = 1.0            # code |B| -> Tesla
+nernst_len_si    = 1.0e-3         # code length -> m              (1 mm box)
+nernst_vel_si    = 1.0e4          # code velocity -> m/s
+nernst_zbar      = 1.0
+nernst_lnlambda  = 5.0            # fixed Coulomb log
+
+<problem>
+pgen_name = nernst_advection
+d0        = 1.0        # density at the ramp anchor (T(xt0) = p0/d0 = 1)
+p0        = 1.0        # uniform background pressure
+eps       = 0.2        # fractional T drop per unit x (uniform grad T_e, -> +x advection)
+xt0       = 0.5        # ramp anchor
+bz0       = 1.0e-3     # B_z bump amplitude (passive: magnetic pressure ~ 5e-7 p0)
+xc        = 0.4        # B_z bump center (moves toward ~0.61 under Nernst)
+w         = 0.05       # B_z bump Gaussian width (~13 cells)
+
+<output1>
+file_type   = tab
+variable    = mhd_w_bcc
+id          = bcc      # file basename token -> nernst_advection.bcc.NNNNN.tab
+data_format = %24.16e
+dt          = 1.0      # output at t=0 (00000) and t=tlim (00001)
