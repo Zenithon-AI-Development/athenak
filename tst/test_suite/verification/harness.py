@@ -5,9 +5,12 @@ This is the shared substrate every verification slice plugs into. A single call 
 ``verify(...)`` does three things for a problem that has already been run:
 
   1. emits a standard diagnostic plot (the key profiles/curves) to a known location,
-  2. on first use, captures a versioned "golden" baseline of those quantities, and
-  3. on every subsequent use, diffs the current run against that baseline within a
-     tolerance and reports pass/fail (raising ``AssertionError`` on a regression).
+  2. diffs the current run against a committed "golden" baseline of those quantities
+     within a tolerance and reports pass/fail (raising ``AssertionError`` on a
+     regression), and
+  3. fails fast if the baseline is missing: capture happens ONLY when explicitly
+     requested via ``ATHENAK_UPDATE_BASELINES=1`` (#226) — a deleted or
+     never-committed baseline must never convert a red into a green.
 
 Design notes
 ------------
@@ -16,8 +19,10 @@ Design notes
   (the suite runs tests from ``tst/build/src``). Baselines are committed; plots are
   build artifacts (git-ignored).
 * Baselines are stored as human-readable JSON so they diff cleanly in code review.
-* To (re)capture baselines deliberately, set the environment variable
-  ``ATHENAK_UPDATE_BASELINES=1`` before running the suite.
+* To capture a new baseline, or to re-capture one deliberately, set the environment
+  variable ``ATHENAK_UPDATE_BASELINES=1`` before running the suite and commit the
+  resulting JSON. This is the ONLY path that writes a baseline; a compare against
+  a missing one raises.
 * Adding a new verification slice requires no edit to ``run_test_suite.py``: drop a
   ``test_verify_<name>_<device>.py`` file in a ``test_suite`` subdirectory and call
   ``verify(...)``. pytest auto-collects it.
@@ -149,7 +154,9 @@ def make_plot(name, coord, fields, baseline, xlabel, title, passed):
         ax.grid(True, alpha=0.3)
         ax.legend(loc="best", fontsize=8)
     axes[-1].set_xlabel(xlabel)
-    status = "PASS" if passed else ("CAPTURED" if baseline is None else "FAIL")
+    status = "PASS" if passed else (
+        "MISSING BASELINE" if baseline is None else "FAIL"
+    )
     suptitle = title if title else name
     fig.suptitle(f"{suptitle}  [{status}]")
     fig.tight_layout()
@@ -182,19 +189,35 @@ def verify(name, coord, fields, coord_label="x", rtol=1.0e-5, atol=1.0e-8,
 
     Behaviour
     ---------
-    Always writes a diagnostic PNG. If no baseline exists (or ``ATHENAK_UPDATE_BASELINES``
-    is set), captures the current run as the golden baseline and passes. Otherwise diffs
-    every field (and the coordinate) against the baseline, raising ``AssertionError``
-    listing any quantities that exceed tolerance.
+    Always writes a diagnostic PNG. If ``ATHENAK_UPDATE_BASELINES`` is set, captures
+    the current run as the golden baseline and passes — the ONLY path that writes a
+    baseline. If no baseline exists and capture was not requested, raises
+    ``AssertionError`` naming the expected path and the capture procedure (#226): a
+    missing baseline must fail loudly, never silently self-capture and pass.
+    Otherwise diffs every field (and the coordinate) against the baseline, raising
+    ``AssertionError`` listing any quantities that exceed tolerance.
     """
     baseline = load_baseline(name)
     updating = bool(os.environ.get(UPDATE_ENV))
 
-    if baseline is None or updating:
+    if updating:
         # Plot against the previous baseline (if any) before overwriting it.
         make_plot(name, coord, fields, baseline, xlabel, title, passed=True)
         capture_baseline(name, coord, fields, coord_label, rtol, atol)
         return
+
+    if baseline is None:
+        # Fail fast (#226): a deleted or never-committed baseline must not convert
+        # a red into a green. Still emit the diagnostic plot of the current run so
+        # the failure can be inspected.
+        make_plot(name, coord, fields, None, xlabel, title, passed=False)
+        raise AssertionError(
+            f"verification '{name}' has no golden baseline at "
+            f"{baseline_path(name)} — comparing against a missing baseline is a "
+            f"failure by default (#226). If this is a new slice (or a deliberate "
+            f"re-baseline), capture it explicitly by re-running with "
+            f"{UPDATE_ENV}=1 and committing the resulting JSON."
+        )
 
     # Use the tolerances stored with the baseline if present (keeps captures and
     # diffs consistent); fall back to the call-site values otherwise.

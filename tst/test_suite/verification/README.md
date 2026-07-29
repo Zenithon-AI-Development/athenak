@@ -1,8 +1,9 @@
 # Tier-2 verification harness
 
 Shared substrate for the MagLIF / Z-pinch verification slices (the `Verify …` issues).
-Each slice runs a problem, emits a standard diagnostic plot, captures a versioned golden
-baseline once, and diffs future runs against it within a tolerance.
+Each slice runs a problem, emits a standard diagnostic plot, and diffs the run against
+a committed golden baseline within a tolerance. A missing baseline is a **failure**,
+not an implicit capture (#226).
 
 ## Add a new verification slice
 
@@ -29,9 +30,13 @@ def test_verify_mything():
 
 ## How baselines work
 
-* First run (or `ATHENAK_UPDATE_BASELINES=1`): the run is captured as the golden
-  baseline at `baselines/<name>.json` (committed, human-readable, review-friendly).
-* Later runs: every field and the coordinate are diffed against the baseline with
+* Capture is **explicit only**: run with `ATHENAK_UPDATE_BASELINES=1` to (re)capture
+  the golden baseline at `baselines/<name>.json` (committed, human-readable,
+  review-friendly), and commit the resulting JSON.
+* Missing baseline without that env var: `verify(...)` raises `AssertionError`
+  naming the expected path and the capture procedure (#226). A deleted or
+  never-committed baseline must fail loudly, never silently self-capture and pass.
+* Ordinary runs: every field and the coordinate are diffed against the baseline with
   `numpy.allclose(rtol, atol)`; a regression raises `AssertionError` naming the
   offending quantities.
 * Tolerances are stored in the baseline so captures and diffs stay consistent. Tune
