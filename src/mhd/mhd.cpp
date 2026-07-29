@@ -14,6 +14,7 @@
 #include "globals.hpp"
 #include "parameter_input.hpp"
 #include "mesh/mesh.hpp"
+#include "coordinates/coordinates.hpp"  // CoordSystem (the #231 ele_pdv coord guard)
 #include "eos/eos.hpp"
 #include "eos/ionmix_eos_reader.hpp"  // tabulated 3T (IONMIX) EOS reader (#159)
 #include "diffusion/viscosity.hpp"
@@ -462,6 +463,32 @@ MHD::MHD(MeshBlockPack *ppack, ParameterInput *pin) :
     // identical); the maglif faithful-B1 setup turns it on to close the energy budget
     // (field energy lost == electron heat gained).
     resb_deposit_heat = pin->GetOrAddBoolean("mhd","resb_deposit_heat",false);
+  }
+
+  // Electron PdV (compression-heating) source on the e_ele scalar (#231, ADR-0002):
+  // MHDSrcTerms adds d e_ele/dt = -p_ele div(v) per stage so the electron partition
+  // tracks compression (u0(IEN) untouched => conservation by construction).  Default
+  // off => byte-identical; the maglif faithful-B1 setup enables it.
+  ele_pdv = pin->GetOrAddBoolean("mhd","ele_pdv",false);
+  if (ele_pdv) {
+    if (nscalars < 1) {
+      std::cout << "### FATAL ERROR in " << __FILE__ << " at line " << __LINE__
+                << std::endl << "<mhd> ele_pdv requires nscalars >= 1 (the e_ele"
+                << " electron internal-energy scalar rides scalar 0)" << std::endl;
+      std::exit(EXIT_FAILURE);
+    }
+    if (!peos->eos_data.use_e) {
+      std::cout << "### FATAL ERROR in " << __FILE__ << " at line " << __LINE__
+                << std::endl << "<mhd> ele_pdv requires an EOS that evolves internal"
+                << " energy (use_e); isothermal has no e_ele partition" << std::endl;
+      std::exit(EXIT_FAILURE);
+    }
+    if (pmy_pack->pcoord->coord_system == CoordSystem::spherical) {
+      std::cout << "### FATAL ERROR in " << __FILE__ << " at line " << __LINE__
+                << std::endl << "<mhd> ele_pdv div(v) supports cartesian and"
+                << " cylindrical coordinates only" << std::endl;
+      std::exit(EXIT_FAILURE);
+    }
   }
 
   // Strang-split orchestration of the coupled timestep (#115/[B2], ADR-0009).  Group the

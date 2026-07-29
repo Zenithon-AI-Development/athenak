@@ -17,7 +17,9 @@
 #include "tasklist/task_list.hpp"
 #include "mesh/mesh.hpp"
 #include "coordinates/coordinates.hpp"
+#include "coordinates/cell_locations.hpp"
 #include "eos/eos.hpp"
+#include "eos/three_temperature.hpp"
 #include "diffusion/viscosity.hpp"
 #include "diffusion/resistivity.hpp"
 #include "diffusion/conduction.hpp"
@@ -664,12 +666,95 @@ TaskStatus MHD::MHDSrcTerms(Driver *pdrive, int stage) {
                                           beta_dt, u0);
   }
 
+  // Add the electron PdV (compression-heating) source on the e_ele scalar (#231,
+  // ADR-0002).  Gated (default off => byte-identical); computed from the stage
+  // primitives like every other source here.
+  if (ele_pdv) {
+    AddElectronPdVSource(beta_dt);
+  }
+
   // Add user source terms
   if (pmy_pack->pmesh->pgen->user_srcs) {
     (pmy_pack->pmesh->pgen->user_srcs_func)(pmy_pack->pmesh, beta_dt);
   }
 
   return TaskStatus::complete;
+}
+
+//----------------------------------------------------------------------------------------
+//! \fn void MHD::AddElectronPdVSource
+//! \brief Electron PdV (compression-heating) source on the e_ele scalar (#231,
+//! ADR-0002): u0(nmhd) += -p_ele * div(v) * bdt per cell, the reversible electron share
+//! of the compression work (three_temp::ElectronPdVRate).  div(v) is a central
+//! difference of the stage primitives' cell-centred velocities (ghosts are valid: the
+//! previous stage's ConsToPrim covered the ghost zones after the boundary exchange).
+//! The conserved total u0(IEN) is NEVER touched: the hyperbolic update already advances
+//! the total compression work, this source only moves the electron share onto the e_ele
+//! partition scalar, and the ion energy recovered by subtraction (IonInternalEnergyMHD)
+//! automatically receives the complementary -p_ion div(v) share plus all irreversible
+//! (shock) heating -- so total energy is conserved by construction.
+
+void MHD::AddElectronPdVSource(const Real bdt) {
+  auto &indcs = pmy_pack->pmesh->mb_indcs;
+  int is = indcs.is, ie = indcs.ie;
+  int js = indcs.js, je = indcs.je;
+  int ks = indcs.ks, ke = indcs.ke;
+  int nx1 = indcs.nx1;
+  const bool multi_d = pmy_pack->pmesh->multi_d;
+  const bool three_d = pmy_pack->pmesh->three_d;
+  // cylindrical (x1=r, x2=phi, x3=z): div(v) = (1/r) d(r v_r)/dr + (1/r) dv_phi/dphi
+  //                                            + dv_z/dz
+  const bool cyl = (pmy_pack->pcoord->coord_system == CoordSystem::cylindrical);
+  auto &size = pmy_pack->pmb->mb_size;
+  auto w = w0;
+  auto u = u0;
+  const int eidx = nmhd;   // e_ele rides passive scalar 0 (ADR-0002)
+  const Real gm1 = peos->eos_data.gamma - 1.0;
+  // tabulated 3T EOS (#159/#162): close p_ele from the table at the cached derived T_e
+  // (filled by the same ConsToPrim that produced the stage primitives).  `derived_te`
+  // and `eos_tbl` are only touched when is_tabulated (empty Views otherwise).
+  const bool tab = peos->eos_data.is_tabulated;
+  auto te = derived_te;
+  eos_table_3t::EosTable3T tbl = eos_tbl;   // shallow View copy into the kernel
+  int nmb1 = pmy_pack->nmb_thispack - 1;
+
+  par_for("ele_pdv_src", DevExeSpace(), 0, nmb1, ks, ke, js, je, is, ie,
+  KOKKOS_LAMBDA(const int m, const int k, const int j, const int i) {
+    // central-difference div(v) from the cell-centred stage primitives
+    Real divv;
+    if (cyl) {
+      Real x1min = size.d_view(m).x1min;
+      Real x1max = size.d_view(m).x1max;
+      Real rm1 = CellCenterX(i-1-is, nx1, x1min, x1max);
+      Real r0  = CellCenterX(i-is,   nx1, x1min, x1max);
+      Real rp1 = CellCenterX(i+1-is, nx1, x1min, x1max);
+      // radial metric term: (1/r) d(r v_r)/dr.  At the r=0 axis the ghost has r<0 and
+      // (reflected) v_r<0, so r*v_r extends evenly across the axis -- the symmetric
+      // difference stays well-posed without special-casing.
+      divv = (rp1*w(m,IVX,k,j,i+1) - rm1*w(m,IVX,k,j,i-1))/(2.0*size.d_view(m).dx1*r0);
+      if (multi_d) {   // x2 = phi: (1/r) dv_phi/dphi
+        divv += (w(m,IVY,k,j+1,i) - w(m,IVY,k,j-1,i))/(2.0*size.d_view(m).dx2*r0);
+      }
+      if (three_d) {   // x3 = z
+        divv += (w(m,IVZ,k+1,j,i) - w(m,IVZ,k-1,j,i))/(2.0*size.d_view(m).dx3);
+      }
+    } else {
+      divv = (w(m,IVX,k,j,i+1) - w(m,IVX,k,j,i-1))/(2.0*size.d_view(m).dx1);
+      if (multi_d) {
+        divv += (w(m,IVY,k,j+1,i) - w(m,IVY,k,j-1,i))/(2.0*size.d_view(m).dx2);
+      }
+      if (three_d) {
+        divv += (w(m,IVZ,k+1,j,i) - w(m,IVZ,k-1,j,i))/(2.0*size.d_view(m).dx3);
+      }
+    }
+    // electron pressure: table lookup at the cached derived T_e for the tabulated 3T
+    // EOS, else ideal-gamma from the primitive specific scalar e_ele/rho
+    Real rho  = w(m,IDN,k,j,i);
+    Real pele = tab ? tbl.PressureEle(rho, te(m,0,k,j,i))
+                    : gm1*rho*w(m,eidx,k,j,i);
+    u(m,eidx,k,j,i) += bdt*three_temp::ElectronPdVRate(pele, divv);
+  });
+  return;
 }
 
 //----------------------------------------------------------------------------------------

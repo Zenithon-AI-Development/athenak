@@ -242,6 +242,19 @@ class MHD {
   // path (NOT gated is_ideal, unlike OhmicEnergyFlux).  Default off => #192 byte-ident.
   bool resb_deposit_heat = false;
 
+  // Electron PdV (compression-heating) source on the e_ele scalar (#231, ADR-0002).
+  // The 3T formulation transports e_ele as passive scalar 0 (u0(nmhd)) and recovers
+  // e_ion by subtraction, but without this source the scalar changes by advection only:
+  // electrons receive no compression heating and T_e stays cold through the implosion
+  // while every T_e consumer (opacity lookups, EOS-aware conduction/coupling, e_ion =
+  // E - e_ele) reads a wrong temperature.  When on, MHDSrcTerms adds the reversible
+  // electron share of the compression work, d e_ele/dt = -p_ele div(v)
+  // (three_temp::ElectronPdVRate), per stage from the stage primitives; u0(IEN) is
+  // never touched, so total energy is conserved by construction and the irreversible
+  // (shock) excess still lands on the ions via the subtraction.  Default off =>
+  // byte-identical; the maglif faithful-B1 setup enables it.
+  bool ele_pdv = false;
+
   // Strang-split orchestration of the coupled timestep (#115/[B2], ADR-0009).  The active
   // stiff operator-split parabolic operators (FLD radiation, anisotropic conduction,
   // resistive B_phi -- built above) are grouped into one CompositeParabolicOperator PER
@@ -331,6 +344,9 @@ class MHD {
   TaskStatus RecvFlux(Driver *d, int stage);
   TaskStatus RKUpdate(Driver *d, int stage);
   TaskStatus MHDSrcTerms(Driver *d, int stage);
+  // Electron PdV (compression-heating) source on the e_ele scalar (#231, ADR-0002),
+  // called per stage from MHDSrcTerms when the <mhd> ele_pdv gate is on.
+  void AddElectronPdVSource(const Real bdt);
   TaskStatus SendU_OA(Driver *d, int stage);
   TaskStatus RecvU_OA(Driver *d, int stage);
   TaskStatus RestrictU(Driver *d, int stage);
