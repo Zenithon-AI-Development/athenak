@@ -54,8 +54,10 @@ import os
 import numpy as np
 import test_suite.testutils as testutils
 
-# numpy < 2.0 has no np.trapezoid (the renamed np.trapz).
-_trapz = getattr(np, "trapezoid", np.trapz)
+# numpy < 2.0 has no np.trapezoid (the renamed np.trapz); numpy >= 2.0 has no np.trapz.
+# The fallback must be LAZY: an eager getattr default (np.trapz) touches the removed
+# attribute at import time on numpy 2.x and aborts the whole suite's collection.
+_trapz = np.trapezoid if hasattr(np, "trapezoid") else np.trapz
 
 # Problem (constants must match tst/inputs/multigroup_rad_equilibration.athinput).
 PROBLEM = "radiation_fld_multigroup_equilibration"
