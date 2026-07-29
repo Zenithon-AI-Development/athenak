@@ -198,6 +198,16 @@ if (NOT ${PROBLEM} STREQUAL "built_in_pgens")
   )
 endif()
 
+# The pgen-identity macros are deliberately NOT in config.hpp: baking them into the
+# global config header invalidates every translation unit on a `-D PROBLEM=...` change,
+# so each per-test pgen build in CI recompiled the whole tree (~2 min apiece, #250).
+# Only these two translation units consume them, so they are injected per-source and a
+# PROBLEM switch recompiles just these (plus the pgen file itself) and relinks.
+set_source_files_properties(pgen/pgen.cpp utils/show_config.cpp
+  PROPERTIES COMPILE_DEFINITIONS
+    "PROBLEM_GENERATOR=\"${PROBLEM}\";USER_PROBLEM_ENABLED=${USER_PROBLEM_ENABLED}"
+)
+
 # enable include of header files with /src/ as root of path
 target_include_directories(athena PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 

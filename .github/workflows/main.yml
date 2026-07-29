@@ -1,15 +1,22 @@
 name: AthenaK CI
 
-# On every pull request to main (and on pushes to main), build AthenaK and run the full
-# quality gate. Each job below is intended to be a *required status check* on the `main`
-# branch so that a red gate BLOCKS the merge -- requiring those checks is a one-time
-# repository/branch-protection setting an admin must enable (Settings -> Branches ->
-# Branch protection rules -> "Require status checks to pass": select style, build-warnings,
+# On every pull request to main (and on pushes to main), build AthenaK and run the FAST
+# quality gate (#250): the full suite minus the tests marked `heavy` (long simulations --
+# see HEAVY_TEST_MODULES in tst/test_suite/conftest.py). The heavy tier runs weekly, on
+# manual dispatch, and on PRs carrying the `heavy-ci` label -- see heavy-ci.yml.
+# Each job below is intended to be a *required status check* on the `main` branch so that
+# a red gate BLOCKS the merge -- requiring those checks is a one-time repository/
+# branch-protection setting an admin must enable (Settings -> Branches -> Branch
+# protection rules -> "Require status checks to pass": select style, build-warnings,
 # regression-cpu, regression-mpicpu). The workflow itself only produces the signals.
 #
 # CPU tiers run on GitHub-hosted runners (no infrastructure to provision). The GPU tier is
 # defined below but gated off until a GPU runner is provisioned -- see the regression-gpu
 # job (flagged needs-info).
+#
+# Every job carries timeout-minutes so a hung or accidentally-heavy run fails loudly
+# instead of burning runner-hours (#250 found a 4h10m PR gate: one 80-minute simulation
+# test plus ~70 whole-tree pgen recompiles at ~2 min apiece).
 
 on:
   push:
@@ -30,6 +37,7 @@ jobs:
   style:
     name: Style / lint (--style)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -61,6 +69,7 @@ jobs:
     name: Build (-Wall -Wextra) + new-warning gate
     needs: [style]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
     steps:
@@ -102,15 +111,18 @@ jobs:
           if-no-files-found: ignore
 
   # ----------------------------------------------------------------------------------------
-  # Tier 1 + Tier 2 on CPU: run_test_suite.py --cpu runs every *_cpu test, which covers the
-  # formalized unit-test suite (tst/test_suite/unit_tests) AND the system tests + golden
-  # baseline regression (tst/test_suite/verification + the physics suites). ccache (on PATH)
-  # keeps the suite's clean rebuilds and per-unit-test builds fast across runs.
+  # Tier 1 + Tier 2 on CPU, FAST tier (#250): run_test_suite.py --cpu --fast runs every
+  # *_cpu test EXCEPT those marked `heavy` (long simulations; the weekly heavy-ci.yml
+  # covers them). This covers the formalized unit-test suite (tst/test_suite/unit_tests)
+  # AND the system tests + golden baseline regression (tst/test_suite/verification + the
+  # physics suites). ccache (on PATH) keeps the per-pgen builds fast: config.hpp is
+  # pgen-independent (#250), so all per-test builds share one compilation cache.
   # ----------------------------------------------------------------------------------------
   regression-cpu:
     name: CPU regression (unit + system + baseline)
     needs: [style]
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
     steps:
@@ -130,11 +142,11 @@ jobs:
           path: ${{ github.workspace }}/.ccache
           key: ccache-cpu-${{ github.sha }}
           restore-keys: ccache-cpu-
-      - name: Run CPU test suite
+      - name: Run CPU test suite (fast tier)
         run: |
           export PATH="/usr/lib/ccache:$PATH"
           cd tst
-          python3 run_test_suite.py --cpu
+          python3 run_test_suite.py --cpu --fast
       - name: Upload CPU test log
         if: always()
         uses: actions/upload-artifact@v4
@@ -151,6 +163,7 @@ jobs:
     name: MPI CPU regression
     needs: [style]
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       OMPI_MCA_rmaps_base_oversubscribe: "true"
@@ -172,11 +185,11 @@ jobs:
           path: ${{ github.workspace }}/.ccache
           key: ccache-mpi-${{ github.sha }}
           restore-keys: ccache-mpi-
-      - name: Run MPI CPU test suite
+      - name: Run MPI CPU test suite (fast tier)
         run: |
           export PATH="/usr/lib/ccache:$PATH"
           cd tst
-          python3 run_test_suite.py --mpicpu
+          python3 run_test_suite.py --mpicpu --fast
       - name: Upload MPI CPU test log
         if: always()
         uses: actions/upload-artifact@v4
@@ -207,7 +220,8 @@ jobs:
         run: |
           cd tst
           python3 run_test_suite.py --gpu \
-            "-DKokkos_ARCH_AMPERE80=On -DCMAKE_CXX_COMPILER=${{ github.workspace }}/kokkos/bin/nvcc_wrapper"
+            "-DKokkos_ARCH_AMPERE80=On -DCMAKE_CXX_COMPILER=${{ github.workspace }}/kokkos/bin/nvcc_wrapper" \
+            --fast
       - name: Upload GPU test log
         if: always()
         uses: actions/upload-artifact@v4
