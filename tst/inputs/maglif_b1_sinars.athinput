@@ -128,6 +128,12 @@ eos_deg_zstar    = 3.0             # #209: Fermi degeneracy-pressure floor on p_
                                    #   compression at ~4-6x solid.
 eos_deg_rho0     = 1.0             # floor reference: zero at/below solid Al (quiescent liner)
 nscalars         = 1                               # passive scalar 0 carries e_ele/rho (ADR-0002)
+ele_pdv          = true            # #231: electron PdV compression heating on e_ele.  Without it
+                                   #   the scalar is advection-only: T_e stays cold through the
+                                   #   implosion and every T_e consumer (chi(rho,Te) opacity,
+                                   #   EOS-aware acond/mrad, e_ion = E - e_ele) reads it wrong.
+                                   #   p_ele closes from the table at the cached derived T_e;
+                                   #   u0(IEN) untouched => E_tot conserved by construction.
 reconstruct      = plm
 rsolver          = llf                             # required for tabulated_3t: routes p_gas(rho,e) (#162)
 gamma            = 1.6666666666666667              # ideal-gamma wave-speed bookkeeping only (#162)

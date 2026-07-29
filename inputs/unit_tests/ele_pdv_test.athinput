@@ -1,0 +1,79 @@
+# AthenaK input file for the gated electron PdV (compression-heating) source test
+# (unit_tests/ele_pdv_test, issue #231, 3T consistency 1/4).
+#
+# The pgen seeds a 1D periodic, field-free ideal-gas box with uniform (rho0, p0), a
+# sinusoidal compressive velocity v_x = -v0 sin(2 pi x), and a uniform-fraction electron
+# energy scalar e_ele = fele*e_int, then enrolls a finalize hook.  The driver integrates
+# the live MHD update to tlim (well before shock formation, so the flow stays smooth and
+# isentropic); the hook then checks the analytic electron adiabat
+# e_ele/rho = s0*(rho/rho0)^(gamma-1) (gate ON) or the advection-only baseline (gate
+# OFF), plus round-off total-energy conservation in both legs.
+#
+# The Python wrapper (test_unit_ele_pdv_cpu.py) runs the binary twice, overriding
+# <mhd>/ele_pdv per leg.
+
+<comment>
+problem   = gated electron PdV compression-heating source test (#231)
+
+<job>
+basename  = ele_pdv_test   # problem ID: basename of output filenames
+
+<mesh>
+nghost    = 2          # Number of ghost cells
+nx1       = 128        # Number of zones in X1-direction
+x1min     = -0.5       # minimum value of X1
+x1max     = 0.5        # maximum value of X1
+ix1_bc    = periodic   # inner-X1 boundary flag
+ox1_bc    = periodic   # outer-X1 boundary flag
+
+nx2       = 1          # Number of zones in X2-direction
+x2min     = -0.5       # minimum value of X2
+x2max     = 0.5        # maximum value of X2
+ix2_bc    = periodic   # inner-X2 boundary flag
+ox2_bc    = periodic   # outer-X2 boundary flag
+
+nx3       = 1          # Number of zones in X3-direction
+x3min     = -0.5       # minimum value of X3
+x3max     = 0.5        # maximum value of X3
+ix3_bc    = periodic   # inner-X3 boundary flag
+ox3_bc    = periodic   # outer-X3 boundary flag
+
+<meshblock>
+nx1       = 128        # Number of cells in each MeshBlock, X1-dir
+nx2       = 1          # Number of cells in each MeshBlock, X2-dir
+nx3       = 1          # Number of cells in each MeshBlock, X3-dir
+
+<coord>
+system    = cartesian  # overridden to cylindrical by the cyl_stencil leg
+
+<time>
+evolution  = dynamic   # dynamic/kinematic/static
+integrator = rk2       # time integration algorithm
+cfl_number = 0.3       # The Courant, Friedrichs, & Lewy (CFL) Number
+nlim       = -1        # cycle limit (tlim gates the run)
+tlim       = 0.1       # time limit: max compression, well before shock formation (~0.34)
+ndiag      = 25        # cycles between diagnostic output
+
+<mhd>
+eos         = ideal    # ideal-gas EOS: the analytic electron adiabat T_e ~ rho^(gamma-1)
+                       # (tab_stencil leg overrides to tabulated_3t)
+eos_table   = inputs/ionmix/al-imx-004.cn4   # IONMIX cn4 table (tab_stencil leg only;
+                       # the wrapper overrides with the ABSOLUTE path)
+eos_mass_per_ion = 1.0 # ion mass [g] relabeling the cn4 number-density axis (tab leg
+                       # only; the wrapper overrides with the Al value)
+reconstruct = plm      # spatial reconstruction
+rsolver     = llf      # Riemann solver
+gamma       = 1.6666666666666667   # gas (and electron-fluid) adiabatic index
+nscalars    = 1        # passive scalar 0 carries e_ele
+ele_pdv     = false    # #231 gate under test (overridden per leg by the Python wrapper)
+
+<problem>
+check       = adiabat  # adiabat (driver leg) | cyl_stencil (direct-call stencil leg)
+rho0        = 1.0      # uniform initial density
+p0          = 0.6      # uniform initial gas pressure (cs0 = 1)
+v0          = 0.35     # sinusoidal velocity amplitude (Mach 0.35: smooth over the run)
+fele        = 0.4      # electron fraction of the internal energy seeded on scalar 0
+# ---- cyl_stencil leg only ----
+a           = 0.3      # radial-flow rate: v_r = -a*r (div v = -2a exactly)
+eele0       = 0.7      # uniform electron internal-energy density
+dt          = 0.01     # single direct source application step
