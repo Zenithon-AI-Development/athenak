@@ -149,6 +149,20 @@ exercises that load/provenance/tolerance-band/compare logic (a component test, n
 |------|-------|-------------|---------------------|----------|---------------|
 | `test_verify_ground_truth_oracle_cpu.py` | 1 | literature (experiment) | Committed experimental data for Ellison 1–4: B1 single-mode MRT (Sinars 2011), B2 multi-mode MRT (McBride 2012/2013), B3 convergent RM (Knapp 2020), B4 ICF confinement (Knapp 2017, min-radius 0.45 mm, peak density ~10 g/cc); provenance-validated load + tolerance-band compare | Sinars PoP 18,056301 (2011) [10.1063/1.3560911]; McBride PRL 109,135004 (2012) [10.1103/PhysRevLett.109.135004] / PoP 20,056309 (2013) [10.1063/1.4803079]; Knapp PoP 27,092707 (2020) [10.1063/5.0013194]; Knapp PoP 24,042708 (2017) [10.1063/1.4981206] | self |
 
+## B6 baseline reference — Ruiz 2023 current-scaling transcription (#241, ADR-0008)
+
+The B6 replication (MagLIF current-scaling study, Ellison Sec. 3.6) defers every baseline
+number to Ruiz 2023 Paper II; the Ellison preprint's "Table 3" pointer is a **dangling
+reference** (no such table exists in the preprint), so the source of record is the Ruiz
+Sec. III text (20-MA anchor load + Fig. 1 circuit element values) plus a committed
+digitization of the Fig. 2 open-circuit voltage trace (`digitization_review/`, flagged for
+human QC). The committed reference is `verification/reference/b6_ruiz2023_current_scaling.json`;
+the loader / similarity-scaling generator is `verification/b6_ruiz_scaling.py`.
+
+| Test | Layer | Oracle type | Ground-truth oracle | Citation | Method anchor |
+|------|-------|-------------|---------------------|----------|---------------|
+| `test_unit_b6_ruiz_scaling_cpu.py` | 1 | literature | Stated 20-MA anchor load (h 10 mm, R_i 2.325 mm, R_o 2.79 mm, ρ_fuel 2.25 mg/cc, B_z0 14 T, E_pre 2.1 kJ, R_pre 0.75 mm) + circuit elements (Z₀ 0.18 Ω, L₀ 9.58 nH, C 0.1 nF, L₁ 5 nH, R_loss 80→0.25 Ω over 5 ns); the generator's 40/60-MA parameters recover the committed power-law exponents (Ruiz Eqs. (26)–(29), (17), (22)–(25) = Ellison Eqs. (18)–(23)); the generated 60-MA load matches the paper's own stated values (34 kJ, 4.1 mg/cc, 18.3 mm, 30 T, AR ~3.1) within the documented fit-vs-exact-prescription spread (≤6%); the digitized Fig. 2 trace reproduces φ₀ ≈ 8 MV and t_φ (FWHM) ≈ 100 ns and scales as (I_max/I₀)^1.529 | Ruiz PoP 30,032708 (2023) [10.1063/5.0126699, arXiv:2209.14911]; Ellison et al. 2025 (arXiv:2504.10760) Eqs. (18)–(23) | self |
+
 ---
 
 ## Layer-2 self-snapshot gaps — all closed

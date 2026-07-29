@@ -1,0 +1,261 @@
+{
+ "figure": "ruiz_fig2_voltage_trace.png",
+ "x_axis": "time (ns)",
+ "y_axis": "phi_oc (MV)",
+ "series": "open-circuit voltage source (blue curve)",
+ "qc": "PENDING",
+ "calibration": {
+  "x_left_px": 101,
+  "x_right_px": 994,
+  "x_left_ns": -100.0,
+  "x_right_ns": 200.0,
+  "y0_px": 560.0,
+  "y8_px": 70.5
+ },
+ "points": [
+  {
+   "t_ns": -100.0,
+   "phi_oc_MV": 0.082
+  },
+  {
+   "t_ns": -95.0,
+   "phi_oc_MV": 0.098
+  },
+  {
+   "t_ns": -90.0,
+   "phi_oc_MV": 0.065
+  },
+  {
+   "t_ns": -85.0,
+   "phi_oc_MV": 0.057
+  },
+  {
+   "t_ns": -80.0,
+   "phi_oc_MV": 0.049
+  },
+  {
+   "t_ns": -75.0,
+   "phi_oc_MV": 0.041
+  },
+  {
+   "t_ns": -70.0,
+   "phi_oc_MV": 0.041
+  },
+  {
+   "t_ns": -65.0,
+   "phi_oc_MV": 0.033
+  },
+  {
+   "t_ns": -60.0,
+   "phi_oc_MV": 0.033
+  },
+  {
+   "t_ns": -55.0,
+   "phi_oc_MV": 0.041
+  },
+  {
+   "t_ns": -50.0,
+   "phi_oc_MV": 0.057
+  },
+  {
+   "t_ns": -45.0,
+   "phi_oc_MV": 0.114
+  },
+  {
+   "t_ns": -40.0,
+   "phi_oc_MV": 0.226
+  },
+  {
+   "t_ns": -35.0,
+   "phi_oc_MV": 0.441
+  },
+  {
+   "t_ns": -30.0,
+   "phi_oc_MV": 0.717
+  },
+  {
+   "t_ns": -25.0,
+   "phi_oc_MV": 1.011
+  },
+  {
+   "t_ns": -20.0,
+   "phi_oc_MV": 1.301
+  },
+  {
+   "t_ns": -15.0,
+   "phi_oc_MV": 1.553
+  },
+  {
+   "t_ns": -10.0,
+   "phi_oc_MV": 1.973
+  },
+  {
+   "t_ns": -5.0,
+   "phi_oc_MV": 2.852
+  },
+  {
+   "t_ns": 0.0,
+   "phi_oc_MV": 4.173
+  },
+  {
+   "t_ns": 5.0,
+   "phi_oc_MV": 5.413
+  },
+  {
+   "t_ns": 10.0,
+   "phi_oc_MV": 6.118
+  },
+  {
+   "t_ns": 15.0,
+   "phi_oc_MV": 6.493
+  },
+  {
+   "t_ns": 20.0,
+   "phi_oc_MV": 6.745
+  },
+  {
+   "t_ns": 25.0,
+   "phi_oc_MV": 7.102
+  },
+  {
+   "t_ns": 30.0,
+   "phi_oc_MV": 7.435
+  },
+  {
+   "t_ns": 35.0,
+   "phi_oc_MV": 7.631
+  },
+  {
+   "t_ns": 40.0,
+   "phi_oc_MV": 7.712
+  },
+  {
+   "t_ns": 45.0,
+   "phi_oc_MV": 7.73
+  },
+  {
+   "t_ns": 50.0,
+   "phi_oc_MV": 7.8
+  },
+  {
+   "t_ns": 55.0,
+   "phi_oc_MV": 7.921
+  },
+  {
+   "t_ns": 60.0,
+   "phi_oc_MV": 8.033
+  },
+  {
+   "t_ns": 65.0,
+   "phi_oc_MV": 8.023
+  },
+  {
+   "t_ns": 70.0,
+   "phi_oc_MV": 7.893
+  },
+  {
+   "t_ns": 75.0,
+   "phi_oc_MV": 7.521
+  },
+  {
+   "t_ns": 80.0,
+   "phi_oc_MV": 6.841
+  },
+  {
+   "t_ns": 85.0,
+   "phi_oc_MV": 6.019
+  },
+  {
+   "t_ns": 90.0,
+   "phi_oc_MV": 5.178
+  },
+  {
+   "t_ns": 95.0,
+   "phi_oc_MV": 4.46
+  },
+  {
+   "t_ns": 100.0,
+   "phi_oc_MV": 3.955
+  },
+  {
+   "t_ns": 105.0,
+   "phi_oc_MV": 3.641
+  },
+  {
+   "t_ns": 110.0,
+   "phi_oc_MV": 3.391
+  },
+  {
+   "t_ns": 115.0,
+   "phi_oc_MV": 3.318
+  },
+  {
+   "t_ns": 120.0,
+   "phi_oc_MV": 3.366
+  },
+  {
+   "t_ns": 125.0,
+   "phi_oc_MV": 3.35
+  },
+  {
+   "t_ns": 130.0,
+   "phi_oc_MV": 3.312
+  },
+  {
+   "t_ns": 135.0,
+   "phi_oc_MV": 3.105
+  },
+  {
+   "t_ns": 140.0,
+   "phi_oc_MV": 2.854
+  },
+  {
+   "t_ns": 145.0,
+   "phi_oc_MV": 2.754
+  },
+  {
+   "t_ns": 150.0,
+   "phi_oc_MV": 2.664
+  },
+  {
+   "t_ns": 155.0,
+   "phi_oc_MV": 2.582
+  },
+  {
+   "t_ns": 160.0,
+   "phi_oc_MV": 2.582
+  },
+  {
+   "t_ns": 165.0,
+   "phi_oc_MV": 2.615
+  },
+  {
+   "t_ns": 170.0,
+   "phi_oc_MV": 2.424
+  },
+  {
+   "t_ns": 175.0,
+   "phi_oc_MV": 2.3
+  },
+  {
+   "t_ns": 180.0,
+   "phi_oc_MV": 2.194
+  },
+  {
+   "t_ns": 185.0,
+   "phi_oc_MV": 2.016
+  },
+  {
+   "t_ns": 190.0,
+   "phi_oc_MV": 1.969
+  },
+  {
+   "t_ns": 195.0,
+   "phi_oc_MV": 1.78
+  },
+  {
+   "t_ns": 200.0,
+   "phi_oc_MV": 1.642
+  }
+ ]
+}
