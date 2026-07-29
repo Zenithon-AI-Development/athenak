@@ -1,0 +1,130 @@
+{
+  "_doc": "Committed scorecard ratchet (issue #228): the expected status of every experiment-vs-simulation row the full CPU suite records. Any regression against this file fails the suite; improvements must update it in the same PR (ATHENAK_UPDATE_BASELINES=1 regenerates it). See scorecard_ratchet.py.",
+  "rows": [
+    {
+      "benchmark": "B2",
+      "observable": "MRT growth fraction (R_spike - R_bubble)/(R0 - R_bubble) near stagnation",
+      "verdict": "FAIL",
+      "binding": false,
+      "count": 1,
+      "issue": "#229",
+      "note": "Live Stage-3 miss: growth_fraction 0.345 vs McBride band [0.05, 0.15] (3.5x). Tracked, not silently green -- investigation is #229 (was #155 Stage 3)."
+    },
+    {
+      "benchmark": "B2",
+      "observable": "MRT amplitude um vs McBride 450x-90",
+      "verdict": "PENDING",
+      "binding": false,
+      "count": 1,
+      "issue": "#123",
+      "note": "quantitative law match needs the paper-resolution dimensional SI run"
+    },
+    {
+      "benchmark": "B2",
+      "observable": "MRT wavelength um vs McBride 750x",
+      "verdict": "PENDING",
+      "binding": false,
+      "count": 1,
+      "issue": "#123",
+      "note": "needs the paper-resolution dimensional SI run"
+    },
+    {
+      "benchmark": "B4",
+      "observable": "minimum fuel column radius at stagnation",
+      "verdict": "FAIL",
+      "binding": false,
+      "count": 2,
+      "issue": "#121",
+      "note": "one row from the faithful reduced-res CPU gate (b4_icf_si), one from the reduced 1-D surrogate (icf); SI hard-assert is #121"
+    },
+    {
+      "benchmark": "B4",
+      "observable": "peak fuel mass density at stagnation",
+      "verdict": "FAIL",
+      "binding": false,
+      "count": 2,
+      "issue": "#121",
+      "note": "one row from the faithful reduced-res CPU gate (b4_icf_si), one from the reduced 1-D surrogate (icf); SI hard-assert is #121"
+    },
+    {
+      "benchmark": "B4",
+      "observable": "directly-measured inertial confinement time at stagnation",
+      "verdict": "FAIL",
+      "binding": false,
+      "count": 2,
+      "issue": "#121",
+      "note": "one row from the faithful reduced-res CPU gate (b4_icf_si), one from the reduced 1-D surrogate (icf); SI hard-assert is #121"
+    },
+    {
+      "benchmark": "B4",
+      "observable": "inner liner radius vs time at stagnation (experiment radiograph)",
+      "verdict": "FAIL",
+      "binding": false,
+      "count": 2,
+      "issue": "#121",
+      "note": "one row from the faithful reduced-res CPU gate (b4_icf_si), one from the reduced 1-D surrogate (icf); SI hard-assert is #121"
+    },
+    {
+      "benchmark": "B4",
+      "observable": "density_radius_profile",
+      "verdict": "PENDING",
+      "binding": false,
+      "count": 1,
+      "issue": "#121"
+    },
+    {
+      "benchmark": "B2",
+      "observable": "multimode_amplitude_growth",
+      "verdict": "PENDING",
+      "binding": false,
+      "count": 1,
+      "issue": "#122",
+      "note": "McBride 2012 figure is paywalled, not digitizable here (#143)"
+    },
+    {
+      "benchmark": "B1",
+      "observable": "seeded single-mode MRT perturbation amplitude vs time",
+      "verdict": "FAIL",
+      "binding": false,
+      "count": 1,
+      "issue": "#120",
+      "note": "reduced nondim surrogate reported as growth-factor G(t)=a/a0; absolute-SI compare is #120"
+    },
+    {
+      "benchmark": "B3",
+      "observable": "Dimensionless RM perturbation-amplitude growth factor over the radiographed first-shock phase (growth vs normalized interface displacement, Fig. 8)",
+      "verdict": "FAIL",
+      "binding": false,
+      "count": 1,
+      "issue": "#119",
+      "note": "compact CPU surrogate; binding magnitude hard-assert is the paper-resolution GPU SI run"
+    },
+    {
+      "benchmark": "B3",
+      "observable": "Dimensionless transmitted-shock to interface velocity ratio V_S,T / v_i (EOS-robust shock-strength anchor)",
+      "verdict": "FAIL",
+      "binding": false,
+      "count": 1,
+      "issue": "#119",
+      "note": "compact CPU surrogate; binding magnitude hard-assert is the paper-resolution GPU SI run"
+    },
+    {
+      "benchmark": "B3",
+      "observable": "converging-RM inner liner radius vs time (experiment PDV)",
+      "verdict": "FAIL",
+      "binding": false,
+      "count": 1,
+      "issue": "#119",
+      "note": "compact CPU surrogate; binding magnitude hard-assert is the paper-resolution GPU SI run"
+    },
+    {
+      "benchmark": "B3",
+      "observable": "converging-RM shock radius vs time (experiment PDV)",
+      "verdict": "FAIL",
+      "binding": false,
+      "count": 1,
+      "issue": "#119",
+      "note": "compact CPU surrogate; binding magnitude hard-assert is the paper-resolution GPU SI run"
+    }
+  ]
+}

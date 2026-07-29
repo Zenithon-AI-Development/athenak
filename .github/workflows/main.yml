@@ -131,10 +131,34 @@ jobs:
           key: ccache-cpu-${{ github.sha }}
           restore-keys: ccache-cpu-
       - name: Run CPU test suite
+        env:
+          # The full CPU tier records the complete experiment-anchoring scorecard, so
+          # enforce the committed ratchet here (issue #228): any row regressing against
+          # tst/test_suite/verification/scorecard_ratchet.json fails this job.
+          ATHENAK_SCORECARD_RATCHET: "1"
         run: |
           export PATH="/usr/lib/ccache:$PATH"
           cd tst
           python3 run_test_suite.py --cpu
+      - name: Publish scorecard to the job summary
+        if: always()
+        run: |
+          f=tst/test_suite/verification/scorecard.txt
+          if [ -f "$f" ]; then
+            {
+              echo '### Experiment-anchoring scorecard (PRD #138, ratchet #228)'
+              echo '```'
+              cat "$f"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload scorecard
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scorecard
+          path: tst/test_suite/verification/scorecard.txt
+          if-no-files-found: ignore
       - name: Upload CPU test log
         if: always()
         uses: actions/upload-artifact@v4
