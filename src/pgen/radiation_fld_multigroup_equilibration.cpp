@@ -243,6 +243,11 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   };
 
   const Real nl       = pin->GetOrAddReal("problem", "n_larsen", 2.0);
+  // Lax-Friedrichs streaming-dissipation gate (#221 <- #215/#194): 1 => on (the
+  // committed baseline), 0 => the bare centered flux.  Plumbed through so the #221
+  // convergence study can run mgfld_upwind=0 legs that separate the LF term's
+  // first-order error from the underlying discretization error.
+  const Real mg_upwind = pin->GetOrAddReal("problem", "mgfld_upwind", 1.0);
   const Real e_source = pin->GetOrAddReal("problem", "e_source", 1.0);
   const Real e_floor  = pin->GetOrAddReal("problem", "e_floor", 1.0e-3);
   const Real t_floor  = pin->GetOrAddReal("problem", "t_floor", 0.1);
@@ -260,7 +265,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   // Dirichlet inner-x1 source = e_source (all groups), zero-gradient elsewhere; chi_R,g
   // from the table at (diff_rho, te_bg).
   FLDMultigroupOperator op(pmbp, pin, erad, table, c_light, diff_rho, te_bg, nl,
-                           e_source);
+                           e_source, 1.0e-30, mg_upwind);
   const Real dt_super = tlim_fld/static_cast<Real>(n_super);
   for (int s = 0; s < n_super; ++s) {
     // 1) per-group FLD spatial diffusion (operator-split RKL2 superstep).
