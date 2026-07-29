@@ -94,6 +94,16 @@ HALF = 0.5           # half-max density level isolating the dense Be liner
 
 # Qualitative morphology thresholds (sign/shape gates; McBride quant anchor is #155).
 CONV_FRAC = 0.95     # require >= 5% bulk convergence (R_liner shrinks; calibrated ~15%)
+
+# Synthetic-radiograph instrument response for the McBride spike/bubble extrema (#229,
+# mirroring the #212 B1 fix): McBride 2012's monochromatic radiography has 15 um spatial
+# resolution, so the synthetic extrema compared against its fit laws are band-limited to
+# the instrument's own band -- otherwise (max - min) also counts grid-scale structure the
+# radiograph could never have seen (resolution-divergent, like B1's a_sb before #212).
+# At the reduced CPU gate (nx3 48, Nyquist mode 24 < 53) this is a no-op by construction;
+# it bites at the committed paper-resolution deck (nx3 128, Nyquist 64 > 53).
+RADIOGRAPH_RES_UM = 15.0                                  # McBride 2012 quoted resolution
+K_MAX_BAND = int(LZ * 1.0e3 / (2.0 * RADIOGRAPH_RES_UM))  # cycles across LZ (= 53)
 STRUCT_MIN = 1.0e-2  # delta_T>0 driven roughness must reach this (calibrated ~5.8e-2)
 FLAT_TOL = 1.0e-8    # delta_T=0 control roughness stays below this (calibrated ~4e-16)
 GROW_FACTOR = 5.0    # late roughness exceeds early roughness by this (calibrated ~20x)
@@ -187,8 +197,9 @@ def _trajectory(files):
     """Reduce a run's snapshots to the discriminating time series.
 
     Also returns the driven-surface spike/bubble extrema per snapshot (R_spike=max,
-    R_bubble=min of the finite outer interface) -- the inputs to the McBride soft
-    quantitative anchor (#155 [B2-S2]); they do NOT enter the regression baseline.
+    R_bubble=min of the finite outer interface, band-limited to the radiograph's own
+    resolution, #229) -- the inputs to the McBride soft quantitative anchor
+    (#155 [B2-S2]); they do NOT enter the regression baseline.
     """
     z = None
     times, r_liner, rms_outer, rms_inner, kdom, npart = [], [], [], [], [], []
@@ -204,7 +215,7 @@ def _trajectory(files):
         rms_inner.append(_rms(r_in))
         kdom.append(_kdom(r_out, z))
         npart.append(_participation(r_out, z))
-        sp, bu = mb2.outer_surface_extrema(r_out)
+        sp, bu = mb2.outer_surface_extrema(r_out, k_max=K_MAX_BAND)
         r_spike.append(sp)
         r_bubble.append(bu)
     return (z, np.array(times), np.array(r_liner), np.array(rms_outer),
@@ -235,13 +246,30 @@ def _report_mcbride_anchor(times, r_spike, r_bubble, kdom):
     x_final = float(x_conv[-1])
 
     # --- AC#1: growth fraction vs the McBride [0.05, 0.15] band (reported only) ---
-    res = oracle.compare("B2", "growth_fraction", gf_final)
-    note = f"reduced CPU gate, deepest convergence x~{x_final:.3f}"
-    if not res.passed:
-        # Stage-3 escalation: a persistent soft-anchor miss is a diagnostic note only.
-        note = (f"needs investigation (#155 Stage 3): {note}; FLASH matched B2, so a "
-                f"persistent miss flags our setup, not a regression")
-    scorecard.record_result(res, binding=False, note=note)
+    # The band is a published claim ONLY over McBride's measured abscissa domain
+    # x in [0.4, 0.95] (the nonlinear regime near stagnation; #229): McBride's own
+    # laws imply gf ~ (450x-90)/(R0*x) ~ 0.008 at the gate's x~0.214, so an
+    # out-of-window comparison cannot be met even by the reference data.  Below the
+    # window the measured value is recorded PENDING (deeper-convergence run needed),
+    # not FAIL; inside it the band comparison stands (still report-only, #155).
+    datum = oracle.get("B2", "growth_fraction")
+    if mb2.in_validity_window(x_final, laws):
+        res = oracle.compare("B2", "growth_fraction", gf_final)
+        note = f"reduced CPU gate, deepest convergence x~{x_final:.3f}"
+        if not res.passed:
+            # Stage-3 escalation: a persistent in-window miss is a diagnostic note.
+            note = (f"needs investigation (#155 Stage 3): {note}; FLASH matched B2, "
+                    f"so a persistent miss flags our setup, not a regression")
+        scorecard.record_result(res, binding=False, note=note)
+    else:
+        lo, hi = laws["x_valid_range"]
+        scorecard.record(
+            "B2", datum.observable, gf_final, datum.value, datum.tolerance_band(),
+            datum.unit, scorecard.PENDING, binding=False,
+            note=(f"out of the McBride validity window: deepest convergence "
+                  f"x~{x_final:.3f} not in [{lo}, {hi}] (band stated for the "
+                  f"nonlinear regime near stagnation); comparison deferred to a "
+                  f"deeper-convergence run (#229)"))
 
     # gf(t) overlay against the stated band (NaN early points -- before any convergence,
     # R_bubble == R0 -- are dropped so the band line is the focus).
