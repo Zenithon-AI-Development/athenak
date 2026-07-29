@@ -93,6 +93,7 @@ eq_erad_floor = 1.0e-3 # cold/initial radiation energy floor (all groups, case B
 diff_rho  = 1.0e-2     # PART2 background density: chi_R,g ~ {300,200,150}, chi_P,g ~ {500,400,300}
 te_bg     = 1.0e2      # PART2 background temperature (opacity reference node)
 n_larsen  = 2.0        # Larsen flux-limiter exponent
+mgfld_upwind = 1.0     # LF streaming-dissipation gate (#221 <- #215/#194): 1 on, 0 off
 e_source  = 1.0        # inner-x1 Dirichlet radiation-energy source (hot wall, all groups)
 e_floor   = 1.0e-3     # initial/cold radiation energy
 t_floor   = 0.1        # initial/cold matter temperature
