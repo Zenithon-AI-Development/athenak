@@ -1,6 +1,13 @@
 # build directories
 build*/
 
+# test harness run log and Python bytecode -- machine-local, regenerated on
+# every run; tracking them dirtied the tree and grew test_log.txt past
+# GitHub's 100 MB push limit (#218)
+tst/test_log.txt
+__pycache__/
+*.pyc
+
 # Athena output files
 *.tab
 *.vtk
